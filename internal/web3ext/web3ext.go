@@ -611,6 +611,11 @@ web3._extend({
 			params: 3,
 			inputFormatter: [web3._extend.formatters.inputCallFormatter, web3._extend.formatters.inputDefaultBlockNumberFormatter, null],
 		}),
+		new web3._extend.Method({
+			name: 'sendMegabundle',
+			call: 'eth_sendMegabundle',
+			params: 1
+		}),
 	],
 	properties: [
 		new web3._extend.Property({
