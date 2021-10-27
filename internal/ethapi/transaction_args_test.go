@@ -212,6 +212,10 @@ type backendMock struct {
 	config  *params.ChainConfig
 }
 
+func (b *backendMock) SendBundle(ctx context.Context, txs types.Transactions, blockNumber rpc.BlockNumber, minTimestamp uint64, maxTimestamp uint64, revertingTxHashes []common.Hash) error {
+	return nil
+}
+
 func newBackendMock() *backendMock {
 	config := &params.ChainConfig{
 		ChainID:             big.NewInt(42),
