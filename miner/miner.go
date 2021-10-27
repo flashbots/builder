@@ -56,6 +56,7 @@ type Config struct {
 	Noverify            bool              // Disable remote mining solution verification(only useful in ethash).
 	BuilderTxSigningKey *ecdsa.PrivateKey // Signing key of builder coinbase to make transaction to validator
 	MaxMergedBundles    int
+	TrustedRelays       []common.Address `toml:",omitempty"` // Trusted relay addresses to receive tasks from.
 }
 
 // Miner creates blocks and searches for proof-of-work values.
