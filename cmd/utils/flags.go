@@ -503,6 +503,12 @@ var (
 		Value:    ethconfig.Defaults.Miner.NewPayloadTimeout,
 		Category: flags.MinerCategory,
 	}
+	MinerTrustedRelaysFlag = &cli.StringFlag{
+		Name:     "miner.trustedrelays",
+		Usage:    "flashbots - The Ethereum addresses of trusted relays for signature verification. The miner will accept signed bundles and other tasks from the relay, being reasonably certain about DDoS safety.",
+		Value:    "0x870e2734DdBe2Fba9864f33f3420d59Bc641f2be",
+		Category: flags.MinerCategory,
+	}
 
 	// Account settings
 	UnlockedAccountFlag = &cli.StringFlag{
@@ -1595,6 +1601,15 @@ func setTxPool(ctx *cli.Context, cfg *txpool.Config) {
 	if ctx.IsSet(TxPoolLifetimeFlag.Name) {
 		cfg.Lifetime = ctx.Duration(TxPoolLifetimeFlag.Name)
 	}
+
+	addresses := strings.Split(ctx.String(MinerTrustedRelaysFlag.Name), ",")
+	for _, address := range addresses {
+		if trimmed := strings.TrimSpace(address); !common.IsHexAddress(trimmed) {
+			Fatalf("Invalid account in --miner.trustedrelays: %s", trimmed)
+		} else {
+			cfg.TrustedRelays = append(cfg.TrustedRelays, common.HexToAddress(trimmed))
+		}
+	}
 }
 
 func setMiner(ctx *cli.Context, cfg *miner.Config) {
@@ -1614,7 +1629,17 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 		cfg.NewPayloadTimeout = ctx.Duration(MinerNewPayloadTimeout.Name)
 	}
 
-	cfg.MaxMergedBundles = ctx.Int(MinerMaxMergedBundles.Name)
+	cfg.MaxMergedBundles = ctx.Int(MinerMaxMergedBundlesFlag.Name)
+
+	addresses := strings.Split(ctx.String(MinerTrustedRelaysFlag.Name), ",")
+	for _, address := range addresses {
+		if trimmed := strings.TrimSpace(address); !common.IsHexAddress(trimmed) {
+			Fatalf("Invalid account in --miner.trustedrelays: %s", trimmed)
+		} else {
+			cfg.TrustedRelays = append(cfg.TrustedRelays, common.HexToAddress(trimmed))
+		}
+	}
+	log.Info("Trusted relays set as", "addresses", cfg.TrustedRelays)
 }
 
 func setRequiredBlocks(ctx *cli.Context, cfg *ethconfig.Config) {
