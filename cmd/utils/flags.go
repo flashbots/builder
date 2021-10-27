@@ -1715,6 +1715,8 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	if ctx.IsSet(MinerNewPayloadTimeout.Name) {
 		cfg.NewPayloadTimeout = ctx.Duration(MinerNewPayloadTimeout.Name)
 	}
+
+	cfg.MaxMergedBundles = ctx.Int(MinerMaxMergedBundles.Name)
 }
 
 func setRequiredBlocks(ctx *cli.Context, cfg *ethconfig.Config) {
