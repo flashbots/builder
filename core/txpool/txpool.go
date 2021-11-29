@@ -99,8 +99,9 @@ var (
 )
 
 var (
-	evictionInterval    = time.Minute     // Time interval to check for evictable transactions
-	statsReportInterval = 8 * time.Second // Time interval to report transaction pool stats
+	evictionInterval         = time.Minute     // Time interval to check for evictable transactions
+	statsReportInterval      = 8 * time.Second // Time interval to report transaction pool stats
+	privateTxCleanupInterval = 1 * time.Hour
 )
 
 var (
@@ -176,7 +177,8 @@ type Config struct {
 	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
 	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
 
-	Lifetime time.Duration // Maximum amount of time non-executable transaction are queued
+	Lifetime          time.Duration // Maximum amount of time non-executable transaction are queued
+	PrivateTxLifetime time.Duration // Maximum amount of time to keep private transactions private
 
 	TrustedRelays []common.Address // Trusted relay addresses. Duplicated from the miner config.
 }
@@ -195,7 +197,8 @@ var DefaultConfig = Config{
 	AccountQueue: 64,
 	GlobalQueue:  1024,
 
-	Lifetime: 3 * time.Hour,
+	Lifetime:          3 * time.Hour,
+	PrivateTxLifetime: 3 * 24 * time.Hour,
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -233,6 +236,10 @@ func (config *Config) sanitize() Config {
 	if conf.Lifetime < 1 {
 		log.Warn("Sanitizing invalid txpool lifetime", "provided", conf.Lifetime, "updated", DefaultConfig.Lifetime)
 		conf.Lifetime = DefaultConfig.Lifetime
+	}
+	if conf.PrivateTxLifetime < 1 {
+		log.Warn("Sanitizing invalid txpool private tx lifetime", "provided", conf.PrivateTxLifetime, "updated", DefaultTxPoolConfig.PrivateTxLifetime)
+		conf.PrivateTxLifetime = DefaultTxPoolConfig.PrivateTxLifetime
 	}
 	return conf
 }
@@ -355,9 +362,10 @@ func (pool *TxPool) loop() {
 	var (
 		prevPending, prevQueued, prevStales int
 		// Start the stats reporting and transaction eviction tickers
-		report  = time.NewTicker(statsReportInterval)
-		evict   = time.NewTicker(evictionInterval)
-		journal = time.NewTicker(pool.config.Rejournal)
+		report    = time.NewTicker(statsReportInterval)
+		evict     = time.NewTicker(evictionInterval)
+		journal   = time.NewTicker(pool.config.Rejournal)
+		privateTx = time.NewTicker(privateTxCleanupInterval)
 		// Track the previous head headers for transaction reorgs
 		head = pool.chain.CurrentBlock()
 	)
@@ -421,6 +429,10 @@ func (pool *TxPool) loop() {
 				}
 				pool.mu.Unlock()
 			}
+
+			// Remove stale hashes that must be kept private
+		case <-privateTx.C:
+			pool.privateTxs.prune()
 		}
 	}
 }
@@ -539,6 +551,11 @@ func (pool *TxPool) ContentFrom(addr common.Address) (types.Transactions, types.
 		queued = list.Flatten()
 	}
 	return pending, queued
+}
+
+// IsPrivateTxHash indicates whether the transaction should be shared with peers
+func (pool *TxPool) IsPrivateTxHash(hash common.Hash) bool {
+	return pool.privateTxs.Contains(hash)
 }
 
 // Pending retrieves all currently processable transactions, grouped by origin
@@ -1026,7 +1043,7 @@ func (pool *TxPool) promoteTx(addr common.Address, hash common.Hash, tx *types.T
 // This method is used to add transactions from the RPC API and performs synchronous pool
 // reorganization and event propagation.
 func (pool *TxPool) AddLocals(txs []*types.Transaction) []error {
-	return pool.addTxs(txs, !pool.config.NoLocals, true)
+	return pool.addTxs(txs, !pool.config.NoLocals, true, false)
 }
 
 // AddLocal enqueues a single local transaction into the pool if it is valid. This is
@@ -1042,12 +1059,18 @@ func (pool *TxPool) AddLocal(tx *types.Transaction) error {
 // This method is used to add transactions from the p2p network and does not wait for pool
 // reorganization and internal event propagation.
 func (pool *TxPool) AddRemotes(txs []*types.Transaction) []error {
-	return pool.addTxs(txs, false, false)
+	return pool.addTxs(txs, false, false, false)
+}
+
+// AddPrivateRemote adds transactions to the pool, but does not broadcast these transactions to any peers.
+func (pool *TxPool) AddPrivateRemote(tx *types.Transaction) error {
+	errs := pool.addTxs([]*types.Transaction{tx}, false, false, true)
+	return errs[0]
 }
 
 // AddRemotesSync is like AddRemotes, but waits for pool reorganization. Tests use this method.
 func (pool *TxPool) AddRemotesSync(txs []*types.Transaction) []error {
-	return pool.addTxs(txs, false, true)
+	return pool.addTxs(txs, false, true, false)
 }
 
 // This is like AddRemotes with a single transaction, but waits for pool reorganization. Tests use this method.
@@ -1066,7 +1089,7 @@ func (pool *TxPool) AddRemote(tx *types.Transaction) error {
 }
 
 // addTxs attempts to queue a batch of transactions if they are valid.
-func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
+func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync, private bool) []error {
 	// Filter out known ones without obtaining the pool lock or recovering signatures
 	var (
 		errs = make([]error, len(txs))
@@ -1093,6 +1116,13 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 	}
 	if len(news) == 0 {
 		return errs
+	}
+
+	// Track private transactions, so they don't get leaked to the public mempool
+	if private {
+		for _, tx := range news {
+			pool.privateTxs.Add(tx.Hash())
+		}
 	}
 
 	// Process all the new transaction and merge any errors into the original slice
@@ -1391,7 +1421,11 @@ func (pool *TxPool) runReorg(done chan struct{}, reset *txpoolResetRequest, dirt
 	if len(events) > 0 {
 		var txs []*types.Transaction
 		for _, set := range events {
-			txs = append(txs, set.Flatten()...)
+			for _, tx := range set.Flatten() {
+				if !pool.IsPrivateTxHash(tx.Hash()) {
+					txs = append(txs, tx)
+				}
+			}
 		}
 		pool.txFeed.Send(core.NewTxsEvent{Txs: txs})
 	}
@@ -1998,6 +2032,59 @@ func (t *lookup) RemotesBelowTip(threshold *big.Int) types.Transactions {
 		return true
 	}, false, true) // Only iterate remotes
 	return found
+}
+
+type timestampedTxHashSet struct {
+	lock       sync.RWMutex
+	hashes     []common.Hash
+	timestamps map[common.Hash]time.Time
+	ttl        time.Duration
+}
+
+func newExpiringTxHashSet(ttl time.Duration) *timestampedTxHashSet {
+	s := &timestampedTxHashSet{
+		hashes:     make([]common.Hash, 0),
+		timestamps: make(map[common.Hash]time.Time),
+		ttl:        ttl,
+	}
+
+	return s
+}
+
+func (s *timestampedTxHashSet) Add(hash common.Hash) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.hashes = append(s.hashes, hash)
+	s.timestamps[hash] = time.Now().Add(s.ttl)
+}
+
+func (s *timestampedTxHashSet) Contains(hash common.Hash) bool {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+	_, ok := s.timestamps[hash]
+	return ok
+}
+
+func (s *timestampedTxHashSet) prune() {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	var (
+		count int
+		now   = time.Now()
+	)
+	for _, hash := range s.hashes {
+		ts := s.timestamps[hash]
+		if ts.After(now) {
+			break
+		}
+
+		delete(s.timestamps, hash)
+		count += 1
+	}
+
+	s.hashes = s.hashes[count:]
 }
 
 // numSlots calculates the number of slots needed for a single transaction.
