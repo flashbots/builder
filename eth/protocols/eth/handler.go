@@ -91,6 +91,10 @@ type Backend interface {
 type TxPool interface {
 	// Get retrieves the transaction from the local txpool with the given hash.
 	Get(hash common.Hash) *types.Transaction
+
+	// IsPrivateTxHash indicates if the transaction hash should not
+	// be broadcast on public channels
+	IsPrivateTxHash(hash common.Hash) bool
 }
 
 // MakeProtocols constructs the P2P protocol definitions for `eth`.
