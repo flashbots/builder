@@ -1669,6 +1669,7 @@ func (pool *TxPool) demoteUnexecutables() {
 		for _, tx := range olds {
 			hash := tx.Hash()
 			pool.all.Remove(hash)
+			pool.privateTxs.Remove(hash)
 			log.Trace("Removed old pending transaction", "hash", hash)
 		}
 		// Drop all transactions that are too costly (low balance or out of gas), and queue any invalids back for later
@@ -1969,14 +1970,12 @@ func (t *txLookup) RemotesBelowTip(threshold *big.Int) types.Transactions {
 
 type timestampedTxHashSet struct {
 	lock       sync.RWMutex
-	hashes     []common.Hash
 	timestamps map[common.Hash]time.Time
 	ttl        time.Duration
 }
 
 func newExpiringTxHashSet(ttl time.Duration) *timestampedTxHashSet {
 	s := &timestampedTxHashSet{
-		hashes:     make([]common.Hash, 0),
 		timestamps: make(map[common.Hash]time.Time),
 		ttl:        ttl,
 	}
@@ -1988,8 +1987,10 @@ func (s *timestampedTxHashSet) Add(hash common.Hash) {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	s.hashes = append(s.hashes, hash)
-	s.timestamps[hash] = time.Now().Add(s.ttl)
+	_, ok := s.timestamps[hash]
+	if !ok {
+		s.timestamps[hash] = time.Now().Add(s.ttl)
+	}
 }
 
 func (s *timestampedTxHashSet) Contains(hash common.Hash) bool {
@@ -1999,25 +2000,26 @@ func (s *timestampedTxHashSet) Contains(hash common.Hash) bool {
 	return ok
 }
 
+func (s *timestampedTxHashSet) Remove(hash common.Hash) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	_, ok := s.timestamps[hash]
+	if ok {
+		delete(s.timestamps, hash)
+	}
+}
+
 func (s *timestampedTxHashSet) prune() {
 	s.lock.Lock()
 	defer s.lock.Unlock()
 
-	var (
-		count int
-		now   = time.Now()
-	)
-	for _, hash := range s.hashes {
-		ts := s.timestamps[hash]
-		if ts.After(now) {
-			break
+	now := time.Now()
+	for hash, ts := range s.timestamps {
+		if ts.Before(now) {
+			delete(s.timestamps, hash)
 		}
-
-		delete(s.timestamps, hash)
-		count += 1
 	}
-
-	s.hashes = s.hashes[count:]
 }
 
 // numSlots calculates the number of slots needed for a single transaction.
