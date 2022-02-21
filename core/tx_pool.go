@@ -253,13 +253,14 @@ type TxPool struct {
 	locals  *accountSet // Set of local transaction to exempt from eviction rules
 	journal *txJournal  // Journal of local transaction to back up to disk
 
-	pending     map[common.Address]*txList   // All currently processable transactions
-	queue       map[common.Address]*txList   // Queued but non-processable transactions
-	beats       map[common.Address]time.Time // Last heartbeat from each known account
-	mevBundles  []types.MevBundle
-	megabundles map[common.Address]types.MevBundle // One megabundle per each trusted relay
-	all         *txLookup                          // All transactions to allow lookups
-	priced      *txPricedList                      // All transactions sorted by price
+	pending            map[common.Address]*txList   // All currently processable transactions
+	queue              map[common.Address]*txList   // Queued but non-processable transactions
+	beats              map[common.Address]time.Time // Last heartbeat from each known account
+	mevBundles         []types.MevBundle
+	megabundles        map[common.Address]types.MevBundle // One megabundle per each trusted relay
+	NewMegabundleHooks []func(common.Address, *types.MevBundle)
+	all                *txLookup     // All transactions to allow lookups
+	priced             *txPricedList // All transactions sorted by price
 
 	chainHeadCh     chan ChainHeadEvent
 	chainHeadSub    event.Subscription
@@ -630,13 +631,20 @@ func (pool *TxPool) AddMegabundle(relayAddr common.Address, txs types.Transactio
 		return errors.New("megabundle from non-trusted address")
 	}
 
-	pool.megabundles[relayAddr] = types.MevBundle{
+	megabundle := types.MevBundle{
 		Txs:               txs,
 		BlockNumber:       blockNumber,
 		MinTimestamp:      minTimestamp,
 		MaxTimestamp:      maxTimestamp,
 		RevertingTxHashes: revertingTxHashes,
 	}
+
+	pool.megabundles[relayAddr] = megabundle
+
+	for _, hook := range pool.NewMegabundleHooks {
+		go hook(relayAddr, &megabundle)
+	}
+
 	return nil
 }
 
