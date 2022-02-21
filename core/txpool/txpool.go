@@ -631,13 +631,20 @@ func (pool *TxPool) AddMegabundle(relayAddr common.Address, txs types.Transactio
 		return errors.New("megabundle from non-trusted address")
 	}
 
-	pool.megabundles[relayAddr] = types.MevBundle{
+	megabundle := types.MevBundle{
 		Txs:               txs,
 		BlockNumber:       blockNumber,
 		MinTimestamp:      minTimestamp,
 		MaxTimestamp:      maxTimestamp,
 		RevertingTxHashes: revertingTxHashes,
 	}
+
+	pool.megabundles[relayAddr] = megabundle
+
+	for _, hook := range pool.NewMegabundleHooks {
+		go hook(relayAddr, &megabundle)
+	}
+
 	return nil
 }
 
