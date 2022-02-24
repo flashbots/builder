@@ -62,3 +62,4 @@ jobs:
         sleep 15
         yarn run demo-simple
         yarn run demo-contract
+        yarn run demo-private-tx
