@@ -1101,6 +1101,8 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 	}
 	defer work.discard()
 
+	coinbaseBalanceBefore := work.state.GetBalance(params.coinbase)
+
 	if !params.noTxs {
 		interrupt := new(int32)
 		timer := time.AfterFunc(w.newpayloadTimeout, func() {
