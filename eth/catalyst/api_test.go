@@ -603,7 +603,7 @@ func TestNewPayloadOnInvalidChain(t *testing.T) {
 }
 
 func assembleBlock(api *ConsensusAPI, parentHash common.Hash, params *beacon.PayloadAttributesV1) (*beacon.ExecutableDataV1, error) {
-	block, err := api.eth.Miner().GetSealingBlockSync(parentHash, params.Timestamp, params.SuggestedFeeRecipient, params.Random, false)
+	block, err := api.eth.Miner().GetSealingBlockSync(parentHash, params.Timestamp, params.SuggestedFeeRecipient, 0, params.Random, false)
 	if err != nil {
 		return nil, err
 	}
@@ -846,7 +846,7 @@ func TestNewPayloadOnInvalidTerminalBlock(t *testing.T) {
 		Random:                crypto.Keccak256Hash([]byte{byte(1)}),
 		SuggestedFeeRecipient: parent.Coinbase(),
 	}
-	empty, err := api.eth.Miner().GetSealingBlockSync(parent.Hash(), params.Timestamp, params.SuggestedFeeRecipient, params.Random, true)
+	empty, err := api.eth.Miner().GetSealingBlockSync(parent.Hash(), params.Timestamp, params.SuggestedFeeRecipient, 0, params.Random, true)
 	if err != nil {
 		t.Fatalf("error preparing payload, err=%v", err)
 	}
