@@ -180,6 +180,8 @@ type Block struct {
 	transactions Transactions
 	withdrawals  Withdrawals
 
+	Profit *big.Int
+
 	// caches
 	hash atomic.Value
 	size atomic.Value
