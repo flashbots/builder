@@ -168,12 +168,14 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 
 	bpConfig := &builder.BuilderConfig{
 		EnableValidatorChecks: ctx.IsSet(utils.BuilderEnableValidatorChecks.Name),
-		SecretKey:             ctx.String(utils.BuilderSecretKey.Name),
+		BuilderSecretKey:      ctx.String(utils.BuilderSecretKey.Name),
+		RelaySecretKey:        ctx.String(utils.BuilderRelaySecretKey.Name),
 		ListenAddr:            ctx.String(utils.BuilderListenAddr.Name),
 		GenesisForkVersion:    ctx.String(utils.BuilderGenesisForkVersion.Name),
 		BellatrixForkVersion:  ctx.String(utils.BuilderBellatrixForkVersion.Name),
 		GenesisValidatorsRoot: ctx.String(utils.BuilderGenesisValidatorsRoot.Name),
 		BeaconEndpoint:        ctx.String(utils.BuilderBeaconEndpoint.Name),
+		RemoteRelayEndpoint:   ctx.String(utils.BuilderRemoteRelayEndpoint.Name),
 	}
 
 	backend, eth := utils.RegisterEthService(stack, &cfg.Eth, bpConfig)
