@@ -557,7 +557,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 		time.Sleep(100 * time.Millisecond)
 	}
 	timestamp := uint64(time.Now().Unix())
-	assertBlock := func(block *types.Block, number uint64, coinbase common.Address, random common.Hash) {
+	assertBlock := func(block *types.Block, number uint64, coinbase common.Address, random common.Hash, noExtra bool) {
 		if block.Time() != timestamp {
 			// Sometime the timestamp will be mutated if the timestamp
 			// is even smaller than parent block's. It's OK.
@@ -646,7 +646,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 			if err != nil {
 				t.Errorf("Unexpected error %v", err)
 			}
-			assertBlock(block, c.expectNumber, c.coinbase, c.random)
+			assertBlock(block, c.expectNumber, c.coinbase, c.random, true)
 		}
 	}
 
@@ -662,7 +662,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 			if err != nil {
 				t.Errorf("Unexpected error %v", err)
 			}
-			assertBlock(block, c.expectNumber, c.coinbase, c.random)
+			assertBlock(block, c.expectNumber, c.coinbase, c.random, false)
 		}
 	}
 }
