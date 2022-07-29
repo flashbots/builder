@@ -1,6 +1,7 @@
 package miner
 
 import (
+	"errors"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -83,6 +84,60 @@ func (w *multiWorker) disablePreseal() {
 	for _, worker := range w.workers {
 		worker.disablePreseal()
 	}
+}
+
+type resChPair struct {
+	resCh chan *types.Block
+	errCh chan error
+}
+
+func (w *multiWorker) GetSealingBlockAsync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool) (chan *types.Block, error) {
+	resChans := []resChPair{}
+
+	for _, worker := range append(w.workers, w.regularWorker) {
+		resCh, errCh, err := worker.getSealingBlock(parent, timestamp, coinbase, gasLimit, random, noTxs, noExtra)
+		if err != nil {
+			log.Error("could not start async block construction", "isFlashbotsWorker", worker.flashbots.isFlashbots, "isMegabundleWorker", worker.flashbots.isMegabundleWorker, "#bundles", worker.flashbots.maxMergedBundles)
+			continue
+		}
+		resChans = append(resChans, resChPair{resCh, errCh})
+	}
+
+	if len(resChans) == 0 {
+		return nil, errors.New("no worker could start async block construction")
+	}
+
+	resCh := make(chan *types.Block)
+
+	go func(resCh chan *types.Block) {
+		var res *types.Block = nil
+		for _, chPair := range resChans {
+			err := <-chPair.errCh
+			if err != nil {
+				log.Error("could not generate block", "err", err)
+				continue
+			}
+			newBlock := <-chPair.resCh
+			if res == nil || (newBlock != nil && newBlock.Profit.Cmp(res.Profit) > 0) {
+				res = newBlock
+			}
+		}
+		resCh <- res
+	}(resCh)
+
+	return resCh, nil
+}
+
+func (w *multiWorker) GetSealingBlockSync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool) (*types.Block, error) {
+	resCh, err := w.GetSealingBlockAsync(parent, timestamp, coinbase, gasLimit, random, noTxs, noExtra)
+	if err != nil {
+		return nil, err
+	}
+	res := <-resCh
+	if res == nil {
+		return nil, errors.New("no viable blocks created")
+	}
+	return res, nil
 }
 
 func newMultiWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *multiWorker {
