@@ -171,6 +171,10 @@ github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5 h1:FtmdgXiUlNeRsoNMFlK
 github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5/go.mod h1:VvhXpOYNQvB+uIk2RvXzuaQtkQJzzIx6lSBe1xv7hi0=
 github.com/flashbots/go-boost-utils v0.3.1 h1:M1K4f97VnzW8v8hHdcVf14btZw343y9oSsfYHOgFl5A=
 github.com/flashbots/go-boost-utils v0.3.1/go.mod h1:7pAZp9AHt06uHUY+Avob0H88IN2La22uPZUpS3seXR0=
+github.com/flashbots/go-boost-utils v0.3.2 h1:d7kudiDYngZy/7oORzSkXCZsNh8mEyr48Vm/IYIo1Wc=
+github.com/flashbots/go-boost-utils v0.3.2/go.mod h1:7pAZp9AHt06uHUY+Avob0H88IN2La22uPZUpS3seXR0=
+github.com/flashbots/go-boost-utils v0.3.3-0.20220725102131-104d720dc46e h1:6h6iyk4pT95hhTEbdMcpavN+FLHyrH9F80E9d/SVjO8=
+github.com/flashbots/go-boost-utils v0.3.3-0.20220725102131-104d720dc46e/go.mod h1:sqlzXlw4eKlY/URPHw1qEobsOoqOwsDrN272g2hUYgw=
 github.com/flashbots/go-utils v0.4.5 h1:xTrVcfxQ+qpVVPyRBWUllwZAxbAijE06d9N7e7mmmlM=
 github.com/flashbots/go-utils v0.4.5/go.mod h1:3YKyfbtetVIXuWKbZ9WmK8bSF20hSFXk0wCWDNHYFvE=
 github.com/flashbots/mev-boost v0.7.3 h1:AwJQACv6/CJuMQe4oGNvIgW00oKFCzzDBrb4DlJsBKE=
