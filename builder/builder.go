@@ -1,7 +1,6 @@
 package builder
 
 import (
-	"encoding/json"
 	_ "os"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -33,28 +32,29 @@ type IRelay interface {
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
 }
 
+type IBuilder interface {
+	OnPayloadAttribute(attrs *BuilderPayloadAttributes) error
+}
+
 type Builder struct {
 	beaconClient IBeaconClient
 	relay        IRelay
+	eth          IEthereumService
 
 	builderSecretKey     *bls.SecretKey
 	builderPublicKey     boostTypes.PublicKey
 	builderSigningDomain boostTypes.Domain
 }
 
-func NewBuilder(sk *bls.SecretKey, bc IBeaconClient, relay IRelay, builderSigningDomain boostTypes.Domain) *Builder {
+func NewBuilder(sk *bls.SecretKey, bc IBeaconClient, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService) *Builder {
 	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
 
-	_, err := bc.onForkchoiceUpdate()
-	if err != nil {
-		log.Error("could not initialize beacon client", "err", err)
-	}
-
 	return &Builder{
 		beaconClient:     bc,
 		relay:            relay,
+		eth:              eth,
 		builderSecretKey: sk,
 		builderPublicKey: pk,
 
@@ -62,91 +62,76 @@ func NewBuilder(sk *bls.SecretKey, bc IBeaconClient, relay IRelay, builderSignin
 	}
 }
 
-func (b *Builder) onForkchoice(payloadAttributes *beacon.PayloadAttributesV1) {
-	dataJson, err := json.Marshal(payloadAttributes)
-	if err == nil {
-		log.Info("FCU", "data", string(dataJson))
-	} else {
-		log.Info("FCU", "data", payloadAttributes, "parsingError", err)
+func (b *Builder) OnPayloadAttribute(attrs *BuilderPayloadAttributes) error {
+	if attrs != nil {
+		vd, err := b.relay.GetValidatorForSlot(attrs.Slot)
+		if err != nil {
+			log.Info("could not get validator while submitting block", "err", err, "slot", attrs.Slot)
+			return err
+		}
 
-	}
+		attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
+		attrs.GasLimit = vd.GasLimit
 
-	nextSlot, err := b.beaconClient.onForkchoiceUpdate()
-	if err != nil {
-		log.Error("FCU hook failed", "err", err)
-		return
-	}
+		if b.eth.Synced() {
+			block := b.eth.GetBlockByHash(attrs.HeadHash)
+			if block == nil {
+				log.Info("Block hash not found in blocktree", "head block hash", attrs.HeadHash)
+				return err
+			}
 
-	if payloadAttributes != nil {
-		payloadAttributes.Slot = nextSlot
-		if vd, err := b.relay.GetValidatorForSlot(nextSlot); err == nil {
-			payloadAttributes.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
-			payloadAttributes.GasLimit = vd.GasLimit
+			executableData := b.eth.BuildBlock(attrs)
+			payload, err := executableDataToExecutionPayload(executableData)
+			if err != nil {
+				log.Error("could not format execution payload", "err", err)
+				return err
+			}
+
+			pubkey, err := boostTypes.HexToPubkey(string(vd.Pubkey))
+			if err != nil {
+				log.Error("could not parse pubkey", "err", err, "pubkey", vd.Pubkey)
+				return err
+			}
+
+			value := new(boostTypes.U256Str)
+			err = value.FromBig(block.Profit)
+			if err != nil {
+				log.Error("could not set block value", "err", err)
+				return err
+			}
+
+			blockBidMsg := boostTypes.BidTrace{
+				Slot:                 attrs.Slot,
+				ParentHash:           payload.ParentHash,
+				BlockHash:            payload.BlockHash,
+				BuilderPubkey:        b.builderPublicKey,
+				ProposerPubkey:       pubkey,
+				ProposerFeeRecipient: boostTypes.Address(attrs.SuggestedFeeRecipient),
+				GasLimit:             executableData.GasLimit,
+				GasUsed:              executableData.GasUsed,
+				Value:                *value,
+			}
+
+			signature, err := boostTypes.SignMessage(&blockBidMsg, b.builderSigningDomain, b.builderSecretKey)
+			if err != nil {
+				log.Error("could not sign builder bid", "err", err)
+				return err
+			}
+
+			blockSubmitReq := boostTypes.BuilderSubmitBlockRequest{
+				Signature:        signature,
+				Message:          &blockBidMsg,
+				ExecutionPayload: payload,
+			}
+
+			err = b.relay.SubmitBlock(&blockSubmitReq)
+			if err != nil {
+				log.Error("could not submit block", "err", err)
+				return err
+			}
 		}
 	}
-}
-
-func (b *Builder) newSealedBlock(data *beacon.ExecutableDataV1, block *types.Block, payloadAttributes *beacon.PayloadAttributesV1) {
-	dataJson, err := json.Marshal(data)
-	if err == nil {
-		log.Info("newSealedBlock", "data", string(dataJson))
-	} else {
-		log.Info("newSealedBlock", "data", data, "parsingError", err)
-	}
-	payload, err := executableDataToExecutionPayload(data)
-	if err != nil {
-		log.Error("could not format execution payload", "err", err)
-		return
-	}
-
-	vd, err := b.relay.GetValidatorForSlot(payloadAttributes.Slot)
-	if err != nil {
-		log.Error("could not get validator while submitting block", "err", err, "slot", payloadAttributes.Slot)
-		return
-	}
-
-	pubkey, err := boostTypes.HexToPubkey(string(vd.Pubkey))
-	if err != nil {
-		log.Error("could not parse pubkey", "err", err, "pubkey", vd.Pubkey)
-		return
-	}
-
-	value := new(boostTypes.U256Str)
-	err = value.FromBig(block.Profit)
-	if err != nil {
-		log.Error("could not set block value", "err", err)
-		return
-	}
-
-	blockBidMsg := boostTypes.BidTrace{
-		Slot:                 payloadAttributes.Slot,
-		ParentHash:           payload.ParentHash,
-		BlockHash:            payload.BlockHash,
-		BuilderPubkey:        b.builderPublicKey,
-		ProposerPubkey:       pubkey,
-		ProposerFeeRecipient: boostTypes.Address(payloadAttributes.SuggestedFeeRecipient),
-		GasLimit:             data.GasLimit,
-		GasUsed:              data.GasUsed,
-		Value:                *value,
-	}
-
-	signature, err := boostTypes.SignMessage(&blockBidMsg, b.builderSigningDomain, b.builderSecretKey)
-	if err != nil {
-		log.Error("could not sign builder bid", "err", err)
-		return
-	}
-
-	blockSubmitReq := boostTypes.BuilderSubmitBlockRequest{
-		Signature:        signature,
-		Message:          &blockBidMsg,
-		ExecutionPayload: payload,
-	}
-
-	err = b.relay.SubmitBlock(&blockSubmitReq)
-	if err != nil {
-		log.Error("could not submit block", "err", err)
-		return
-	}
+	return nil
 }
 
 func executableDataToExecutionPayload(data *beacon.ExecutableDataV1) (*boostTypes.ExecutionPayload, error) {
