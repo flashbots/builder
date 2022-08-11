@@ -35,18 +35,6 @@ const maxTrackedPayloads = 10
 // latest one; but have a slight wiggle room for non-ideal conditions.
 const maxTrackedHeaders = 10
 
-type Payload struct {
-	payload
-}
-
-func NewPayload(result chan *types.Block) *Payload {
-	return &Payload{payload{result: result}}
-}
-
-func (p *Payload) Resolve() (*beacon.ExecutableDataV1, *types.Block) {
-	return p.payload.resolve()
-}
-
 // payload wraps the miner's block production channel, allowing the mined block
 // to be retrieved later upon the GetPayload engine API call.
 type payload struct {
