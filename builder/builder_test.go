@@ -13,7 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestOnNewSealedBlock(t *testing.T) {
+func TestOnPayloadAttributes(t *testing.T) {
 	vsk, err := bls.SecretKeyFromBytes(hexutil.MustDecode("0x370bb8c1a6e62b2882f6ec76762a67b39609002076b95aae5b023997cf9b2dc9"))
 	require.NoError(t, err)
 	validator := &ValidatorPrivateData{
@@ -41,11 +41,9 @@ func TestOnNewSealedBlock(t *testing.T) {
 
 	bDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeAppBuilder, [4]byte{0x02, 0x0, 0x0, 0x0}, boostTypes.Hash{})
 
-	builder := NewBuilder(sk, &testBeacon, &testRelay, bDomain)
-
 	testExecutableData := &beacon.ExecutableDataV1{
 		ParentHash:   common.Hash{0x02, 0x03},
-		FeeRecipient: common.Address{0x06, 0x15},
+		FeeRecipient: common.Address(feeRecipient),
 		StateRoot:    common.Hash{0x07, 0x16},
 		ReceiptsRoot: common.Hash{0x08, 0x20},
 		LogsBloom:    hexutil.MustDecode("0x000000000000000000000000000000"),
@@ -65,18 +63,21 @@ func TestOnNewSealedBlock(t *testing.T) {
 		Profit: big.NewInt(10),
 	}
 
-	testPayloadAttributes := &beacon.PayloadAttributesV1{
-		Timestamp:             uint64(104),
+	testPayloadAttributes := &BuilderPayloadAttributes{
+		Timestamp:             hexutil.Uint64(104),
 		Random:                common.Hash{0x05, 0x10},
 		SuggestedFeeRecipient: common.Address{0x04, 0x10},
 		GasLimit:              uint64(21),
 		Slot:                  uint64(25),
 	}
 
-	builder.newSealedBlock(testExecutableData, testBlock, testPayloadAttributes)
+	testEthService := &testEthereumService{synced: true, testExecutableData: testExecutableData, testBlock: testBlock}
+
+	builder := NewBuilder(sk, &testBeacon, &testRelay, bDomain, testEthService)
+
+	builder.OnPayloadAttribute(testPayloadAttributes)
 
 	require.NotNil(t, testRelay.submittedMsg)
-
 	expectedProposerPubkey, err := boostTypes.HexToPubkey(testBeacon.validator.Pk.String())
 	require.NoError(t, err)
 
@@ -86,7 +87,7 @@ func TestOnNewSealedBlock(t *testing.T) {
 		BlockHash:            boostTypes.Hash{0x09, 0xff},
 		BuilderPubkey:        builder.builderPublicKey,
 		ProposerPubkey:       expectedProposerPubkey,
-		ProposerFeeRecipient: boostTypes.Address{0x04, 0x10},
+		ProposerFeeRecipient: feeRecipient,
 		GasLimit:             uint64(50),
 		GasUsed:              uint64(100),
 		Value:                boostTypes.U256Str{0x0a},
@@ -96,7 +97,7 @@ func TestOnNewSealedBlock(t *testing.T) {
 
 	expectedExecutionPayload := boostTypes.ExecutionPayload{
 		ParentHash:    [32]byte(testExecutableData.ParentHash),
-		FeeRecipient:  boostTypes.Address{0x6, 0x15},
+		FeeRecipient:  feeRecipient,
 		StateRoot:     [32]byte(testExecutableData.StateRoot),
 		ReceiptsRoot:  [32]byte(testExecutableData.ReceiptsRoot),
 		LogsBloom:     [256]byte{},
@@ -110,9 +111,10 @@ func TestOnNewSealedBlock(t *testing.T) {
 		BlockHash:     boostTypes.Hash{0x09, 0xff},
 		Transactions:  []hexutil.Bytes{},
 	}
+
 	require.Equal(t, expectedExecutionPayload, *testRelay.submittedMsg.ExecutionPayload)
 
-	expectedSignature, err := boostTypes.HexToSignature("0xadebce714127deea6b04c8f63e650ad6b4c0d3df14ecd9759bef741cd6d72509090f5e172033ce40475c322c0c0e3fae0e78a880a66cb324913ea490472d93e187a9a91284b05137f1554688c5e9b1ee73539a2b005b103e8bd50e973e8e0f49")
+	expectedSignature, err := boostTypes.HexToSignature("0xb086abc231a515559128122a6618ad316a76195ad39aa28195c9e8921b98561ca4fd12e2e1ea8d50d8e22f7e36d42ee1084fef26672beceda7650a87061e412d7742705077ac3af3ca1a1c3494eccb22fe7c234fd547a285ba699ff87f0e7759")
 
 	require.NoError(t, err)
 	require.Equal(t, expectedSignature, testRelay.submittedMsg.Signature)
