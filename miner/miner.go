@@ -18,6 +18,7 @@
 package miner
 
 import (
+	"crypto/ecdsa"
 	"fmt"
 	"math/big"
 	"sync"
