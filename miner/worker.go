@@ -17,9 +17,13 @@
 package miner
 
 import (
+	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"math/big"
+
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -31,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -271,6 +276,26 @@ type worker struct {
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *worker {
+	var err error
+	var builderCoinbase common.Address
+	key := os.Getenv("BUILDER_TX_SIGNING_KEY") // get builder private signing key
+	if key == "" {
+		log.Error("Builder signing key is empty, validator payout can not be done")
+	} else {
+		config.BuilderTxSigningKey, err = crypto.HexToECDSA(strings.TrimPrefix(key, "0x"))
+		if err != nil {
+			log.Error("Error creating builder tx signing key", "error", err)
+		} else {
+			publicKey := config.BuilderTxSigningKey.Public()
+			publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
+			if ok {
+				builderCoinbase = crypto.PubkeyToAddress(*publicKeyECDSA)
+			} else {
+				log.Error("Cannot assert type, builder tx signing key")
+			}
+		}
+	}
+	log.Info("builderCoinbase", builderCoinbase.String())
 	worker := &worker{
 		config:             config,
 		chainConfig:        chainConfig,
@@ -296,6 +321,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		exitCh:             make(chan struct{}),
 		resubmitIntervalCh: make(chan time.Duration),
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
+		coinbase:           builderCoinbase,
 	}
 	// Subscribe NewTxsEvent for tx pool
 	worker.txsSub = eth.TxPool().SubscribeNewTxsEvent(worker.txsCh)
@@ -1067,7 +1093,8 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 // fillTransactions retrieves the pending transactions from the txpool and fills them
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
-func (w *worker) fillTransactions(interrupt *int32, env *environment) error {
+
+func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorCoinbase *common.Address) error {
 	// Split the pending transactions into locals and remotes
 	// Fill the block with all available pending transactions.
 	pending := w.eth.TxPool().Pending(true)
@@ -1076,6 +1103,16 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) error {
 		if txs := remoteTxs[account]; len(txs) > 0 {
 			delete(remoteTxs, account)
 			localTxs[account] = txs
+		}
+	}
+	if env.gasPool == nil {
+		env.gasPool = new(core.GasPool).AddGas(env.header.GasLimit)
+	}
+	var builderCoinbaseBalanceBefore *big.Int
+	if validatorCoinbase != nil {
+		builderCoinbaseBalanceBefore = env.state.GetBalance(w.coinbase)
+		if err := env.gasPool.SubGas(params.TxGas); err != nil {
+			return err
 		}
 	}
 	if len(localTxs) > 0 {
@@ -1090,6 +1127,37 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) error {
 			return err
 		}
 	}
+	if validatorCoinbase != nil && w.config.BuilderTxSigningKey != nil {
+		builderCoinbaseBalanceAfter := env.state.GetBalance(w.coinbase)
+		log.Info("Before creating validator profit", "validatorCoinbase", validatorCoinbase.String(), "builderCoinbase", w.coinbase.String(), "builderCoinbaseBalanceBefore", builderCoinbaseBalanceBefore.String(), "builderCoinbaseBalanceAfter", builderCoinbaseBalanceAfter.String())
+
+		profit := new(big.Int).Sub(builderCoinbaseBalanceAfter, builderCoinbaseBalanceBefore)
+		env.gasPool.AddGas(params.TxGas)
+		if profit.Sign() == 1 {
+			tx, err := w.createProposerPayoutTx(env, validatorCoinbase, profit)
+			if err != nil {
+				log.Error("Proposer payout create tx failed", "err", err)
+				return fmt.Errorf("proposer payout create tx failed - %v", err)
+			}
+			if tx != nil {
+				log.Info("Proposer payout create tx succeeded, proceeding to commit tx")
+				env.state.Prepare(tx.Hash(), env.tcount)
+				_, err = w.commitTransaction(env, tx)
+				if err != nil {
+					log.Error("Proposer payout commit tx failed", "hash", tx.Hash().String(), "err", err)
+					return fmt.Errorf("proposer payout commit tx failed - %v", err)
+				}
+				log.Info("Proposer payout commit tx succeeded", "hash", tx.Hash().String())
+				env.tcount++
+			} else {
+				return errors.New("proposer payout create tx failed due to tx is nil")
+			}
+		} else {
+			log.Warn("Proposer payout create tx failed due to not enough balance", "profit", profit.String())
+			return errors.New("proposer payout create tx failed due to not enough balance")
+		}
+
+	}
 	return nil
 }
 
@@ -1101,7 +1169,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 	}
 	defer work.discard()
 
-	coinbaseBalanceBefore := work.state.GetBalance(params.coinbase)
+	coinbaseBalanceBefore := work.state.GetBalance(validatorCoinbase)
 
 	if !params.noTxs {
 		interrupt := new(int32)
@@ -1306,4 +1374,17 @@ func signalToErr(signal int32) error {
 	default:
 		panic(fmt.Errorf("undefined signal %d", signal))
 	}
+}
+
+func (w *worker) createProposerPayoutTx(env *environment, recipient *common.Address, profit *big.Int) (*types.Transaction, error) {
+	sender := w.coinbase.String()
+	log.Info(sender)
+	nonce := env.state.GetNonce(w.coinbase)
+	fee := new(big.Int).Mul(big.NewInt(21000), env.header.BaseFee)
+	amount := new(big.Int).Sub(profit, fee)
+	gasPrice := new(big.Int).Set(env.header.BaseFee)
+	chainId := w.chainConfig.ChainID
+	log.Debug("createProposerPayoutTx", "sender", sender, "chainId", chainId.String(), "nonce", nonce, "amount", amount.String(), "gas", params.TxGas, "baseFee", env.header.BaseFee.String(), "fee", fee)
+	tx := types.NewTransaction(nonce, *recipient, amount, params.TxGas, gasPrice, nil)
+	return types.SignTx(tx, types.LatestSignerForChainID(chainId), w.config.BuilderTxSigningKey)
 }
