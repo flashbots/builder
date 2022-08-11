@@ -90,10 +90,13 @@ func TestBuildBlock(t *testing.T) {
 	}
 
 	service := NewEthereumService(ethservice)
-	executableData := service.BuildBlock(testPayloadAttributes)
+	executableData, block := service.BuildBlock(testPayloadAttributes)
 
 	require.Equal(t, common.Address{0x04, 0x10}, executableData.FeeRecipient)
 	require.Equal(t, common.Hash{0x05, 0x10}, executableData.Random)
 	require.Equal(t, parent.Hash(), executableData.ParentHash)
 	require.Equal(t, parent.Time()+1, executableData.Timestamp)
+	require.Equal(t, block.ParentHash(), parent.Hash())
+	require.Equal(t, block.Hash(), executableData.BlockHash)
+	require.Equal(t, block.Profit.Uint64(), uint64(0))
 }
