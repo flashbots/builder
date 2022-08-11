@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestBackend(t *testing.T) (*Builder, *LocalRelay, *ValidatorPrivateData) {
+func newTestBackend(t *testing.T, forkchoiceData *beacon.ExecutableDataV1, block *types.Block) (*Builder, *LocalRelay, *ValidatorPrivateData) {
 	validator := NewRandomValidator()
 	sk, _ := bls.GenerateRandomSecretKey()
 	bDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeAppBuilder, [4]byte{0x02, 0x0, 0x0, 0x0}, boostTypes.Hash{})
@@ -28,7 +28,8 @@ func newTestBackend(t *testing.T) (*Builder, *LocalRelay, *ValidatorPrivateData)
 	cDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeBeaconProposer, [4]byte{0x02, 0x0, 0x0, 0x0}, genesisValidatorsRoot)
 	beaconClient := &testBeaconClient{validator: validator}
 	localRelay := NewLocalRelay(sk, beaconClient, bDomain, cDomain, ForkData{}, true)
-	backend := NewBuilder(sk, beaconClient, localRelay, bDomain)
+	ethService := &testEthereumService{synced: true, testExecutableData: forkchoiceData, testBlock: block}
+	backend := NewBuilder(sk, beaconClient, localRelay, bDomain, ethService)
 	// service := NewService("127.0.0.1:31545", backend)
 
 	return backend, localRelay, validator
@@ -53,7 +54,7 @@ func testRequest(t *testing.T, localRelay *LocalRelay, method string, path strin
 }
 
 func TestValidatorRegistration(t *testing.T) {
-	_, relay, _ := newTestBackend(t)
+	_, relay, _ := newTestBackend(t, nil, nil)
 	log.Error("rsk", "sk", hexutil.Encode(relay.relaySecretKey.Serialize()))
 
 	v := NewRandomValidator()
@@ -111,8 +112,6 @@ func registerValidator(t *testing.T, v *ValidatorPrivateData, relay *LocalRelay)
 }
 
 func TestGetHeader(t *testing.T) {
-	backend, relay, validator := newTestBackend(t)
-
 	forkchoiceData := &beacon.ExecutableDataV1{
 		ParentHash:    common.HexToHash("0xafafafa"),
 		FeeRecipient:  common.Address{0x01},
@@ -124,6 +123,8 @@ func TestGetHeader(t *testing.T) {
 	forkchoiceBlock := &types.Block{
 		Profit: big.NewInt(10),
 	}
+
+	backend, relay, validator := newTestBackend(t, forkchoiceData, forkchoiceBlock)
 
 	path := fmt.Sprintf("/eth/v1/builder/header/%d/%s/%s", 0, forkchoiceData.ParentHash.Hex(), validator.Pk.String())
 	rr := testRequest(t, relay, "GET", path, nil)
@@ -139,7 +140,7 @@ func TestGetHeader(t *testing.T) {
 	require.Equal(t, ``, rr.Body.String())
 	require.Equal(t, 204, rr.Code)
 
-	backend.newSealedBlock(forkchoiceData, forkchoiceBlock, &beacon.PayloadAttributesV1{})
+	backend.OnPayloadAttribute(&BuilderPayloadAttributes{})
 
 	path = fmt.Sprintf("/eth/v1/builder/header/%d/%s/%s", 0, forkchoiceData.ParentHash.Hex(), validator.Pk.String())
 	rr = testRequest(t, relay, "GET", path, nil)
@@ -170,8 +171,6 @@ func TestGetHeader(t *testing.T) {
 }
 
 func TestGetPayload(t *testing.T) {
-	backend, relay, validator := newTestBackend(t)
-
 	forkchoiceData := &beacon.ExecutableDataV1{
 		ParentHash:    common.HexToHash("0xafafafa"),
 		FeeRecipient:  common.Address{0x01},
@@ -183,8 +182,10 @@ func TestGetPayload(t *testing.T) {
 		Profit: big.NewInt(10),
 	}
 
+	backend, relay, validator := newTestBackend(t, forkchoiceData, forkchoiceBlock)
+
 	registerValidator(t, validator, relay)
-	backend.newSealedBlock(forkchoiceData, forkchoiceBlock, &beacon.PayloadAttributesV1{})
+	backend.OnPayloadAttribute(&BuilderPayloadAttributes{})
 
 	path := fmt.Sprintf("/eth/v1/builder/header/%d/%s/%s", 0, forkchoiceData.ParentHash.Hex(), validator.Pk.String())
 	rr := testRequest(t, relay, "GET", path, nil)

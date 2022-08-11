@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/gorilla/mux"
 
 	"github.com/flashbots/go-boost-utils/bls"
@@ -25,13 +26,27 @@ const (
 	_PathGetPayload        = "/eth/v1/builder/blinded_blocks"
 )
 
+type BuilderPayloadAttributes struct {
+	Timestamp             hexutil.Uint64 `json:"timestamp"`
+	Random                common.Hash    `json:"prevRandao"`
+	SuggestedFeeRecipient common.Address `json:"suggestedFeeRecipient,omitempty"`
+	Slot                  uint64         `json:"slot"`
+	HeadHash              common.Hash    `json:"blockHash"`
+	GasLimit              uint64
+}
+
 type Service struct {
-	srv *http.Server
+	srv     *http.Server
+	builder IBuilder
 }
 
 func (s *Service) Start() {
 	log.Info("Service started")
 	go s.srv.ListenAndServe()
+}
+
+func (s *Service) PayloadAttributes(payloadAttributes *BuilderPayloadAttributes) error {
+	return s.builder.OnPayloadAttribute(payloadAttributes)
 }
 
 func getRouter(localRelay *LocalRelay) http.Handler {
@@ -49,18 +64,19 @@ func getRouter(localRelay *LocalRelay) http.Handler {
 	return loggedRouter
 }
 
-func NewService(listenAddr string, localRelay *LocalRelay) *Service {
+func NewService(listenAddr string, localRelay *LocalRelay, builder *Builder) *Service {
 	return &Service{
 		srv: &http.Server{
 			Addr:    listenAddr,
 			Handler: getRouter(localRelay),
 			/*
-				ReadTimeout:
-				ReadHeaderTimeout:
-				WriteTimeout:
-				IdleTimeout:
+			   ReadTimeout:
+			   ReadHeaderTimeout:
+			   WriteTimeout:
+			   IdleTimeout:
 			*/
 		},
+		builder: builder,
 	}
 }
 
@@ -116,8 +132,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *BuilderConfig) error
 	copy(bellatrixForkVersion[:], bellatrixForkVersionBytes[:4])
 	proposerSigningDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeBeaconProposer, bellatrixForkVersion, genesisValidatorsRoot)
 
-	var beaconClient IBeaconClient
-	beaconClient = NewBeaconClient(cfg.BeaconEndpoint)
+	beaconClient := NewBeaconClient(cfg.BeaconEndpoint)
 
 	localRelay := NewLocalRelay(relaySk, beaconClient, builderSigningDomain, proposerSigningDomain, ForkData{cfg.GenesisForkVersion, cfg.BellatrixForkVersion, cfg.GenesisValidatorsRoot}, cfg.EnableValidatorChecks)
 
@@ -128,11 +143,20 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *BuilderConfig) error
 		relay = localRelay
 	}
 
-	builderBackend := NewBuilder(builderSk, beaconClient, relay, builderSigningDomain)
-	builderService := NewService(cfg.ListenAddr, localRelay)
+	ethereumService := NewEthereumService(backend)
+
+	builderBackend := NewBuilder(builderSk, beaconClient, relay, builderSigningDomain, ethereumService)
+	builderService := NewService(cfg.ListenAddr, localRelay, builderBackend)
 	builderService.Start()
 
-	backend.SetSealedBlockHook(builderBackend.newSealedBlock)
-	backend.SetForkchoiceHook(builderBackend.onForkchoice)
+	stack.RegisterAPIs([]rpc.API{
+		{
+			Namespace:     "builder",
+			Version:       "1.0",
+			Service:       builderService,
+			Public:        true,
+			Authenticated: true,
+		},
+	})
 	return nil
 }

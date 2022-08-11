@@ -155,11 +155,7 @@ func (api *ConsensusAPI) ForkchoiceUpdatedV1(update beacon.ForkchoiceStateV1, pa
 	api.forkchoiceLock.Lock()
 	defer api.forkchoiceLock.Unlock()
 
-	log.Info("Engine API request received", "method", "ForkchoiceUpdated", "head", update.HeadBlockHash, "finalized", update.FinalizedBlockHash, "safe", update.SafeBlockHash)
-
-	// Adjusts payload attributes to next slot's validator preferences
-	api.eth.ForkchoiceHook(payloadAttributes)
-
+	log.Trace("Engine API request received", "method", "ForkchoiceUpdated", "head", update.HeadBlockHash, "finalized", update.FinalizedBlockHash, "safe", update.SafeBlockHash)
 	if update.HeadBlockHash == (common.Hash{}) {
 		log.Warn("Forkchoice requested update to zero hash")
 		return beacon.STATUS_INVALID, nil // TODO(karalabe): Why does someone send us this?
@@ -294,12 +290,7 @@ func (api *ConsensusAPI) ForkchoiceUpdatedV1(update beacon.ForkchoiceStateV1, pa
 			return valid(nil), beacon.InvalidPayloadAttributes.With(err)
 		}
 		id := computePayloadId(update.HeadBlockHash, payloadAttributes)
-		resultPayload := &payload{empty: empty, result: resCh}
-		api.localBlocks.put(id, resultPayload)
-		go func() {
-			executableData, block := resultPayload.resolve()
-			api.eth.NewSealedBlock(executableData, block, payloadAttributes)
-		}()
+		api.localBlocks.put(id, &payload{empty: empty, result: resCh})
 		return valid(&id), nil
 	}
 	return valid(nil), nil
