@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"errors"
 	_ "os"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -74,13 +75,17 @@ func (b *Builder) OnPayloadAttribute(attrs *BuilderPayloadAttributes) error {
 		attrs.GasLimit = vd.GasLimit
 
 		if b.eth.Synced() {
-			block := b.eth.GetBlockByHash(attrs.HeadHash)
-			if block == nil {
+			parentBlock := b.eth.GetBlockByHash(attrs.HeadHash)
+			if parentBlock == nil {
 				log.Info("Block hash not found in blocktree", "head block hash", attrs.HeadHash)
 				return err
 			}
 
-			executableData := b.eth.BuildBlock(attrs)
+			executableData, block := b.eth.BuildBlock(attrs)
+			if executableData == nil || block == nil {
+				log.Error("did not receive the payload")
+				return errors.New("could not build block")
+			}
 			payload, err := executableDataToExecutionPayload(executableData)
 			if err != nil {
 				log.Error("could not format execution payload", "err", err)
