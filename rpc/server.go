@@ -27,6 +27,7 @@ import (
 
 const MetadataApi = "rpc"
 const EngineApi = "engine"
+const BuilderApi = "builder"
 
 // CodecOption specifies which type of messages a codec supports.
 //
