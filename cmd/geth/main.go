@@ -153,7 +153,9 @@ var (
 	}, utils.NetworkFlags, utils.DatabasePathFlags)
 
 	builderApiFlags = []cli.Flag{
+		utils.BuilderEnabled,
 		utils.BuilderEnableValidatorChecks,
+		utils.BuilderEnableLocalRelay,
 		utils.BuilderSecretKey,
 		utils.BuilderRelaySecretKey,
 		utils.BuilderListenAddr,
