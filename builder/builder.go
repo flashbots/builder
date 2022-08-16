@@ -63,80 +63,90 @@ func NewBuilder(sk *bls.SecretKey, bc IBeaconClient, relay IRelay, builderSignin
 	}
 }
 
-func (b *Builder) OnPayloadAttribute(attrs *BuilderPayloadAttributes) error {
-	if attrs != nil {
-		vd, err := b.relay.GetValidatorForSlot(attrs.Slot)
-		if err != nil {
-			log.Info("could not get validator while submitting block", "err", err, "slot", attrs.Slot)
-			return err
-		}
-
-		attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
-		attrs.GasLimit = vd.GasLimit
-
-		if b.eth.Synced() {
-			parentBlock := b.eth.GetBlockByHash(attrs.HeadHash)
-			if parentBlock == nil {
-				log.Info("Block hash not found in blocktree", "head block hash", attrs.HeadHash)
-				return err
-			}
-
-			executableData, block := b.eth.BuildBlock(attrs)
-			if executableData == nil || block == nil {
-				log.Error("did not receive the payload")
-				return errors.New("could not build block")
-			}
-			payload, err := executableDataToExecutionPayload(executableData)
-			if err != nil {
-				log.Error("could not format execution payload", "err", err)
-				return err
-			}
-
-			pubkey, err := boostTypes.HexToPubkey(string(vd.Pubkey))
-			if err != nil {
-				log.Error("could not parse pubkey", "err", err, "pubkey", vd.Pubkey)
-				return err
-			}
-
-			value := new(boostTypes.U256Str)
-			err = value.FromBig(block.Profit)
-			if err != nil {
-				log.Error("could not set block value", "err", err)
-				return err
-			}
-
-			blockBidMsg := boostTypes.BidTrace{
-				Slot:                 attrs.Slot,
-				ParentHash:           payload.ParentHash,
-				BlockHash:            payload.BlockHash,
-				BuilderPubkey:        b.builderPublicKey,
-				ProposerPubkey:       pubkey,
-				ProposerFeeRecipient: boostTypes.Address(attrs.SuggestedFeeRecipient),
-				GasLimit:             executableData.GasLimit,
-				GasUsed:              executableData.GasUsed,
-				Value:                *value,
-			}
-
-			signature, err := boostTypes.SignMessage(&blockBidMsg, b.builderSigningDomain, b.builderSecretKey)
-			if err != nil {
-				log.Error("could not sign builder bid", "err", err)
-				return err
-			}
-
-			blockSubmitReq := boostTypes.BuilderSubmitBlockRequest{
-				Signature:        signature,
-				Message:          &blockBidMsg,
-				ExecutionPayload: payload,
-			}
-
-			err = b.relay.SubmitBlock(&blockSubmitReq)
-			if err != nil {
-				log.Error("could not submit block", "err", err)
-				return err
-			}
-		}
+func (b *Builder) onSealedBlock(executableData *beacon.ExecutableDataV1, block *types.Block, proposerPubkey boostTypes.PublicKey, proposerFeeRecipient boostTypes.Address, slot uint64) error {
+	payload, err := executableDataToExecutionPayload(executableData)
+	if err != nil {
+		log.Error("could not format execution payload", "err", err)
+		return err
 	}
+
+	value := new(boostTypes.U256Str)
+	err = value.FromBig(block.Profit)
+	if err != nil {
+		log.Error("could not set block value", "err", err)
+		return err
+	}
+
+	blockBidMsg := boostTypes.BidTrace{
+		Slot:                 slot,
+		ParentHash:           payload.ParentHash,
+		BlockHash:            payload.BlockHash,
+		BuilderPubkey:        b.builderPublicKey,
+		ProposerPubkey:       proposerPubkey,
+		ProposerFeeRecipient: proposerFeeRecipient,
+		GasLimit:             executableData.GasLimit,
+		GasUsed:              executableData.GasUsed,
+		Value:                *value,
+	}
+
+	signature, err := boostTypes.SignMessage(&blockBidMsg, b.builderSigningDomain, b.builderSecretKey)
+	if err != nil {
+		log.Error("could not sign builder bid", "err", err)
+		return err
+	}
+
+	blockSubmitReq := boostTypes.BuilderSubmitBlockRequest{
+		Signature:        signature,
+		Message:          &blockBidMsg,
+		ExecutionPayload: payload,
+	}
+
+	err = b.relay.SubmitBlock(&blockSubmitReq)
+	if err != nil {
+		log.Error("could not submit block", "err", err)
+		return err
+	}
+
 	return nil
+}
+
+func (b *Builder) OnPayloadAttribute(attrs *BuilderPayloadAttributes) error {
+	if attrs == nil {
+		return nil
+	}
+
+	vd, err := b.relay.GetValidatorForSlot(attrs.Slot)
+	if err != nil {
+		log.Info("could not get validator while submitting block", "err", err, "slot", attrs.Slot)
+		return err
+	}
+
+	attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
+	attrs.GasLimit = vd.GasLimit
+
+	proposerPubkey, err := boostTypes.HexToPubkey(string(vd.Pubkey))
+	if err != nil {
+		log.Error("could not parse pubkey", "err", err, "pubkey", vd.Pubkey)
+		return err
+	}
+
+	if !b.eth.Synced() {
+		return errors.New("backend not Synced")
+	}
+
+	parentBlock := b.eth.GetBlockByHash(attrs.HeadHash)
+	if parentBlock == nil {
+		log.Info("Block hash not found in blocktree", "head block hash", attrs.HeadHash)
+		return errors.New("parent block not found in blocktree")
+	}
+
+	executableData, block := b.eth.BuildBlock(attrs)
+	if executableData == nil || block == nil {
+		log.Error("did not receive the payload")
+		return errors.New("could not build block")
+	}
+
+	return b.onSealedBlock(executableData, block, proposerPubkey, vd.FeeRecipient, attrs.Slot)
 }
 
 func executableDataToExecutionPayload(data *beacon.ExecutableDataV1) (*boostTypes.ExecutionPayload, error) {
