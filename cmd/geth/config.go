@@ -167,7 +167,9 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	}
 
 	bpConfig := &builder.BuilderConfig{
+		Enabled:               ctx.IsSet(utils.BuilderEnabled.Name),
 		EnableValidatorChecks: ctx.IsSet(utils.BuilderEnableValidatorChecks.Name),
+		EnableLocalRelay:      ctx.IsSet(utils.BuilderEnableLocalRelay.Name),
 		BuilderSecretKey:      ctx.String(utils.BuilderSecretKey.Name),
 		RelaySecretKey:        ctx.String(utils.BuilderRelaySecretKey.Name),
 		ListenAddr:            ctx.String(utils.BuilderListenAddr.Name),
