@@ -168,7 +168,11 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	// Configure log filter RPC API.
 	filterSystem := utils.RegisterFilterAPI(stack, backend, &cfg.Eth)
 
-	// Configure GraphQL if requested.
+	if err := blockvalidationapi.Register(stack, eth, ctx); err != nil {
+		utils.Fatalf("Failed to register the Block Validation API: %v", err)
+	}
+
+	// Configure GraphQL if requested
 	if ctx.IsSet(utils.GraphQLEnabledFlag.Name) {
 		utils.RegisterGraphQLService(stack, backend, filterSystem, &cfg.Node)
 	}
