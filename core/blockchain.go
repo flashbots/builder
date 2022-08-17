@@ -2421,3 +2421,74 @@ func (bc *BlockChain) SetBlockValidatorAndProcessorForTesting(v Validator, p Pro
 	bc.validator = v
 	bc.processor = p
 }
+
+func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Address, expectedProfit *big.Int, vmConfig vm.Config) error {
+	header := block.Header()
+	if err := bc.engine.VerifyHeader(bc, header, true); err != nil {
+		return err
+	}
+
+	current := bc.CurrentBlock()
+	reorg, err := bc.forker.ReorgNeeded(current.Header(), header)
+	if err == nil && reorg {
+		return errors.New("block requires a reorg")
+	}
+
+	parent := bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
+	if parent == nil {
+		return errors.New("parent not found")
+	}
+
+	statedb, err := bc.StateAt(parent.Root)
+	if err != nil {
+		return err
+	}
+
+	// The chain importer is starting and stopping trie prefetchers. If a bad
+	// block or other error is hit however, an early return may not properly
+	// terminate the background threads. This defer ensures that we clean up
+	// and dangling prefetcher, without defering each and holding on live refs.
+	defer statedb.StopPrefetcher()
+
+	receipts, _, usedGas, err := bc.processor.Process(block, statedb, vmConfig)
+	if err != nil {
+		return err
+	}
+
+	if err := bc.validator.ValidateBody(block); err != nil {
+		return err
+	}
+
+	if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
+		return err
+	}
+
+	if len(receipts) == 0 {
+		return errors.New("no proposer payment receipt")
+	}
+
+	lastReceipt := receipts[len(receipts)-1]
+	if lastReceipt.Status != types.ReceiptStatusSuccessful {
+		return errors.New("proposer payment not successful")
+	}
+	txIndex := lastReceipt.TransactionIndex
+	if txIndex+1 != uint(len(block.Transactions())) {
+		return fmt.Errorf("proposer payment index not last transaction in the block (%d of %d)", txIndex, len(block.Transactions())-1)
+	}
+
+	paymentTx := block.Transaction(lastReceipt.TxHash)
+	if paymentTx == nil {
+		return errors.New("payment tx not in the block")
+	}
+
+	paymentTo := paymentTx.To()
+	if paymentTo == nil || *paymentTo != feeRecipient {
+		return fmt.Errorf("payment tx not to the proposers fee recipient (%v)", paymentTo)
+	}
+
+	if paymentTx.Value().Cmp(expectedProfit) != 0 {
+		return fmt.Errorf("inaccurate payment %s, expected %s", paymentTx.Value().String(), expectedProfit.String())
+	}
+
+	return nil
+}
