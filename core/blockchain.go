@@ -2421,3 +2421,54 @@ func (bc *BlockChain) SetBlockValidatorAndProcessorForTesting(v Validator, p Pro
 	bc.validator = v
 	bc.processor = p
 }
+
+func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Address, expectedProfit *big.Int, vmConfig vm.Config) error {
+	header := block.Header()
+	if err := bc.engine.VerifyHeader(bc, header, true); err != nil {
+		return err
+	}
+
+	current := bc.CurrentBlock()
+	reorg, err := bc.forker.ReorgNeeded(current.Header(), header)
+	if err == nil && reorg {
+		return errors.New("block requires a reorg")
+	}
+
+	parent := bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
+	if parent == nil {
+		return errors.New("parent not found")
+	}
+
+	statedb, err := bc.StateAt(parent.Root)
+	if err != nil {
+		return err
+	}
+
+	// The chain importer is starting and stopping trie prefetchers. If a bad
+	// block or other error is hit however, an early return may not properly
+	// terminate the background threads. This defer ensures that we clean up
+	// and dangling prefetcher, without defering each and holding on live refs.
+	defer statedb.StopPrefetcher()
+
+	balanceBefore := statedb.GetBalance(feeRecipient)
+	receipts, _, usedGas, err := bc.processor.Process(block, statedb, vmConfig)
+	if err != nil {
+		return err
+	}
+
+	if err := bc.validator.ValidateBody(block); err != nil {
+		return err
+	}
+
+	if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
+		return err
+	}
+
+	balanceAfter := statedb.GetBalance(feeRecipient)
+	feeRecipientDiff := new(big.Int).Sub(balanceAfter, balanceBefore)
+	if feeRecipientDiff.Cmp(expectedProfit) != 0 {
+		return fmt.Errorf("inaccurate payment %s, expected %s", feeRecipientDiff.String(), expectedProfit.String())
+	}
+
+	return nil
+}

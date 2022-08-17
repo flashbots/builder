@@ -24,6 +24,8 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/trie"
+
+	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
 
 //go:generate go run github.com/fjl/gencodec -type PayloadAttributesV1 -field-override payloadAttributesMarshaling -out gen_blockparams.go
@@ -176,6 +178,38 @@ func ExecutableDataToBlock(params ExecutableDataV1) (*types.Block, error) {
 	if block.Hash() != params.BlockHash {
 		return nil, fmt.Errorf("blockhash mismatch, want %x, got %x", params.BlockHash, block.Hash())
 	}
+	return block, nil
+}
+
+func ExecutionPayloadToBlock(payload *boostTypes.ExecutionPayload) (*types.Block, error) {
+	// TODO: separate decode function to avoid allocating twice
+	transactionBytes := make([][]byte, len(payload.Transactions))
+	for i, txHexBytes := range payload.Transactions {
+		transactionBytes[i] = txHexBytes[:]
+	}
+	txs, err := decodeTransactions(transactionBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	header := &types.Header{
+		ParentHash:  common.Hash(payload.ParentHash),
+		UncleHash:   types.EmptyUncleHash,
+		Coinbase:    common.Address(payload.FeeRecipient),
+		Root:        common.Hash(payload.StateRoot),
+		TxHash:      types.DeriveSha(types.Transactions(txs), trie.NewStackTrie(nil)),
+		ReceiptHash: common.Hash(payload.ReceiptsRoot),
+		Bloom:       types.BytesToBloom(payload.LogsBloom[:]),
+		Difficulty:  common.Big0,
+		Number:      new(big.Int).SetUint64(payload.BlockNumber),
+		GasLimit:    payload.GasLimit,
+		GasUsed:     payload.GasUsed,
+		Time:        payload.Timestamp,
+		BaseFee:     payload.BaseFeePerGas.BigInt(),
+		Extra:       payload.ExtraData,
+		MixDigest:   common.Hash(payload.Random),
+	}
+	block := types.NewBlockWithHeader(header).WithBody(txs, nil /* uncles */)
 	return block, nil
 }
 
