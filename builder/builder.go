@@ -3,6 +3,7 @@ package builder
 import (
 	"errors"
 	_ "os"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/beacon"
@@ -41,6 +42,7 @@ type Builder struct {
 	beaconClient IBeaconClient
 	relay        IRelay
 	eth          IEthereumService
+	resubmitter  Resubmitter
 
 	builderSecretKey     *bls.SecretKey
 	builderPublicKey     boostTypes.PublicKey
@@ -56,6 +58,7 @@ func NewBuilder(sk *bls.SecretKey, bc IBeaconClient, relay IRelay, builderSignin
 		beaconClient:     bc,
 		relay:            relay,
 		eth:              eth,
+		resubmitter:      Resubmitter{},
 		builderSecretKey: sk,
 		builderPublicKey: pk,
 
@@ -140,13 +143,23 @@ func (b *Builder) OnPayloadAttribute(attrs *BuilderPayloadAttributes) error {
 		return errors.New("parent block not found in blocktree")
 	}
 
-	executableData, block := b.eth.BuildBlock(attrs)
-	if executableData == nil || block == nil {
-		log.Error("did not receive the payload")
-		return errors.New("could not build block")
-	}
+	firstBlockResult := b.resubmitter.newTask(12*time.Second, time.Second, func() error {
+		executableData, block := b.eth.BuildBlock(attrs)
+		if executableData == nil || block == nil {
+			log.Error("did not receive the payload")
+			return errors.New("did not receive the payload")
+		}
 
-	return b.onSealedBlock(executableData, block, proposerPubkey, vd.FeeRecipient, attrs.Slot)
+		err := b.onSealedBlock(executableData, block, proposerPubkey, vd.FeeRecipient, attrs.Slot)
+		if err != nil {
+			log.Error("could not run block hook", "err", err)
+			return err
+		}
+
+		return nil
+	})
+
+	return firstBlockResult
 }
 
 func executableDataToExecutionPayload(data *beacon.ExecutableDataV1) (*boostTypes.ExecutionPayload, error) {
