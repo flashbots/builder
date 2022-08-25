@@ -3,6 +3,7 @@ package builder
 import (
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -120,4 +121,10 @@ func TestOnPayloadAttributes(t *testing.T) {
 	require.Equal(t, expectedSignature, testRelay.submittedMsg.Signature)
 
 	require.Equal(t, uint64(25), testRelay.requestedSlot)
+
+	// Clear the submitted message and check that the job will be ran again and a new message will be submitted
+	testRelay.submittedMsg = nil
+	time.Sleep(2 * time.Second)
+	require.NotNil(t, testRelay.submittedMsg)
+	require.Equal(t, expectedMessage, *testRelay.submittedMsg.Message)
 }
