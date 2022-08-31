@@ -73,18 +73,22 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	payload, err := ExecutableDataToExecutionPayload(execData)
 	require.NoError(t, err)
 
+	proposerAddr := boostTypes.Address{}
+	proposerAddr.FromSlice(testAddr[:])
+
 	blockRequest := &boostTypes.BuilderSubmitBlockRequest{
 		Signature: boostTypes.Signature{},
 		Message: &boostTypes.BidTrace{
-			ParentHash: boostTypes.Hash(execData.ParentHash),
-			BlockHash:  boostTypes.Hash(execData.BlockHash),
-			GasLimit:   execData.GasLimit,
-			GasUsed:    execData.GasUsed,
+			ParentHash:           boostTypes.Hash(execData.ParentHash),
+			BlockHash:            boostTypes.Hash(execData.BlockHash),
+			ProposerFeeRecipient: proposerAddr,
+			GasLimit:             execData.GasLimit,
+			GasUsed:              execData.GasUsed,
 		},
 		ExecutionPayload: payload,
 	}
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "inaccurate payment")
-	blockRequest.Message.Value = boostTypes.IntToU256(191830884438530)
+	blockRequest.Message.Value = boostTypes.IntToU256(10)
 	require.NoError(t, api.ValidateBuilderSubmissionV1(blockRequest))
 
 	// TODO: test with contract calling blacklisted address

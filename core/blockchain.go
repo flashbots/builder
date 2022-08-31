@@ -2450,7 +2450,6 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 	// and dangling prefetcher, without defering each and holding on live refs.
 	defer statedb.StopPrefetcher()
 
-	balanceBefore := statedb.GetBalance(feeRecipient)
 	receipts, _, usedGas, err := bc.processor.Process(block, statedb, vmConfig)
 	if err != nil {
 		return err
@@ -2464,10 +2463,31 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 		return err
 	}
 
-	balanceAfter := statedb.GetBalance(feeRecipient)
-	feeRecipientDiff := new(big.Int).Sub(balanceAfter, balanceBefore)
-	if feeRecipientDiff.Cmp(expectedProfit) != 0 {
-		return fmt.Errorf("inaccurate payment %s, expected %s", feeRecipientDiff.String(), expectedProfit.String())
+	if len(receipts) == 0 {
+		return errors.New("no proposer payment receipt")
+	}
+
+	lastReceipt := receipts[len(receipts)-1]
+	if lastReceipt.Status != types.ReceiptStatusSuccessful {
+		return errors.New("proposer payment not successful")
+	}
+	txIndex := lastReceipt.TransactionIndex
+	if txIndex+1 != uint(len(block.Transactions())) {
+		return fmt.Errorf("proposer payment index not last transaction in the block (%d of %d)", txIndex, len(block.Transactions())-1)
+	}
+
+	paymentTx := block.Transaction(lastReceipt.TxHash)
+	if paymentTx == nil {
+		return errors.New("payment tx not in the block")
+	}
+
+	paymentTo := paymentTx.To()
+	if paymentTo == nil || *paymentTo != feeRecipient {
+		return fmt.Errorf("payment tx not to the proposers fee recipient (%v)", paymentTo)
+	}
+
+	if paymentTx.Value().Cmp(expectedProfit) != 0 {
+		return fmt.Errorf("inaccurate payment %s, expected %s", paymentTx.Value().String(), expectedProfit.String())
 	}
 
 	return nil
