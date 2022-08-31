@@ -664,4 +664,13 @@ type MevBundle struct {
 	MinTimestamp      uint64
 	MaxTimestamp      uint64
 	RevertingTxHashes []common.Hash
+	Hash              common.Hash
+}
+
+type SimulatedBundle struct {
+	MevGasPrice       *big.Int
+	TotalEth          *big.Int
+	EthSentToCoinbase *big.Int
+	TotalGasUsed      uint64
+	OriginalBundle    MevBundle
 }
