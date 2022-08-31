@@ -29,7 +29,7 @@ func newTestBackend(t *testing.T, forkchoiceData *beacon.ExecutableDataV1, block
 	beaconClient := &testBeaconClient{validator: validator}
 	localRelay := NewLocalRelay(sk, beaconClient, bDomain, cDomain, ForkData{}, true)
 	ethService := &testEthereumService{synced: true, testExecutableData: forkchoiceData, testBlock: block}
-	backend := NewBuilder(sk, beaconClient, localRelay, bDomain, ethService)
+	backend := NewBuilder(sk, NilDbService{}, beaconClient, localRelay, bDomain, ethService)
 	// service := NewService("127.0.0.1:31545", backend)
 
 	return backend, localRelay, validator
@@ -115,14 +115,15 @@ func TestGetHeader(t *testing.T) {
 	forkchoiceData := &beacon.ExecutableDataV1{
 		ParentHash:    common.HexToHash("0xafafafa"),
 		FeeRecipient:  common.Address{0x01},
-		BlockHash:     common.HexToHash("0xbfbfbfb"),
+		LogsBloom:     types.Bloom{0x00, 0x05, 0x10}.Bytes(),
+		BlockHash:     common.HexToHash("0x24e6998e4d2b4fd85f7f0d27ac4b87aaf0ec18e156e4b6e194ab5dadee0cd004"),
 		BaseFeePerGas: big.NewInt(12),
 		ExtraData:     []byte{},
-		LogsBloom:     []byte{0x00, 0x05, 0x10},
 	}
-	forkchoiceBlock := &types.Block{
-		Profit: big.NewInt(10),
-	}
+
+	forkchoiceBlock, err := beacon.ExecutableDataToBlock(*forkchoiceData)
+	require.NoError(t, err)
+	forkchoiceBlock.Profit = big.NewInt(10)
 
 	backend, relay, validator := newTestBackend(t, forkchoiceData, forkchoiceBlock)
 
@@ -147,7 +148,7 @@ func TestGetHeader(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	bid := new(boostTypes.GetHeaderResponse)
-	err := json.Unmarshal(rr.Body.Bytes(), bid)
+	err = json.Unmarshal(rr.Body.Bytes(), bid)
 	require.NoError(t, err)
 
 	executionPayload, err := executableDataToExecutionPayload(forkchoiceData)
@@ -174,13 +175,15 @@ func TestGetPayload(t *testing.T) {
 	forkchoiceData := &beacon.ExecutableDataV1{
 		ParentHash:    common.HexToHash("0xafafafa"),
 		FeeRecipient:  common.Address{0x01},
-		BlockHash:     common.HexToHash("0xbfbfbfb"),
+		LogsBloom:     types.Bloom{}.Bytes(),
+		BlockHash:     common.HexToHash("0xc4a012b67027b3ab6c00acd31aeee24aa1515d6a5d7e81b0ee2e69517fdc387f"),
 		BaseFeePerGas: big.NewInt(12),
 		ExtraData:     []byte{},
 	}
-	forkchoiceBlock := &types.Block{
-		Profit: big.NewInt(10),
-	}
+
+	forkchoiceBlock, err := beacon.ExecutableDataToBlock(*forkchoiceData)
+	require.NoError(t, err)
+	forkchoiceBlock.Profit = big.NewInt(10)
 
 	backend, relay, validator := newTestBackend(t, forkchoiceData, forkchoiceBlock)
 
@@ -192,7 +195,7 @@ func TestGetPayload(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 
 	bid := new(boostTypes.GetHeaderResponse)
-	err := json.Unmarshal(rr.Body.Bytes(), bid)
+	err = json.Unmarshal(rr.Body.Bytes(), bid)
 	require.NoError(t, err)
 
 	// Create request payload

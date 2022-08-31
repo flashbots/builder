@@ -1280,8 +1280,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 // fillTransactions retrieves the pending transactions from the txpool and fills them
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
-
-func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorCoinbase *common.Address) error {
+func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorCoinbase *common.Address) (error, []types.SimulatedBundle) {
 	// Split the pending transactions into locals and remotes
 	// Fill the block with all available pending transactions.
 	pending := w.eth.TxPool().Pending(true)
@@ -1299,43 +1298,47 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorC
 	if validatorCoinbase != nil {
 		builderCoinbaseBalanceBefore = env.state.GetBalance(w.coinbase)
 		if err := env.gasPool.SubGas(params.TxGas); err != nil {
-			return err
+			return err, nil
 		}
 	}
+
+	var blockBundles []types.SimulatedBundle
 	if w.flashbots.isFlashbots {
 		bundles, err := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
 		if err != nil {
 			log.Error("Failed to fetch pending transactions", "err", err)
-			return err
+			return err, nil
 		}
 
-		bundleTxs, bundle, numBundles, err := w.generateFlashbotsBundle(env, bundles, pending)
+		bundleTxs, bundle, mergedBundles, numBundles, err := w.generateFlashbotsBundle(env, bundles, pending)
 		if err != nil {
 			log.Error("Failed to generate flashbots bundle", "err", err)
-			return err
+			return err, nil
 		}
-		log.Info("Flashbots bundle", "ethToCoinbase", ethIntToFloat(bundle.totalEth), "gasUsed", bundle.totalGasUsed, "bundleScore", bundle.mevGasPrice, "bundleLength", len(bundleTxs), "numBundles", numBundles, "worker", w.flashbots.maxMergedBundles)
+		log.Info("Flashbots bundle", "ethToCoinbase", ethIntToFloat(bundle.TotalEth), "gasUsed", bundle.TotalGasUsed, "bundleScore", bundle.MevGasPrice, "bundleLength", len(bundleTxs), "numBundles", numBundles, "worker", w.flashbots.maxMergedBundles)
 		if len(bundleTxs) == 0 {
-			return errors.New("no bundles to apply")
+			return errors.New("no bundles to apply"), nil
 		}
 		if err := w.commitBundle(env, bundleTxs, interrupt); err != nil {
-			return err
+			return err, nil
 		}
-		env.profit.Add(env.profit, bundle.ethSentToCoinbase)
+		blockBundles = mergedBundles
+		env.profit.Add(env.profit, bundle.EthSentToCoinbase)
 	}
 
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
 		if err := w.commitTransactions(env, txs, interrupt); err != nil {
-			return err
+			return err, nil
 		}
 	}
 	if len(remoteTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
 		if err := w.commitTransactions(env, txs, interrupt); err != nil {
-			return err
+			return err, nil
 		}
 	}
+
 	if validatorCoinbase != nil && w.config.BuilderTxSigningKey != nil {
 		builderCoinbaseBalanceAfter := env.state.GetBalance(w.coinbase)
 		log.Info("Before creating validator profit", "validatorCoinbase", validatorCoinbase.String(), "builderCoinbase", w.coinbase.String(), "builderCoinbaseBalanceBefore", builderCoinbaseBalanceBefore.String(), "builderCoinbaseBalanceAfter", builderCoinbaseBalanceAfter.String())
@@ -1346,7 +1349,7 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorC
 			tx, err := w.createProposerPayoutTx(env, validatorCoinbase, profit)
 			if err != nil {
 				log.Error("Proposer payout create tx failed", "err", err)
-				return fmt.Errorf("proposer payout create tx failed - %v", err)
+				return fmt.Errorf("proposer payout create tx failed - %v", err), nil
 			}
 			if tx != nil {
 				log.Info("Proposer payout create tx succeeded, proceeding to commit tx")
@@ -1354,20 +1357,21 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorC
 				_, err = w.commitTransaction(env, tx)
 				if err != nil {
 					log.Error("Proposer payout commit tx failed", "hash", tx.Hash().String(), "err", err)
-					return fmt.Errorf("proposer payout commit tx failed - %v", err)
+					return fmt.Errorf("proposer payout commit tx failed - %v", err), nil
 				}
 				log.Info("Proposer payout commit tx succeeded", "hash", tx.Hash().String())
 				env.tcount++
 			} else {
-				return errors.New("proposer payout create tx failed due to tx is nil")
+				return errors.New("proposer payout create tx failed due to tx is nil"), nil
 			}
 		} else {
 			log.Warn("Proposer payout create tx failed due to not enough balance", "profit", profit.String())
-			return errors.New("proposer payout create tx failed due to not enough balance")
+			return errors.New("proposer payout create tx failed due to not enough balance"), nil
 		}
 
 	}
-	return nil
+
+	return nil, blockBundles
 }
 
 // generateWork generates a sealing block based on the given parameters.
@@ -1378,6 +1382,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 	}
 	defer work.discard()
 
+	var blockBundles []types.SimulatedBundle
 	if !params.noTxs {
 		interrupt := new(int32)
 		timer := time.AfterFunc(w.newpayloadTimeout, func() {
@@ -1389,6 +1394,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 		if errors.Is(err, errBlockInterruptedByTimeout) {
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.newpayloadTimeout))
 		}
+		blockBundles = mergedBundles
 	}
 	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts, params.withdrawals)
 	if err != nil {
@@ -1540,28 +1546,23 @@ func (w *worker) isTTDReached(header *types.Header) bool {
 	return td != nil && ttd != nil && td.Cmp(ttd) >= 0
 }
 
-type simulatedBundle struct {
-	mevGasPrice       *big.Int
-	totalEth          *big.Int
-	ethSentToCoinbase *big.Int
-	totalGasUsed      uint64
-	originalBundle    types.MevBundle
-}
+type simulatedBundle = types.SimulatedBundle
 
-func (w *worker) generateFlashbotsBundle(env *environment, bundles []types.MevBundle, pendingTxs map[common.Address]types.Transactions) (types.Transactions, simulatedBundle, int, error) {
+func (w *worker) generateFlashbotsBundle(env *environment, bundles []types.MevBundle, pendingTxs map[common.Address]types.Transactions) (types.Transactions, simulatedBundle, []types.SimulatedBundle, int, error) {
 	simulatedBundles, err := w.simulateBundles(env, bundles, pendingTxs)
 	if err != nil {
-		return nil, simulatedBundle{}, 0, err
+		return nil, simulatedBundle{}, nil, 0, err
 	}
 
 	sort.SliceStable(simulatedBundles, func(i, j int) bool {
-		return simulatedBundles[j].mevGasPrice.Cmp(simulatedBundles[i].mevGasPrice) < 0
+		return simulatedBundles[j].MevGasPrice.Cmp(simulatedBundles[i].MevGasPrice) < 0
 	})
 
 	return w.mergeBundles(env, simulatedBundles, pendingTxs)
 }
 
-func (w *worker) mergeBundles(env *environment, bundles []simulatedBundle, pendingTxs map[common.Address]types.Transactions) (types.Transactions, simulatedBundle, int, error) {
+func (w *worker) mergeBundles(env *environment, bundles []simulatedBundle, pendingTxs map[common.Address]types.Transactions) (types.Transactions, simulatedBundle, []types.SimulatedBundle, int, error) {
+	mergedBundles := []types.SimulatedBundle{}
 	finalBundle := types.Transactions{}
 
 	currentState := env.state.Copy()
@@ -1571,8 +1572,8 @@ func (w *worker) mergeBundles(env *environment, bundles []simulatedBundle, pendi
 	var prevGasPool *core.GasPool
 
 	mergedBundle := simulatedBundle{
-		totalEth:          new(big.Int),
-		ethSentToCoinbase: new(big.Int),
+		TotalEth:          new(big.Int),
+		EthSentToCoinbase: new(big.Int),
 	}
 
 	count := 0
@@ -1581,22 +1582,22 @@ func (w *worker) mergeBundles(env *environment, bundles []simulatedBundle, pendi
 		prevGasPool = new(core.GasPool).AddGas(gasPool.Gas())
 
 		// the floor gas price is 99/100 what was simulated at the top of the block
-		floorGasPrice := new(big.Int).Mul(bundle.mevGasPrice, big.NewInt(99))
+		floorGasPrice := new(big.Int).Mul(bundle.MevGasPrice, big.NewInt(99))
 		floorGasPrice = floorGasPrice.Div(floorGasPrice, big.NewInt(100))
 
-		simmed, err := w.computeBundleGas(env, bundle.originalBundle, currentState, gasPool, pendingTxs, len(finalBundle))
-		if err != nil || simmed.mevGasPrice.Cmp(floorGasPrice) <= 0 {
+		simmed, err := w.computeBundleGas(env, bundle.OriginalBundle, currentState, gasPool, pendingTxs, len(finalBundle))
+		if err != nil || simmed.MevGasPrice.Cmp(floorGasPrice) <= 0 {
 			currentState = prevState
 			gasPool = prevGasPool
 			continue
 		}
 
-		log.Info("Included bundle", "ethToCoinbase", ethIntToFloat(simmed.totalEth), "gasUsed", simmed.totalGasUsed, "bundleScore", simmed.mevGasPrice, "bundleLength", len(simmed.originalBundle.Txs), "worker", w.flashbots.maxMergedBundles)
-
-		finalBundle = append(finalBundle, bundle.originalBundle.Txs...)
-		mergedBundle.totalEth.Add(mergedBundle.totalEth, simmed.totalEth)
-		mergedBundle.ethSentToCoinbase.Add(mergedBundle.ethSentToCoinbase, simmed.ethSentToCoinbase)
-		mergedBundle.totalGasUsed += simmed.totalGasUsed
+		log.Info("Included bundle", "ethToCoinbase", ethIntToFloat(simmed.TotalEth), "gasUsed", simmed.TotalGasUsed, "bundleScore", simmed.MevGasPrice, "bundleLength", len(simmed.OriginalBundle.Txs), "worker", w.flashbots.maxMergedBundles)
+		mergedBundles = append(mergedBundles, simmed)
+		finalBundle = append(finalBundle, bundle.OriginalBundle.Txs...)
+		mergedBundle.TotalEth.Add(mergedBundle.TotalEth, simmed.TotalEth)
+		mergedBundle.EthSentToCoinbase.Add(mergedBundle.EthSentToCoinbase, simmed.EthSentToCoinbase)
+		mergedBundle.TotalGasUsed += simmed.TotalGasUsed
 		count++
 
 		if count >= w.flashbots.maxMergedBundles {
@@ -1605,15 +1606,15 @@ func (w *worker) mergeBundles(env *environment, bundles []simulatedBundle, pendi
 	}
 
 	if len(finalBundle) == 0 || count != w.flashbots.maxMergedBundles {
-		return nil, simulatedBundle{}, count, nil
+		return nil, simulatedBundle{}, nil, count, nil
 	}
 
 	return finalBundle, simulatedBundle{
-		mevGasPrice:       new(big.Int).Div(mergedBundle.totalEth, new(big.Int).SetUint64(mergedBundle.totalGasUsed)),
-		totalEth:          mergedBundle.totalEth,
-		ethSentToCoinbase: mergedBundle.ethSentToCoinbase,
-		totalGasUsed:      mergedBundle.totalGasUsed,
-	}, count, nil
+		MevGasPrice:       new(big.Int).Div(mergedBundle.TotalEth, new(big.Int).SetUint64(mergedBundle.TotalGasUsed)),
+		TotalEth:          mergedBundle.TotalEth,
+		EthSentToCoinbase: mergedBundle.EthSentToCoinbase,
+		TotalGasUsed:      mergedBundle.TotalGasUsed,
+	}, mergedBundles, count, nil
 }
 
 func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pendingTxs map[common.Address]types.Transactions) ([]simulatedBundle, error) {
@@ -1721,11 +1722,11 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 	totalEth := new(big.Int).Add(ethSentToCoinbase, gasFees)
 
 	return simulatedBundle{
-		mevGasPrice:       new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)),
-		totalEth:          totalEth,
-		ethSentToCoinbase: ethSentToCoinbase,
-		totalGasUsed:      totalGasUsed,
-		originalBundle:    bundle,
+		MevGasPrice:       new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)),
+		TotalEth:          totalEth,
+		EthSentToCoinbase: ethSentToCoinbase,
+		TotalGasUsed:      totalGasUsed,
+		OriginalBundle:    bundle,
 	}, nil
 }
 

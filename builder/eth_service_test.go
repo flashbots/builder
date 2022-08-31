@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/beacon"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth"
@@ -90,13 +91,18 @@ func TestBuildBlock(t *testing.T) {
 	}
 
 	service := NewEthereumService(ethservice)
-	executableData, block := service.BuildBlock(testPayloadAttributes)
+	service.eth.APIBackend.Miner().SetEtherbase(common.Address{0x05, 0x11})
 
-	//require.Equal(t, common.Address{0x04, 0x10}, executableData.FeeRecipient)
-	require.Equal(t, common.Hash{0x05, 0x10}, executableData.Random)
-	require.Equal(t, parent.Hash(), executableData.ParentHash)
-	require.Equal(t, parent.Time()+1, executableData.Timestamp)
-	require.Equal(t, block.ParentHash(), parent.Hash())
-	require.Equal(t, block.Hash(), executableData.BlockHash)
-	require.Equal(t, block.Profit.Uint64(), uint64(0))
+	err := service.BuildBlock(testPayloadAttributes, func(block *types.Block, _ []types.SimulatedBundle) {
+		executableData := beacon.BlockToExecutableData(block)
+		require.Equal(t, common.Address{0x05, 0x11}, executableData.FeeRecipient)
+		require.Equal(t, common.Hash{0x05, 0x10}, executableData.Random)
+		require.Equal(t, parent.Hash(), executableData.ParentHash)
+		require.Equal(t, parent.Time()+1, executableData.Timestamp)
+		require.Equal(t, block.ParentHash(), parent.Hash())
+		require.Equal(t, block.Hash(), executableData.BlockHash)
+		require.Equal(t, block.Profit.Uint64(), uint64(0))
+	})
+
+	require.NoError(t, err)
 }
