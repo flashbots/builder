@@ -122,9 +122,13 @@ func TestOnPayloadAttributes(t *testing.T) {
 
 	require.Equal(t, uint64(25), testRelay.requestedSlot)
 
-	// Clear the submitted message and check that the job will be ran again and a new message will be submitted
+	// Clear the submitted message and check that the job will be ran again and but a new message will not be submitted since the profit is the same
 	testRelay.submittedMsg = nil
-	time.Sleep(2 * time.Second)
+	time.Sleep(1200 * time.Millisecond)
+	require.Nil(t, testRelay.submittedMsg)
+
+	// Up the profit, expect to get the block
+	testEthService.testBlock.Profit.SetInt64(11)
+	time.Sleep(1200 * time.Millisecond)
 	require.NotNil(t, testRelay.submittedMsg)
-	require.Equal(t, expectedMessage, *testRelay.submittedMsg.Message)
 }

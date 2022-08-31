@@ -2,7 +2,9 @@ package builder
 
 import (
 	"errors"
+	"math/big"
 	_ "os"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -47,6 +49,10 @@ type Builder struct {
 	builderSecretKey     *bls.SecretKey
 	builderPublicKey     boostTypes.PublicKey
 	builderSigningDomain boostTypes.Domain
+
+	bestMu          sync.Mutex
+	bestAttrs       BuilderPayloadAttributes
+	bestBlockProfit *big.Int
 }
 
 func NewBuilder(sk *bls.SecretKey, bc IBeaconClient, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService) *Builder {
@@ -63,10 +69,25 @@ func NewBuilder(sk *bls.SecretKey, bc IBeaconClient, relay IRelay, builderSignin
 		builderPublicKey: pk,
 
 		builderSigningDomain: builderSigningDomain,
+		bestBlockProfit:      big.NewInt(0),
 	}
 }
 
-func (b *Builder) onSealedBlock(executableData *beacon.ExecutableDataV1, block *types.Block, proposerPubkey boostTypes.PublicKey, proposerFeeRecipient boostTypes.Address, slot uint64) error {
+func (b *Builder) onSealedBlock(executableData *beacon.ExecutableDataV1, block *types.Block, proposerPubkey boostTypes.PublicKey, proposerFeeRecipient boostTypes.Address, attrs *BuilderPayloadAttributes) error {
+	b.bestMu.Lock()
+	defer b.bestMu.Unlock()
+
+	// Do not submit blocks that don't improve the profit
+	if b.bestAttrs != *attrs {
+		b.bestAttrs = *attrs
+		b.bestBlockProfit.SetInt64(0)
+	} else {
+		if block.Profit.Cmp(b.bestBlockProfit) <= 0 {
+			log.Info("Ignoring block that is not improving the profit")
+			return nil
+		}
+	}
+
 	payload, err := executableDataToExecutionPayload(executableData)
 	if err != nil {
 		log.Error("could not format execution payload", "err", err)
@@ -81,7 +102,7 @@ func (b *Builder) onSealedBlock(executableData *beacon.ExecutableDataV1, block *
 	}
 
 	blockBidMsg := boostTypes.BidTrace{
-		Slot:                 slot,
+		Slot:                 attrs.Slot,
 		ParentHash:           payload.ParentHash,
 		BlockHash:            payload.BlockHash,
 		BuilderPubkey:        b.builderPublicKey,
@@ -109,6 +130,8 @@ func (b *Builder) onSealedBlock(executableData *beacon.ExecutableDataV1, block *
 		log.Error("could not submit block", "err", err)
 		return err
 	}
+
+	b.bestBlockProfit.Set(block.Profit)
 
 	return nil
 }
@@ -150,7 +173,7 @@ func (b *Builder) OnPayloadAttribute(attrs *BuilderPayloadAttributes) error {
 			return errors.New("did not receive the payload")
 		}
 
-		err := b.onSealedBlock(executableData, block, proposerPubkey, vd.FeeRecipient, attrs.Slot)
+		err := b.onSealedBlock(executableData, block, proposerPubkey, vd.FeeRecipient, attrs)
 		if err != nil {
 			log.Error("could not run block hook", "err", err)
 			return err
