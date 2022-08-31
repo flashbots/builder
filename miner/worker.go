@@ -1153,8 +1153,6 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 	}
 	defer work.discard()
 
-	coinbaseBalanceBefore := work.state.GetBalance(validatorCoinbase)
-
 	if !params.noTxs {
 		interrupt := new(atomic.Int32)
 		timer := time.AfterFunc(w.newpayloadTimeout, func() {
