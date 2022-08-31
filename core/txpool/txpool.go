@@ -633,59 +633,6 @@ func (pool *TxPool) AddMevBundle(txs types.Transactions, blockNumber *big.Int, m
 	return nil
 }
 
-// AddMegaBundle adds a megabundle to the pool. Assumes the relay signature has been verified already.
-func (pool *TxPool) AddMegabundle(relayAddr common.Address, txs types.Transactions, blockNumber *big.Int, minTimestamp, maxTimestamp uint64, revertingTxHashes []common.Hash) error {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-
-	fromTrustedRelay := false
-	for _, trustedAddr := range pool.config.TrustedRelays {
-		if relayAddr == trustedAddr {
-			fromTrustedRelay = true
-		}
-	}
-	if !fromTrustedRelay {
-		return errors.New("megabundle from non-trusted address")
-	}
-
-	megabundle := types.MevBundle{
-		Txs:               txs,
-		BlockNumber:       blockNumber,
-		MinTimestamp:      minTimestamp,
-		MaxTimestamp:      maxTimestamp,
-		RevertingTxHashes: revertingTxHashes,
-	}
-
-	pool.megabundles[relayAddr] = megabundle
-
-	for _, hook := range pool.NewMegabundleHooks {
-		go hook(relayAddr, &megabundle)
-	}
-
-	return nil
-}
-
-// GetMegabundle returns the latest megabundle submitted by a given relay.
-func (pool *TxPool) GetMegabundle(relayAddr common.Address, blockNumber *big.Int, blockTimestamp uint64) (types.MevBundle, error) {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-
-	megabundle, ok := pool.megabundles[relayAddr]
-	if !ok {
-		return types.MevBundle{}, errors.New("No megabundle found")
-	}
-	if megabundle.BlockNumber.Cmp(blockNumber) != 0 {
-		return types.MevBundle{}, errors.New("Megabundle does not fit blockNumber constraints")
-	}
-	if megabundle.MinTimestamp != 0 && megabundle.MinTimestamp > blockTimestamp {
-		return types.MevBundle{}, errors.New("Megabundle does not fit minTimestamp constraints")
-	}
-	if megabundle.MaxTimestamp != 0 && megabundle.MaxTimestamp < blockTimestamp {
-		return types.MevBundle{}, errors.New("Megabundle does not fit maxTimestamp constraints")
-	}
-	return megabundle, nil
-}
-
 // Locals retrieves the accounts currently considered local by the pool.
 func (pool *TxPool) Locals() []common.Address {
 	pool.mu.Lock()
