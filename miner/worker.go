@@ -1158,8 +1158,6 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 	}
 	defer work.discard()
 
-	coinbaseBalanceBefore := work.state.GetBalance(validatorCoinbase)
-
 	if !params.noTxs {
 		if err := w.fillTransactions(nil, work, &validatorCoinbase); err != nil {
 			return nil, err
@@ -1170,10 +1168,32 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 		return nil, err
 	}
 
-	coinbaseBalanceAfter := work.state.GetBalance(validatorCoinbase)
-	block.Profit = big.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
-	validatorBalance := work.state.GetBalance(validatorCoinbase)
-	log.Info("Block finalized and assembled", "blockProfit", block.Profit.String(), "validatorCoinbaseBalanceBefore", coinbaseBalanceBefore.String(), "validatorCoinbaseBalanceAfter", coinbaseBalanceAfter.String(), "builderCoinbase", params.coinbase.String(), "validatorCoinbase", validatorCoinbase.String(), "validatorBalance", validatorBalance.String())
+	block.Profit = big.NewInt(0)
+
+	if w.config.BuilderTxSigningKey == nil {
+		return block, nil
+	}
+
+	if len(work.txs) == 0 {
+		return nil, errors.New("no proposer payment tx")
+	} else if len(work.receipts) == 0 {
+		return nil, errors.New("no proposer payment receipt")
+	}
+
+	lastTx := work.txs[len(work.txs)-1]
+	receipt := work.receipts[len(work.receipts)-1]
+	if receipt.TxHash != lastTx.Hash() || receipt.Status != types.ReceiptStatusSuccessful {
+		log.Error("proposer payment not successful!", "lastTx", lastTx, "receipt", receipt)
+		return nil, errors.New("last transaction is not proposer payment")
+	}
+	lastTxTo := lastTx.To()
+	if lastTxTo == nil || *lastTxTo != validatorCoinbase {
+		log.Error("last transaction is not to the proposer!", "err", err, "lastTx", lastTx)
+		return nil, errors.New("last transaction is not proposer payment")
+	}
+
+	block.Profit.Set(lastTx.Value())
+	log.Info("Block finalized and assembled", "blockProfit", block.Profit.String(), "proposer payment tx", lastTx, "receipt", receipt)
 	return block, nil
 }
 
