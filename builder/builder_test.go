@@ -47,7 +47,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 		FeeRecipient: common.Address(feeRecipient),
 		StateRoot:    common.Hash{0x07, 0x16},
 		ReceiptsRoot: common.Hash{0x08, 0x20},
-		LogsBloom:    hexutil.MustDecode("0x000000000000000000000000000000"),
+		LogsBloom:    types.Bloom{}.Bytes(),
 		Number:       uint64(10),
 		GasLimit:     uint64(50),
 		GasUsed:      uint64(100),
@@ -56,13 +56,13 @@ func TestOnPayloadAttributes(t *testing.T) {
 
 		BaseFeePerGas: big.NewInt(16),
 
-		BlockHash:    common.Hash{0x09, 0xff},
+		BlockHash:    common.HexToHash("0xca4147f0d4150183ece9155068f34ee3c375448814e4ca557d482b1d40ee5407"),
 		Transactions: [][]byte{},
 	}
 
-	testBlock := &types.Block{
-		Profit: big.NewInt(10),
-	}
+	testBlock, err := beacon.ExecutableDataToBlock(*testExecutableData)
+	require.NoError(t, err)
+	testBlock.Profit = big.NewInt(10)
 
 	testPayloadAttributes := &BuilderPayloadAttributes{
 		Timestamp:             hexutil.Uint64(104),
@@ -74,7 +74,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 
 	testEthService := &testEthereumService{synced: true, testExecutableData: testExecutableData, testBlock: testBlock}
 
-	builder := NewBuilder(sk, &testBeacon, &testRelay, bDomain, testEthService)
+	builder := NewBuilder(sk, NilDbService{}, &testBeacon, &testRelay, bDomain, testEthService)
 
 	builder.OnPayloadAttribute(testPayloadAttributes)
 
@@ -85,7 +85,6 @@ func TestOnPayloadAttributes(t *testing.T) {
 	expectedMessage := boostTypes.BidTrace{
 		Slot:                 uint64(25),
 		ParentHash:           boostTypes.Hash{0x02, 0x03},
-		BlockHash:            boostTypes.Hash{0x09, 0xff},
 		BuilderPubkey:        builder.builderPublicKey,
 		ProposerPubkey:       expectedProposerPubkey,
 		ProposerFeeRecipient: feeRecipient,
@@ -93,6 +92,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 		GasUsed:              uint64(100),
 		Value:                boostTypes.U256Str{0x0a},
 	}
+	expectedMessage.BlockHash.FromSlice(hexutil.MustDecode("0xca4147f0d4150183ece9155068f34ee3c375448814e4ca557d482b1d40ee5407")[:])
 
 	require.Equal(t, expectedMessage, *testRelay.submittedMsg.Message)
 
@@ -109,13 +109,13 @@ func TestOnPayloadAttributes(t *testing.T) {
 		Timestamp:     testExecutableData.Timestamp,
 		ExtraData:     hexutil.MustDecode("0x0042fafc"),
 		BaseFeePerGas: boostTypes.U256Str{0x10},
-		BlockHash:     boostTypes.Hash{0x09, 0xff},
+		BlockHash:     expectedMessage.BlockHash,
 		Transactions:  []hexutil.Bytes{},
 	}
 
 	require.Equal(t, expectedExecutionPayload, *testRelay.submittedMsg.ExecutionPayload)
 
-	expectedSignature, err := boostTypes.HexToSignature("0xb086abc231a515559128122a6618ad316a76195ad39aa28195c9e8921b98561ca4fd12e2e1ea8d50d8e22f7e36d42ee1084fef26672beceda7650a87061e412d7742705077ac3af3ca1a1c3494eccb22fe7c234fd547a285ba699ff87f0e7759")
+	expectedSignature, err := boostTypes.HexToSignature("0xad09f171b1da05636acfc86778c319af69e39c79515d44bdfed616ba2ef677ffd4d155d87b3363c6bae651ce1e92786216b75f1ac91dd65f3b1d1902bf8485e742170732dd82ffdf4decb0151eeb7926dd053efa9794b2ebed1a203e62bb13e9")
 
 	require.NoError(t, err)
 	require.Equal(t, expectedSignature, testRelay.submittedMsg.Signature)

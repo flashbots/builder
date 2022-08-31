@@ -41,6 +41,7 @@ type IBuilder interface {
 }
 
 type Builder struct {
+	ds           IDatabaseService
 	beaconClient IBeaconClient
 	relay        IRelay
 	eth          IEthereumService
@@ -55,12 +56,13 @@ type Builder struct {
 	bestBlockProfit *big.Int
 }
 
-func NewBuilder(sk *bls.SecretKey, bc IBeaconClient, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService) *Builder {
+func NewBuilder(sk *bls.SecretKey, ds IDatabaseService, bc IBeaconClient, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService) *Builder {
 	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
 
 	return &Builder{
+		ds:               ds,
 		beaconClient:     bc,
 		relay:            relay,
 		eth:              eth,
@@ -73,7 +75,7 @@ func NewBuilder(sk *bls.SecretKey, bc IBeaconClient, relay IRelay, builderSignin
 	}
 }
 
-func (b *Builder) onSealedBlock(executableData *beacon.ExecutableDataV1, block *types.Block, proposerPubkey boostTypes.PublicKey, proposerFeeRecipient boostTypes.Address, attrs *BuilderPayloadAttributes) error {
+func (b *Builder) onSealedBlock(block *types.Block, bundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, proposerFeeRecipient boostTypes.Address, attrs *BuilderPayloadAttributes) error {
 	b.bestMu.Lock()
 	defer b.bestMu.Unlock()
 
@@ -88,6 +90,7 @@ func (b *Builder) onSealedBlock(executableData *beacon.ExecutableDataV1, block *
 		}
 	}
 
+	executableData := beacon.BlockToExecutableData(block)
 	payload, err := executableDataToExecutionPayload(executableData)
 	if err != nil {
 		log.Error("could not format execution payload", "err", err)
@@ -133,6 +136,7 @@ func (b *Builder) onSealedBlock(executableData *beacon.ExecutableDataV1, block *
 
 	b.bestBlockProfit.Set(block.Profit)
 
+	go b.ds.ConsumeBuiltBlock(block, bundles, &blockBidMsg)
 	return nil
 }
 
@@ -166,20 +170,15 @@ func (b *Builder) OnPayloadAttribute(attrs *BuilderPayloadAttributes) error {
 		return errors.New("parent block not found in blocktree")
 	}
 
-	firstBlockResult := b.resubmitter.newTask(12*time.Second, time.Second, func() error {
-		executableData, block := b.eth.BuildBlock(attrs)
-		if executableData == nil || block == nil {
-			log.Error("did not receive the payload")
-			return errors.New("did not receive the payload")
-		}
-
-		err := b.onSealedBlock(executableData, block, proposerPubkey, vd.FeeRecipient, attrs)
+	blockHook := func(block *types.Block, bundles []types.SimulatedBundle) {
+		err := b.onSealedBlock(block, bundles, proposerPubkey, vd.FeeRecipient, attrs)
 		if err != nil {
-			log.Error("could not run block hook", "err", err)
-			return err
+			log.Error("could not run sealed block hook", "err", err)
 		}
+	}
 
-		return nil
+	firstBlockResult := b.resubmitter.newTask(12*time.Second, time.Second, func() error {
+		return b.eth.BuildBlock(attrs, blockHook)
 	})
 
 	return firstBlockResult

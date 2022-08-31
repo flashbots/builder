@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -159,7 +160,15 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *BuilderConfig) error
 
 	ethereumService := NewEthereumService(backend)
 
-	builderBackend := NewBuilder(builderSk, beaconClient, relay, builderSigningDomain, ethereumService)
+	// TODO: move to proper flags
+	var ds IDatabaseService
+	ds, err = NewDatabaseService(os.Getenv("FLASHBOTS_POSTGRES_DSN"))
+	if err != nil {
+		log.Error("could not connect to the DB", "err", err)
+		ds = NilDbService{}
+	}
+
+	builderBackend := NewBuilder(builderSk, ds, beaconClient, relay, builderSigningDomain, ethereumService)
 	builderService := NewService(cfg.ListenAddr, localRelay, builderBackend)
 	builderService.Start()
 
