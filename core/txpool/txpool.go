@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
+	"golang.org/x/crypto/sha3"
 )
 
 const (
@@ -629,6 +630,12 @@ func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]t
 
 // AddMevBundle adds a mev bundle to the pool
 func (pool *TxPool) AddMevBundle(txs types.Transactions, blockNumber *big.Int, minTimestamp, maxTimestamp uint64, revertingTxHashes []common.Hash) error {
+	bundleHasher := sha3.NewLegacyKeccak256()
+	for _, tx := range txs {
+		bundleHasher.Write(tx.Hash().Bytes())
+	}
+	bundleHash := common.BytesToHash(bundleHasher.Sum(nil))
+
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 
@@ -638,6 +645,7 @@ func (pool *TxPool) AddMevBundle(txs types.Transactions, blockNumber *big.Int, m
 		MinTimestamp:      minTimestamp,
 		MaxTimestamp:      maxTimestamp,
 		RevertingTxHashes: revertingTxHashes,
+		Hash:              bundleHash,
 	})
 	return nil
 }

@@ -91,11 +91,11 @@ type resChPair struct {
 	errCh chan error
 }
 
-func (w *multiWorker) GetSealingBlockAsync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool) (chan *types.Block, error) {
+func (w *multiWorker) GetSealingBlockAsync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool, blockHook func(*types.Block, []types.SimulatedBundle)) (chan *types.Block, error) {
 	resChans := []resChPair{}
 
 	for _, worker := range append(w.workers, w.regularWorker) {
-		resCh, errCh, err := worker.getSealingBlock(parent, timestamp, coinbase, gasLimit, random, noTxs, noExtra)
+		resCh, errCh, err := worker.getSealingBlock(parent, timestamp, coinbase, gasLimit, random, noTxs, noExtra, blockHook)
 		if err != nil {
 			log.Error("could not start async block construction", "isFlashbotsWorker", worker.flashbots.isFlashbots, "#bundles", worker.flashbots.maxMergedBundles)
 			continue
@@ -128,8 +128,8 @@ func (w *multiWorker) GetSealingBlockAsync(parent common.Hash, timestamp uint64,
 	return resCh, nil
 }
 
-func (w *multiWorker) GetSealingBlockSync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool) (*types.Block, error) {
-	resCh, err := w.GetSealingBlockAsync(parent, timestamp, coinbase, gasLimit, random, noTxs, noExtra)
+func (w *multiWorker) GetSealingBlockSync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool, blockHook func(*types.Block, []types.SimulatedBundle)) (*types.Block, error) {
+	resCh, err := w.GetSealingBlockAsync(parent, timestamp, coinbase, gasLimit, random, noTxs, noExtra, blockHook)
 	if err != nil {
 		return nil, err
 	}

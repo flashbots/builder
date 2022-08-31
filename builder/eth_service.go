@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"errors"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -11,7 +12,7 @@ import (
 )
 
 type IEthereumService interface {
-	BuildBlock(attrs *BuilderPayloadAttributes) (*beacon.ExecutableDataV1, *types.Block)
+	BuildBlock(attrs *BuilderPayloadAttributes, sealedBlockCallback func(*types.Block, []types.SimulatedBundle)) error
 	GetBlockByHash(hash common.Hash) *types.Block
 	Synced() bool
 }
@@ -20,10 +21,12 @@ type testEthereumService struct {
 	synced             bool
 	testExecutableData *beacon.ExecutableDataV1
 	testBlock          *types.Block
+	testBundlesMerged  []types.SimulatedBundle
 }
 
-func (t *testEthereumService) BuildBlock(attrs *BuilderPayloadAttributes) (*beacon.ExecutableDataV1, *types.Block) {
-	return t.testExecutableData, t.testBlock
+func (t *testEthereumService) BuildBlock(attrs *BuilderPayloadAttributes, sealedBlockCallback func(*types.Block, []types.SimulatedBundle)) error {
+	sealedBlockCallback(t.testBlock, t.testBundlesMerged)
+	return nil
 }
 
 func (t *testEthereumService) GetBlockByHash(hash common.Hash) *types.Block { return t.testBlock }
@@ -38,13 +41,13 @@ func NewEthereumService(eth *eth.Ethereum) *EthereumService {
 	return &EthereumService{eth: eth}
 }
 
-func (s *EthereumService) BuildBlock(attrs *BuilderPayloadAttributes) (*beacon.ExecutableDataV1, *types.Block) {
+func (s *EthereumService) BuildBlock(attrs *BuilderPayloadAttributes, sealedBlockCallback func(*types.Block, []types.SimulatedBundle)) error {
 	// Send a request to generate a full block in the background.
 	// The result can be obtained via the returned channel.
-	resCh, err := s.eth.Miner().GetSealingBlockAsync(attrs.HeadHash, uint64(attrs.Timestamp), attrs.SuggestedFeeRecipient, attrs.GasLimit, attrs.Random, false)
+	resCh, err := s.eth.Miner().GetSealingBlockAsync(attrs.HeadHash, uint64(attrs.Timestamp), attrs.SuggestedFeeRecipient, attrs.GasLimit, attrs.Random, false, sealedBlockCallback)
 	if err != nil {
 		log.Error("Failed to create async sealing payload", "err", err)
-		return nil, nil
+		return err
 	}
 
 	timer := time.NewTimer(4 * time.Second)
@@ -53,13 +56,12 @@ func (s *EthereumService) BuildBlock(attrs *BuilderPayloadAttributes) (*beacon.E
 	select {
 	case block := <-resCh:
 		if block == nil {
-			log.Error("received nil block from sealing work")
-			return nil, nil
+			return errors.New("received nil block from sealing work")
 		}
-		return beacon.BlockToExecutableData(block), block
+		return nil
 	case <-timer.C:
 		log.Error("timeout waiting for block", "parent hash", attrs.HeadHash, "slot", attrs.Slot)
-		return nil, nil
+		return errors.New("timeout waiting for block result")
 	}
 }
 
