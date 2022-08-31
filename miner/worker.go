@@ -163,10 +163,9 @@ type task struct {
 	block     *types.Block
 	createdAt time.Time
 
-	profit       *big.Int
-	isFlashbots  bool
-	worker       int
-	isMegabundle bool
+	profit      *big.Int
+	isFlashbots bool
+	worker      int
 }
 
 const (
@@ -225,7 +224,6 @@ type worker struct {
 	exitCh             chan struct{}
 	resubmitIntervalCh chan time.Duration
 	resubmitAdjustCh   chan *intervalAdjust
-	newMegabundleCh    chan *types.MevBundle
 
 	wg sync.WaitGroup
 
@@ -334,7 +332,6 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		resultCh:           make(chan *types.Block, resultQueueSize),
 		exitCh:             exitCh,
 		startCh:            make(chan struct{}, 1),
-		newMegabundleCh:    make(chan *types.MevBundle),
 		resubmitIntervalCh: make(chan time.Duration),
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
 		coinbase:           builderCoinbase,
@@ -543,11 +540,6 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			clearPending(head.Block.NumberU64())
 			timestamp = time.Now().Unix()
 			commit(false, commitInterruptNewHead)
-
-		case <-w.newMegabundleCh:
-			if w.isRunning() {
-				commit(true, commitInterruptNone)
-			}
 
 		case <-timer.C:
 			// If sealing is running resubmit a new work cycle periodically to pull in
@@ -759,7 +751,7 @@ func (w *worker) taskLoop() {
 			// Interrupt previous sealing operation
 			interrupt()
 			stopCh, prev = make(chan struct{}), sealHash
-			log.Info("Proposed miner block", "blockNumber", task.block.Number(), "profit", ethIntToFloat(prevProfit), "isFlashbots", task.isFlashbots, "sealhash", sealHash, "parentHash", prevParentHash, "worker", task.worker, "isMegabundle", task.isMegabundle)
+			log.Info("Proposed miner block", "blockNumber", task.block.Number(), "profit", ethIntToFloat(prevProfit), "isFlashbots", task.isFlashbots, "sealhash", sealHash, "parentHash", prevParentHash, "worker", task.worker)
 			if w.skipSealHook != nil && w.skipSealHook(task) {
 				continue
 			}
@@ -1294,7 +1286,7 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorC
 			return err
 		}
 	}
-	if w.flashbots.isFlashbots && !w.flashbots.isMegabundleWorker {
+	if w.flashbots.isFlashbots {
 		bundles, err := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
 		if err != nil {
 			log.Error("Failed to fetch pending transactions", "err", err)
@@ -1314,40 +1306,6 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorC
 			return err
 		}
 		env.profit.Add(env.profit, bundle.ethSentToCoinbase)
-	}
-	if w.flashbots.isMegabundleWorker {
-		megabundle, err := w.eth.TxPool().GetMegabundle(w.flashbots.relayAddr, env.header.Number, env.header.Time)
-		log.Info("Starting to process a Megabundle", "relay", w.flashbots.relayAddr, "megabundle", megabundle, "error", err)
-		if err != nil {
-			return err // no valid megabundle for this relay, nothing to do
-		}
-
-		// Flashbots bundle merging duplicates work by simulating TXes and then committing them once more.
-		// Megabundles API focuses on speed and runs everything in one cycle.
-		coinbaseBalanceBefore := env.state.GetBalance(env.coinbase)
-		if err := w.commitBundle(env, megabundle.Txs, interrupt); err != nil {
-			log.Info("Could not commit a Megabundle", "relay", w.flashbots.relayAddr, "megabundle", megabundle, "err", err)
-			return err
-		}
-		var txStatuses = map[common.Hash]bool{}
-		for _, receipt := range env.receipts {
-			txStatuses[receipt.TxHash] = receipt.Status == types.ReceiptStatusSuccessful
-		}
-		for _, tx := range megabundle.Txs {
-			status, ok := txStatuses[tx.Hash()]
-			if !ok {
-				log.Error("No TX receipt after megabundle simulation", "TxHash", tx.Hash())
-				return errors.New("no tx receipt after megabundle simulation")
-			}
-			if !status && !containsHash(megabundle.RevertingTxHashes, tx.Hash()) {
-				log.Info("Ignoring megabundle because of failing TX", "relay", w.flashbots.relayAddr, "TxHash", tx.Hash())
-				return errors.New("megabundle contains failing tx")
-			}
-		}
-		coinbaseBalanceAfter := env.state.GetBalance(env.coinbase)
-		coinbaseDelta := big.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
-		env.profit = coinbaseDelta
-		log.Info("Megabundle processed", "relay", w.flashbots.relayAddr, "totalProfit", ethIntToFloat(env.profit))
 	}
 
 	if len(localTxs) > 0 {
@@ -1509,12 +1467,12 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		// If we're post merge, just ignore
 		if !w.isTTDReached(block.Header()) {
 			select {
-			case w.taskCh <- &task{receipts: env.receipts, state: env.state, block: block, createdAt: time.Now(), profit: env.profit, isFlashbots: w.flashbots.isFlashbots, worker: w.flashbots.maxMergedBundles, isMegabundle: w.flashbots.isMegabundleWorker}:
+			case w.taskCh <- &task{receipts: env.receipts, state: env.state, block: block, createdAt: time.Now(), profit: env.profit, isFlashbots: w.flashbots.isFlashbots, worker: w.flashbots.maxMergedBundles}:
 				w.unconfirmed.Shift(block.NumberU64() - 1)
 				log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
 					"uncles", len(env.uncles), "txs", env.tcount, "gas", block.GasUsed(), "fees", totalFees(block, env.receipts),
 					"profit", ethIntToFloat(env.profit), "elapsed", common.PrettyDuration(time.Since(start)),
-					"isFlashbots", w.flashbots.isFlashbots, "worker", w.flashbots.maxMergedBundles, "isMegabundle", w.flashbots.isMegabundleWorker)
+					"isFlashbots", w.flashbots.isFlashbots, "worker", w.flashbots.maxMergedBundles)
 			case <-w.exitCh:
 				log.Info("Worker has exited")
 			}
