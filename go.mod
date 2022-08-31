@@ -43,8 +43,10 @@ require (
 	github.com/influxdata/influxdb-client-go/v2 v2.4.0
 	github.com/jackpal/go-nat-pmp v1.0.2
 	github.com/jedisct1/go-minisign v0.0.0-20190909160543-45766022959e
+	github.com/jmoiron/sqlx v1.3.5
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/karalabe/usb v0.0.2
+	github.com/lib/pq v1.2.0
 	github.com/mattn/go-colorable v0.1.9
 	github.com/mattn/go-isatty v0.0.14
 	github.com/naoina/toml v0.1.2-0.20170918210437-9fafd6967416

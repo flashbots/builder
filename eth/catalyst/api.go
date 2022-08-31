@@ -277,14 +277,14 @@ func (api *ConsensusAPI) ForkchoiceUpdatedV1(update beacon.ForkchoiceStateV1, pa
 	// might replace it arbitrarily many times in between.
 	if payloadAttributes != nil {
 		// Create an empty block first which can be used as a fallback
-		empty, err := api.eth.Miner().GetSealingBlockSync(update.HeadBlockHash, payloadAttributes.Timestamp, payloadAttributes.SuggestedFeeRecipient, payloadAttributes.GasLimit, payloadAttributes.Random, true)
+		empty, err := api.eth.Miner().GetSealingBlockSync(update.HeadBlockHash, payloadAttributes.Timestamp, payloadAttributes.SuggestedFeeRecipient, payloadAttributes.GasLimit, payloadAttributes.Random, true, nil)
 		if err != nil {
 			log.Error("Failed to create empty sealing payload", "err", err)
 			return valid(nil), beacon.InvalidPayloadAttributes.With(err)
 		}
 		// Send a request to generate a full block in the background.
 		// The result can be obtained via the returned channel.
-		resCh, err := api.eth.Miner().GetSealingBlockAsync(update.HeadBlockHash, payloadAttributes.Timestamp, payloadAttributes.SuggestedFeeRecipient, payloadAttributes.GasLimit, payloadAttributes.Random, false)
+		resCh, err := api.eth.Miner().GetSealingBlockAsync(update.HeadBlockHash, payloadAttributes.Timestamp, payloadAttributes.SuggestedFeeRecipient, payloadAttributes.GasLimit, payloadAttributes.Random, false, nil)
 		if err != nil {
 			log.Error("Failed to create async sealing payload", "err", err)
 			return valid(nil), beacon.InvalidPayloadAttributes.With(err)
