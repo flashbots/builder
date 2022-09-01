@@ -136,6 +136,7 @@ var (
 		utils.MinerNoVerifyFlag,
 		utils.MinerMaxMergedBundlesFlag,
 		utils.MinerTrustedRelaysFlag,
+		utils.MinerBlocklistFileFlag,
 		utils.NATFlag,
 		utils.NoDiscoverFlag,
 		utils.DiscoveryV5Flag,

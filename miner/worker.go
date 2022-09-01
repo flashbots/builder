@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -88,6 +89,7 @@ var (
 	errBundleInterrupted          = errors.New("interrupt while applying bundles")
 	errBlockInterruptedByNewHead  = errors.New("new head arrived while building block")
 	errBlockInterruptedByRecommit = errors.New("recommit interrupt while building block")
+	errBlocklistViolation         = errors.New("blocklist violation")
 )
 
 // environment is the worker's current environment and holds all
@@ -202,6 +204,7 @@ type worker struct {
 	engine      consensus.Engine
 	eth         Backend
 	chain       *core.BlockChain
+	blockList   map[common.Address]struct{}
 
 	// Feeds
 	pendingLogsFeed event.Feed
@@ -311,6 +314,11 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		}()
 	}
 
+	blockList := make(map[common.Address]struct{})
+	for _, address := range config.Blocklist {
+		blockList[address] = struct{}{}
+	}
+
 	worker := &worker{
 		config:             config,
 		chainConfig:        chainConfig,
@@ -318,6 +326,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		eth:                eth,
 		mux:                mux,
 		chain:              eth.BlockChain(),
+		blockList:          blockList,
 		isLocalBlock:       isLocalBlock,
 		localUncles:        make(map[common.Hash]*types.Block),
 		remoteUncles:       make(map[common.Hash]*types.Block),
@@ -919,18 +928,47 @@ func (w *worker) updateSnapshot(env *environment) {
 }
 
 func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*types.Log, error) {
-	snap := env.state.Snapshot()
+	gasPool := *env.gasPool
+	envGasUsed := env.header.GasUsed
+	var stateDB *state.StateDB
+	if len(w.blockList) != 0 {
+		stateDB = env.state.Copy()
+	} else {
+		stateDB = env.state
+	}
+
+	snapshot := stateDB.Snapshot()
 
 	gasPrice, err := tx.EffectiveGasTip(env.header.BaseFee)
 	if err != nil {
 		return nil, err
 	}
 
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, *w.chain.GetVMConfig())
+	var tracer *logger.AccountTouchTracer
+	config := *w.chain.GetVMConfig()
+	if len(w.blockList) != 0 {
+		tracer = logger.NewAccountTouchTracer()
+		config.Tracer = tracer
+		config.Debug = true
+	}
+
+	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, &gasPool, stateDB, env.header, tx, &envGasUsed, config)
 	if err != nil {
-		env.state.RevertToSnapshot(snap)
+		stateDB.RevertToSnapshot(snapshot)
 		return nil, err
 	}
+	if len(w.blockList) != 0 {
+		for _, address := range tracer.TouchedAddresses() {
+			if _, in := w.blockList[address]; in {
+				return nil, errBlocklistViolation
+			}
+		}
+	}
+
+	*env.gasPool = gasPool
+	env.header.GasUsed = envGasUsed
+	env.state = stateDB
+
 	env.txs = append(env.txs, tx)
 	env.receipts = append(env.receipts, receipt)
 
@@ -1373,11 +1411,13 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 
 	var blockBundles []types.SimulatedBundle
 	if !params.noTxs {
+		start := time.Now()
 		err, mergedBundles := w.fillTransactions(nil, work, &validatorCoinbase)
 		if err != nil {
 			return nil, err
 		}
 		blockBundles = mergedBundles
+		log.Info("Filled block with transactions", "time", time.Since(start), "gas used", work.header.GasUsed)
 	}
 	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts)
 	if err != nil {
@@ -1666,12 +1706,26 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 		state.Prepare(tx.Hash(), i+currentTxCount)
 		coinbaseBalanceBefore := state.GetBalance(env.coinbase)
 
-		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, gasPool, state, env.header, tx, &tempGasUsed, *w.chain.GetVMConfig())
+		config := *w.chain.GetVMConfig()
+		var tracer *logger.AccountTouchTracer
+		if len(w.blockList) != 0 {
+			tracer = logger.NewAccountTouchTracer()
+			config.Tracer = tracer
+			config.Debug = true
+		}
+		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, gasPool, state, env.header, tx, &tempGasUsed, config)
 		if err != nil {
 			return simulatedBundle{}, err
 		}
 		if receipt.Status == types.ReceiptStatusFailed && !containsHash(bundle.RevertingTxHashes, receipt.TxHash) {
 			return simulatedBundle{}, errors.New("failed tx")
+		}
+		if len(w.blockList) != 0 {
+			for _, address := range tracer.TouchedAddresses() {
+				if _, in := w.blockList[address]; in {
+					return simulatedBundle{}, errBlocklistViolation
+				}
+			}
 		}
 
 		totalGasUsed += receipt.GasUsed
