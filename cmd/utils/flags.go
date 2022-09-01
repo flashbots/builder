@@ -577,6 +577,12 @@ var (
 		Value:    "0x870e2734DdBe2Fba9864f33f3420d59Bc641f2be",
 		Category: flags.MinerCategory,
 	}
+	MinerBlocklistFileFlag = &cli.StringFlag{
+		Name:     "miner.blocklist",
+		Usage:    "flashbots - Path to JSON file with list of blocked addresses. Miner will ignore txs that touch mentioned addresses.",
+		Value:    "",
+		Category: flags.MinerCategory,
+	}
 
 	// Account settings
 	UnlockedAccountFlag = &cli.StringFlag{
@@ -1764,6 +1770,17 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 		}
 	}
 	log.Info("Trusted relays set as", "addresses", cfg.TrustedRelays)
+
+	if ctx.IsSet(MinerBlocklistFileFlag.Name) {
+		bytes, err := os.ReadFile(ctx.String(MinerBlocklistFileFlag.Name))
+		if err != nil {
+			Fatalf("Failed to read blocklist file: %s", err)
+		}
+
+		if err := json.Unmarshal(bytes, &cfg.Blocklist); err != nil {
+			Fatalf("Failed to parse blocklist: %s", err)
+		}
+	}
 }
 
 func setRequiredBlocks(ctx *cli.Context, cfg *ethconfig.Config) {
