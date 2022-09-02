@@ -937,6 +937,9 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 		stateDB = env.state
 	}
 
+	// It's important to copy then .Prepare() - don't reorder.
+	stateDB.Prepare(tx.Hash(), env.tcount)
+
 	snapshot := stateDB.Snapshot()
 
 	gasPrice, err := tx.EffectiveGasTip(env.header.BaseFee)
@@ -1024,8 +1027,6 @@ func (w *worker) commitBundle(env *environment, txs types.Transactions, interrup
 			log.Trace("Ignoring reply protected transaction", "hash", tx.Hash(), "eip155", w.chainConfig.EIP155Block)
 			return errCouldNotApplyTransaction
 		}
-		// Start executing the transaction
-		env.state.Prepare(tx.Hash(), env.tcount)
 
 		logs, err := w.commitTransaction(env, tx)
 		switch {
@@ -1138,8 +1139,6 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 			txs.Pop()
 			continue
 		}
-		// Start executing the transaction
-		env.state.Prepare(tx.Hash(), env.tcount)
 
 		logs, err := w.commitTransaction(env, tx)
 		switch {
@@ -1376,7 +1375,6 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorC
 			}
 			if tx != nil {
 				log.Info("Proposer payout create tx succeeded, proceeding to commit tx")
-				env.state.Prepare(tx.Hash(), env.tcount)
 				_, err = w.commitTransaction(env, tx)
 				if err != nil {
 					log.Error("Proposer payout commit tx failed", "hash", tx.Hash().String(), "err", err)
