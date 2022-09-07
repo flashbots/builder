@@ -41,11 +41,23 @@ type Service struct {
 	builder IBuilder
 }
 
-func (s *Service) Start() {
+func (s *Service) Start() error {
 	if s.srv != nil {
 		log.Info("Service started")
 		go s.srv.ListenAndServe()
 	}
+
+	s.builder.Start()
+
+	return nil
+}
+
+func (s *Service) Stop() error {
+	if s.srv != nil {
+		s.srv.Close()
+	}
+	s.builder.Stop()
+	return nil
 }
 
 func (s *Service) PayloadAttributes(payloadAttributes *BuilderPayloadAttributes) error {
@@ -170,7 +182,6 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *BuilderConfig) error
 
 	builderBackend := NewBuilder(builderSk, ds, beaconClient, relay, builderSigningDomain, ethereumService)
 	builderService := NewService(cfg.ListenAddr, localRelay, builderBackend)
-	builderService.Start()
 
 	stack.RegisterAPIs([]rpc.API{
 		{
@@ -181,5 +192,8 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *BuilderConfig) error
 			Authenticated: true,
 		},
 	})
+
+	stack.RegisterLifecycle(builderService)
+
 	return nil
 }

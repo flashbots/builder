@@ -75,8 +75,11 @@ func TestOnPayloadAttributes(t *testing.T) {
 	testEthService := &testEthereumService{synced: true, testExecutableData: testExecutableData, testBlock: testBlock}
 
 	builder := NewBuilder(sk, NilDbService{}, &testBeacon, &testRelay, bDomain, testEthService)
+	builder.Start()
+	defer builder.Stop()
 
-	builder.OnPayloadAttribute(testPayloadAttributes)
+	err = builder.OnPayloadAttribute(testPayloadAttributes)
+	require.NoError(t, err)
 
 	require.NotNil(t, testRelay.submittedMsg)
 	expectedProposerPubkey, err := boostTypes.HexToPubkey(testBeacon.validator.Pk.String())
