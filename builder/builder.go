@@ -38,14 +38,17 @@ type IRelay interface {
 
 type IBuilder interface {
 	OnPayloadAttribute(attrs *BuilderPayloadAttributes) error
+	Start() error
+	Stop() error
 }
 
 type Builder struct {
-	ds           IDatabaseService
-	beaconClient IBeaconClient
-	relay        IRelay
-	eth          IEthereumService
-	resubmitter  Resubmitter
+	ds                         IDatabaseService
+	beaconClient               IBeaconClient
+	relay                      IRelay
+	eth                        IEthereumService
+	resubmitter                Resubmitter
+	blockSubmissionRateLimiter *BlockSubmissionRateLimiter
 
 	builderSecretKey     *bls.SecretKey
 	builderPublicKey     boostTypes.PublicKey
@@ -62,17 +65,28 @@ func NewBuilder(sk *bls.SecretKey, ds IDatabaseService, bc IBeaconClient, relay 
 	pk.FromSlice(pkBytes)
 
 	return &Builder{
-		ds:               ds,
-		beaconClient:     bc,
-		relay:            relay,
-		eth:              eth,
-		resubmitter:      Resubmitter{},
-		builderSecretKey: sk,
-		builderPublicKey: pk,
+		ds:                         ds,
+		beaconClient:               bc,
+		relay:                      relay,
+		eth:                        eth,
+		resubmitter:                Resubmitter{},
+		blockSubmissionRateLimiter: NewBlockSubmissionRateLimiter(),
+		builderSecretKey:           sk,
+		builderPublicKey:           pk,
 
 		builderSigningDomain: builderSigningDomain,
 		bestBlockProfit:      big.NewInt(0),
 	}
+}
+
+func (b *Builder) Start() error {
+	b.blockSubmissionRateLimiter.Start()
+	return nil
+}
+
+func (b *Builder) Stop() error {
+	b.blockSubmissionRateLimiter.Stop()
+	return nil
 }
 
 func (b *Builder) onSealedBlock(block *types.Block, bundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, proposerFeeRecipient boostTypes.Address, attrs *BuilderPayloadAttributes) error {
@@ -116,6 +130,8 @@ func (b *Builder) onSealedBlock(block *types.Block, bundles []types.SimulatedBun
 		Value:                *value,
 	}
 
+	go b.ds.ConsumeBuiltBlock(block, bundles, &blockBidMsg)
+
 	signature, err := boostTypes.SignMessage(&blockBidMsg, b.builderSigningDomain, b.builderSecretKey)
 	if err != nil {
 		log.Error("could not sign builder bid", "err", err)
@@ -134,9 +150,9 @@ func (b *Builder) onSealedBlock(block *types.Block, bundles []types.SimulatedBun
 		return err
 	}
 
-	b.bestBlockProfit.Set(block.Profit)
+	log.Info("submitted block", "header", block.Header(), "bid", blockBidMsg)
 
-	go b.ds.ConsumeBuiltBlock(block, bundles, &blockBidMsg)
+	b.bestBlockProfit.Set(block.Profit)
 	return nil
 }
 
@@ -171,6 +187,16 @@ func (b *Builder) OnPayloadAttribute(attrs *BuilderPayloadAttributes) error {
 	}
 
 	blockHook := func(block *types.Block, bundles []types.SimulatedBundle) {
+		select {
+		case shouldSubmit := <-b.blockSubmissionRateLimiter.Limit(block):
+			if !shouldSubmit {
+				log.Info("Block rate limited", "blochHash", block.Hash())
+				return
+			}
+		case <-time.After(200 * time.Millisecond):
+			log.Info("Block rate limit timeout, submitting the block anyway")
+		}
+
 		err := b.onSealedBlock(block, bundles, proposerPubkey, vd.FeeRecipient, attrs)
 		if err != nil {
 			log.Error("could not run sealed block hook", "err", err)
@@ -178,6 +204,7 @@ func (b *Builder) OnPayloadAttribute(attrs *BuilderPayloadAttributes) error {
 	}
 
 	firstBlockResult := b.resubmitter.newTask(12*time.Second, time.Second, func() error {
+		log.Info("Resubmitting build job")
 		return b.eth.BuildBlock(attrs, blockHook)
 	})
 

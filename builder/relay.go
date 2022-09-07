@@ -150,8 +150,6 @@ func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest) err
 		return fmt.Errorf("non-ok response code %d from relay ", code)
 	}
 
-	log.Info("submitted block", "msg", msg)
-
 	if r.localRelay != nil {
 		r.localRelay.SubmitBlock(msg)
 	}
