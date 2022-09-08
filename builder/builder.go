@@ -146,8 +146,10 @@ func (b *Builder) onSealedBlock(block *types.Block, bundles []types.SimulatedBun
 
 	err = b.relay.SubmitBlock(&blockSubmitReq)
 	if err != nil {
-		log.Error("could not submit block", "err", err)
+		log.Error("could not submit block", "err", err, "bundles", len(bundles))
 		return err
+	} else {
+		log.Info("could submit block", "bundles", len(bundles))
 	}
 
 	log.Info("submitted block", "header", block.Header(), "bid", blockBidMsg)

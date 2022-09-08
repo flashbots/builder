@@ -94,7 +94,7 @@ type resChPair struct {
 func (w *multiWorker) GetSealingBlockAsync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool, blockHook func(*types.Block, []types.SimulatedBundle)) (chan *types.Block, error) {
 	resChans := []resChPair{}
 
-	for _, worker := range append(w.workers, w.regularWorker) {
+	for _, worker := range append(w.workers) {
 		resCh, errCh, err := worker.getSealingBlock(parent, timestamp, coinbase, gasLimit, random, noTxs, noExtra, blockHook)
 		if err != nil {
 			log.Error("could not start async block construction", "isFlashbotsWorker", worker.flashbots.isFlashbots, "#bundles", worker.flashbots.maxMergedBundles)
@@ -150,16 +150,13 @@ func newMultiWorker(config *Config, chainConfig *params.ChainConfig, engine cons
 
 	workers := []*worker{regularWorker}
 
-	for i := 1; i <= config.MaxMergedBundles; i++ {
-		workers = append(workers,
-			newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, init, &flashbotsData{
-				isFlashbots:      true,
-				queue:            queue,
-				maxMergedBundles: i,
-			}))
-	}
+	workers = append(workers, newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, init, &flashbotsData{
+		isFlashbots:      true,
+		queue:            queue,
+		maxMergedBundles: config.MaxMergedBundles,
+	}))
 
-	log.Info("creating multi worker", "config.MaxMergedBundles", config.MaxMergedBundles, "config.TrustedRelays", config.TrustedRelays, "worker", len(workers))
+	log.Info("creating new merger worker", "config.MaxMergedBundles", config.MaxMergedBundles)
 	return &multiWorker{
 		regularWorker: regularWorker,
 		workers:       workers,
