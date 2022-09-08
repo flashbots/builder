@@ -474,7 +474,8 @@ func (s TxByNonce) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
 // TxWithMinerFee wraps a transaction with its gas price or effective miner gasTipCap
 type TxWithMinerFee struct {
-	tx       *Transaction
+	Tx       *Transaction
+	Bundle   *SimulatedBundle
 	minerFee *big.Int
 }
 
@@ -487,7 +488,16 @@ func NewTxWithMinerFee(tx *Transaction, baseFee *big.Int) (*TxWithMinerFee, erro
 		return nil, err
 	}
 	return &TxWithMinerFee{
-		tx:       tx,
+		Tx:       tx,
+		minerFee: minerFee,
+	}, nil
+}
+
+// NewBundleWithMinerFee creates a wrapped bundle.
+func NewBundleWithMinerFee(bundle *SimulatedBundle, baseFee *big.Int) (*TxWithMinerFee, error) {
+	minerFee := bundle.MevGasPrice
+	return &TxWithMinerFee{
+		Bundle:   bundle,
 		minerFee: minerFee,
 	}, nil
 }
@@ -502,7 +512,14 @@ func (s TxByPriceAndTime) Less(i, j int) bool {
 	// deterministic sorting
 	cmp := s[i].minerFee.Cmp(s[j].minerFee)
 	if cmp == 0 {
-		return s[i].tx.time.Before(s[j].tx.time)
+		if s[i].Tx != nil && s[j].Tx != nil {
+			return s[i].Tx.time.Before(s[j].Tx.time)
+		} else if s[i].Bundle != nil && s[j].Bundle != nil {
+			return s[i].Bundle.TotalGasUsed <= s[j].Bundle.TotalGasUsed
+		} else if s[i].Bundle != nil {
+			return false
+		}
+		return true
 	}
 	return cmp > 0
 }
@@ -536,9 +553,16 @@ type TransactionsByPriceAndNonce struct {
 //
 // Note, the input map is reowned so the caller should not interact any more with
 // if after providing it to the constructor.
-func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transactions, baseFee *big.Int) *TransactionsByPriceAndNonce {
+func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transactions, bundles []SimulatedBundle, baseFee *big.Int) *TransactionsByPriceAndNonce {
 	// Initialize a price and received time based heap with the head transactions
-	heads := make(TxByPriceAndTime, 0, len(txs))
+	heads := make(TxByPriceAndTime, 0, len(txs)+len(bundles))
+	for i := range bundles {
+		wrapped, err := NewBundleWithMinerFee(&bundles[i], baseFee)
+		if err != nil {
+			continue
+		}
+		heads = append(heads, wrapped)
+	}
 	for from, accTxs := range txs {
 		acc, _ := Sender(signer, accTxs[0])
 		wrapped, err := NewTxWithMinerFee(accTxs[0], baseFee)
@@ -562,21 +586,23 @@ func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transa
 }
 
 // Peek returns the next transaction by price.
-func (t *TransactionsByPriceAndNonce) Peek() *Transaction {
+func (t *TransactionsByPriceAndNonce) Peek() *TxWithMinerFee {
 	if len(t.heads) == 0 {
 		return nil
 	}
-	return t.heads[0].tx
+	return t.heads[0]
 }
 
 // Shift replaces the current best head with the next one from the same account.
 func (t *TransactionsByPriceAndNonce) Shift() {
-	acc, _ := Sender(t.signer, t.heads[0].tx)
-	if txs, ok := t.txs[acc]; ok && len(txs) > 0 {
-		if wrapped, err := NewTxWithMinerFee(txs[0], t.baseFee); err == nil {
-			t.heads[0], t.txs[acc] = wrapped, txs[1:]
-			heap.Fix(&t.heads, 0)
-			return
+	if t.heads[0].Tx != nil {
+		acc, _ := Sender(t.signer, t.heads[0].Tx)
+		if txs, ok := t.txs[acc]; ok && len(txs) > 0 {
+			if wrapped, err := NewTxWithMinerFee(txs[0], t.baseFee); err == nil {
+				t.heads[0], t.txs[acc] = wrapped, txs[1:]
+				heap.Fix(&t.heads, 0)
+				return
+			}
 		}
 	}
 	heap.Pop(&t.heads)
@@ -605,6 +631,15 @@ type MevBundle struct {
 	MaxTimestamp      uint64
 	RevertingTxHashes []common.Hash
 	Hash              common.Hash
+}
+
+func (b *MevBundle) RevertingHash(hash common.Hash) bool {
+	for _, revHash := range b.RevertingTxHashes {
+		if revHash == hash {
+			return true
+		}
+	}
+	return false
 }
 
 type SimulatedBundle struct {
