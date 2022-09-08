@@ -251,6 +251,10 @@ type worker struct {
 	pendingMu    sync.RWMutex
 	pendingTasks map[common.Hash]*task
 
+	bundleCacheMu         sync.Mutex
+	bundleCacheHeaderHash common.Hash
+	bundleCache           map[common.Hash]simulatedBundle
+
 	snapshotMu       sync.RWMutex // The lock used to protect the snapshots below
 	snapshotBlock    *types.Block
 	snapshotReceipts types.Receipts
@@ -366,6 +370,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
 		coinbase:           builderCoinbase,
 		flashbots:          flashbots,
+		bundleCache:        make(map[common.Hash]simulatedBundle),
 	}
 
 	// Subscribe NewTxsEvent for tx pool
@@ -723,7 +728,7 @@ func (w *worker) mainLoop() {
 					acc, _ := types.Sender(w.current.signer, tx)
 					txs[acc] = append(txs[acc], tx)
 				}
-				txset := types.NewTransactionsByPriceAndNonce(w.current.signer, txs, w.current.header.BaseFee)
+				txset := types.NewTransactionsByPriceAndNonce(w.current.signer, txs, nil, w.current.header.BaseFee)
 				tcount := w.current.tcount
 				w.commitTransactions(w.current, txset, nil)
 
@@ -1149,6 +1154,10 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 		if tx == nil {
 			break
 		}
+		tx := order.Tx
+		if tx == nil {
+			continue
+		}
 		// Error may be ignored here. The error has already been checked
 		// during transaction acceptance is the transaction pool.
 		from, _ := types.Sender(env.signer, tx)
@@ -1362,13 +1371,13 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorC
 	}
 
 	if len(localTxs) > 0 {
-		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, env.header.BaseFee)
+		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, nil, env.header.BaseFee)
 		if err := w.commitTransactions(env, txs, interrupt); err != nil {
 			return err, nil
 		}
 	}
 	if len(remoteTxs) > 0 {
-		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, env.header.BaseFee)
+		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, nil, env.header.BaseFee)
 		if err := w.commitTransactions(env, txs, interrupt); err != nil {
 			return err, nil
 		}
@@ -1402,6 +1411,82 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorC
 			log.Warn("Proposer payout create tx failed due to not enough balance", "profit", profit.String())
 			return errors.New("proposer payout create tx failed due to not enough balance"), nil
 		}
+	}
+
+	return nil, blockBundles
+}
+
+// fillTransactionsAlgoWorker retrieves the pending transactions and bundles from the txpool and fills them
+// into the given sealing block.
+func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment, validatorCoinbase *common.Address) (error, []types.SimulatedBundle) {
+	// Split the pending transactions into locals and remotes
+	// Fill the block with all available pending transactions.
+	pending := w.eth.TxPool().Pending(true)
+	if env.gasPool == nil {
+		env.gasPool = new(core.GasPool).AddGas(env.header.GasLimit)
+	}
+	var builderCoinbaseBalanceBefore *big.Int
+	if validatorCoinbase != nil {
+		builderCoinbaseBalanceBefore = env.state.GetBalance(w.coinbase)
+		if err := env.gasPool.SubGas(params.TxGas); err != nil {
+			return err, nil
+		}
+	}
+
+	var bundlesToConsider []types.SimulatedBundle
+	if w.flashbots.isFlashbots {
+		bundles, err := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
+		if err != nil {
+			log.Error("Failed to fetch pending bundles", "err", err)
+			return err, nil
+		}
+
+		start := time.Now()
+		simBundles, err := w.simulateBundles(env, bundles, pending)
+		log.Debug("Simulated bundles", "time", time.Since(start), "bundles", len(bundles))
+		if err != nil {
+			log.Error("Failed to simulate flashbots bundles", "err", err)
+			return err, nil
+		}
+
+		bundlesToConsider = simBundles
+	}
+
+	buider := newGreedyBuilder(w.chain, w.chainConfig, w.blockList, env, interrupt)
+	start := time.Now()
+	newEnv, blockBundles := buider.buildBlock(bundlesToConsider, pending)
+	log.Debug("Build block", "time", time.Since(start), "gas used", newEnv.header.GasUsed)
+	*env = *newEnv
+
+	if validatorCoinbase != nil && w.config.BuilderTxSigningKey != nil {
+		builderCoinbaseBalanceAfter := env.state.GetBalance(w.coinbase)
+		log.Info("Before creating validator profit", "validatorCoinbase", validatorCoinbase.String(), "builderCoinbase", w.coinbase.String(), "builderCoinbaseBalanceBefore", builderCoinbaseBalanceBefore.String(), "builderCoinbaseBalanceAfter", builderCoinbaseBalanceAfter.String())
+
+		profit := new(big.Int).Sub(builderCoinbaseBalanceAfter, builderCoinbaseBalanceBefore)
+		env.gasPool.AddGas(params.TxGas)
+		if profit.Sign() == 1 {
+			tx, err := w.createProposerPayoutTx(env, validatorCoinbase, profit)
+			if err != nil {
+				log.Error("Proposer payout create tx failed", "err", err)
+				return fmt.Errorf("proposer payout create tx failed - %v", err), nil
+			}
+			if tx != nil {
+				log.Info("Proposer payout create tx succeeded, proceeding to commit tx")
+				_, err = w.commitTransaction(env, tx)
+				if err != nil {
+					log.Error("Proposer payout commit tx failed", "hash", tx.Hash().String(), "err", err)
+					return fmt.Errorf("proposer payout commit tx failed - %v", err), nil
+				}
+				log.Info("Proposer payout commit tx succeeded", "hash", tx.Hash().String())
+				env.tcount++
+			} else {
+				return errors.New("proposer payout create tx failed due to tx is nil"), nil
+			}
+		} else {
+			log.Warn("Proposer payout create tx failed due to not enough balance", "profit", profit.String())
+			return errors.New("proposer payout create tx failed due to not enough balance"), nil
+		}
+
 	}
 
 	return nil, blockBundles
@@ -1652,9 +1737,24 @@ func (w *worker) mergeBundles(env *environment, bundles []simulatedBundle, pendi
 }
 
 func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pendingTxs map[common.Address]types.Transactions) ([]simulatedBundle, error) {
+	w.bundleCacheMu.Lock()
+	defer w.bundleCacheMu.Unlock()
+
 	simulatedBundles := []simulatedBundle{}
 
+	var bundleCache map[common.Hash]simulatedBundle
+	if w.bundleCacheHeaderHash == env.header.Hash() {
+		bundleCache = w.bundleCache
+	} else {
+		bundleCache = make(map[common.Hash]simulatedBundle)
+	}
+
 	for _, bundle := range bundles {
+		if simmed, ok := bundleCache[bundle.Hash]; ok {
+			simulatedBundles = append(simulatedBundles, simmed)
+			continue
+		}
+
 		if len(bundle.Txs) == 0 {
 			continue
 		}
@@ -1666,8 +1766,12 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pe
 			log.Debug("Error computing gas for a bundle", "error", err)
 			continue
 		}
+		bundleCache[bundle.Hash] = simmed
 		simulatedBundles = append(simulatedBundles, simmed)
 	}
+
+	w.bundleCacheHeaderHash = env.header.Hash()
+	w.bundleCache = bundleCache
 
 	return simulatedBundles, nil
 }
@@ -1732,23 +1836,24 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 
 		totalGasUsed += receipt.GasUsed
 
-		from, err := types.Sender(env.signer, tx)
-		if err != nil {
-			return simulatedBundle{}, err
-		}
-
-		txInPendingPool := false
-		if accountTxs, ok := pendingTxs[from]; ok {
-			// check if tx is in pending pool
-			txNonce := tx.Nonce()
-
-			for _, accountTx := range accountTxs {
-				if accountTx.Nonce() == txNonce {
-					txInPendingPool = true
-					break
-				}
-			}
-		}
+		// NOTE: see note below
+		//from, err := types.Sender(env.signer, tx)
+		//if err != nil {
+		//	return simulatedBundle{}, err
+		//}
+		//
+		//txInPendingPool := false
+		//if accountTxs, ok := pendingTxs[from]; ok {
+		//	// check if tx is in pending pool
+		//	txNonce := tx.Nonce()
+		//
+		//	for _, accountTx := range accountTxs {
+		//		if accountTx.Nonce() == txNonce {
+		//			txInPendingPool = true
+		//			break
+		//		}
+		//	}
+		//}
 
 		gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
 		gasPrice, err := tx.EffectiveGasTip(env.header.BaseFee)
@@ -1761,10 +1866,11 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 		coinbaseDelta.Sub(coinbaseDelta, gasFeesTx)
 		ethSentToCoinbase.Add(ethSentToCoinbase, coinbaseDelta)
 
-		if !txInPendingPool {
-			// If tx is not in pending pool, count the gas fees
-			gasFees.Add(gasFees, gasFeesTx)
-		}
+		// NOTE: differs from prod, the reason is that it can't be manipulated anymore
+		//if !txInPendingPool {
+		// If tx is not in pending pool, count the gas fees
+		gasFees.Add(gasFees, gasFeesTx)
+		//}
 	}
 
 	totalEth := new(big.Int).Add(ethSentToCoinbase, gasFees)
