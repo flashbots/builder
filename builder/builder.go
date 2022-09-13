@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/beacon"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/flashbotsextra"
 	"github.com/ethereum/go-ethereum/log"
 
 	"github.com/flashbots/go-boost-utils/bls"
@@ -43,23 +44,22 @@ type IBuilder interface {
 }
 
 type Builder struct {
-	ds                         IDatabaseService
+	ds                         flashbotsextra.IDatabaseService
 	beaconClient               IBeaconClient
 	relay                      IRelay
 	eth                        IEthereumService
 	resubmitter                Resubmitter
 	blockSubmissionRateLimiter *BlockSubmissionRateLimiter
-
-	builderSecretKey     *bls.SecretKey
-	builderPublicKey     boostTypes.PublicKey
-	builderSigningDomain boostTypes.Domain
+	builderSecretKey           *bls.SecretKey
+	builderPublicKey           boostTypes.PublicKey
+	builderSigningDomain       boostTypes.Domain
 
 	bestMu          sync.Mutex
 	bestAttrs       BuilderPayloadAttributes
 	bestBlockProfit *big.Int
 }
 
-func NewBuilder(sk *bls.SecretKey, ds IDatabaseService, bc IBeaconClient, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService) *Builder {
+func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, bc IBeaconClient, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService) *Builder {
 	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
