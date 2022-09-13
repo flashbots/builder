@@ -9,7 +9,6 @@ import (
 )
 
 func TestResubmitter(t *testing.T) {
-
 	resubmitter := Resubmitter{}
 
 	pingCh := make(chan error)

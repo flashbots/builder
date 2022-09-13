@@ -180,7 +180,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		BeaconEndpoint:        ctx.String(utils.BuilderBeaconEndpoint.Name),
 		RemoteRelayEndpoint:   ctx.String(utils.BuilderRemoteRelayEndpoint.Name),
 	}
-
 	backend, eth := utils.RegisterEthService(stack, &cfg.Eth, bpConfig)
 
 	// Warn users to migrate if they have a legacy freezer format.

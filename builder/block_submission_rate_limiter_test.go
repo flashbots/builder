@@ -68,5 +68,4 @@ func TestLimit(t *testing.T) {
 			t.Error("chan was not ready")
 		}
 	}
-
 }
