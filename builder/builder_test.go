@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/beacon"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/flashbotsextra"
 	"github.com/flashbots/go-boost-utils/bls"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 	"github.com/stretchr/testify/require"
@@ -74,7 +75,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 
 	testEthService := &testEthereumService{synced: true, testExecutableData: testExecutableData, testBlock: testBlock}
 
-	builder := NewBuilder(sk, NilDbService{}, &testBeacon, &testRelay, bDomain, testEthService)
+	builder := NewBuilder(sk, flashbotsextra.NilDbService{}, &testBeacon, &testRelay, bDomain, testEthService)
 	builder.Start()
 	defer builder.Stop()
 

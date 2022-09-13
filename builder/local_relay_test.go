@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/beacon"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/flashbotsextra"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/flashbots/go-boost-utils/bls"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
@@ -29,7 +30,7 @@ func newTestBackend(t *testing.T, forkchoiceData *beacon.ExecutableDataV1, block
 	beaconClient := &testBeaconClient{validator: validator}
 	localRelay := NewLocalRelay(sk, beaconClient, bDomain, cDomain, ForkData{}, true)
 	ethService := &testEthereumService{synced: true, testExecutableData: forkchoiceData, testBlock: block}
-	backend := NewBuilder(sk, NilDbService{}, beaconClient, localRelay, bDomain, ethService)
+	backend := NewBuilder(sk, flashbotsextra.NilDbService{}, beaconClient, localRelay, bDomain, ethService)
 	// service := NewService("127.0.0.1:31545", backend)
 
 	return backend, localRelay, validator

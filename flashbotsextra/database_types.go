@@ -1,4 +1,4 @@
-package builder
+package flashbotsextra
 
 import (
 	"math/big"
@@ -38,9 +38,9 @@ type DbBundle struct {
 
 	ParamSignedTxs         string    `db:"param_signed_txs"`
 	ParamBlockNumber       uint64    `db:"param_block_number"`
-	ParamTimestamp         uint64    `db:"param_timestamp"`
+	ParamTimestamp         *uint64   `db:"param_timestamp"`
 	ReceivedTimestamp      time.Time `db:"received_timestamp"`
-	ParamRevertingTxHashes string    `db:"param_reverting_tx_hashes"`
+	ParamRevertingTxHashes *string   `db:"param_reverting_tx_hashes"`
 
 	CoinbaseDiff      string `db:"coinbase_diff"`
 	TotalGasUsed      uint64 `db:"total_gas_used"`
@@ -54,7 +54,7 @@ func SimulatedBundleToDbBundle(bundle *types.SimulatedBundle) DbBundle {
 	for i, rTxHash := range bundle.OriginalBundle.RevertingTxHashes {
 		revertingTxHashes[i] = rTxHash.String()
 	}
-
+	paramRevertingTxHashes := strings.Join(revertingTxHashes, ",")
 	signedTxsStrings := make([]string, len(bundle.OriginalBundle.Txs))
 	for i, tx := range bundle.OriginalBundle.Txs {
 		signedTxsStrings[i] = tx.Hash().String()
@@ -65,8 +65,8 @@ func SimulatedBundleToDbBundle(bundle *types.SimulatedBundle) DbBundle {
 
 		ParamSignedTxs:         strings.Join(signedTxsStrings, ","),
 		ParamBlockNumber:       bundle.OriginalBundle.BlockNumber.Uint64(),
-		ParamTimestamp:         bundle.OriginalBundle.MinTimestamp,
-		ParamRevertingTxHashes: strings.Join(revertingTxHashes, ","),
+		ParamTimestamp:         &bundle.OriginalBundle.MinTimestamp,
+		ParamRevertingTxHashes: &paramRevertingTxHashes,
 
 		CoinbaseDiff:      new(big.Rat).SetFrac(bundle.TotalEth, big.NewInt(1e18)).FloatString(18),
 		TotalGasUsed:      bundle.TotalGasUsed,
