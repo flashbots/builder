@@ -62,7 +62,14 @@ func (t *AccountTouchTracer) CaptureEnter(_ vm.OpCode, _ common.Address, to comm
 
 func (t *AccountTouchTracer) CaptureExit([]byte, uint64, error) {}
 
-func (t *AccountTouchTracer) CaptureState(uint64, vm.OpCode, uint64, uint64, *vm.ScopeContext, []byte, int, error) {
+func (t *AccountTouchTracer) CaptureState(_ uint64, op vm.OpCode, _, _ uint64, scope *vm.ScopeContext, _ []byte, _ int, _ error) {
+	stack := scope.Stack
+	stackData := stack.Data()
+	stackLen := len(stackData)
+	if (op == vm.EXTCODECOPY || op == vm.EXTCODEHASH || op == vm.EXTCODESIZE || op == vm.BALANCE || op == vm.SELFDESTRUCT) && stackLen >= 1 {
+		addr := common.Address(stackData[stackLen-1].Bytes20())
+		t.touched[addr] = struct{}{}
+	}
 }
 
 func (t *AccountTouchTracer) CaptureFault(uint64, vm.OpCode, uint64, uint64, *vm.ScopeContext, int, error) {
