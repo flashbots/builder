@@ -1826,6 +1826,9 @@ func (w *worker) createProposerPayoutTx(env *environment, recipient *common.Addr
 	nonce := env.state.GetNonce(w.coinbase)
 	fee := new(big.Int).Mul(big.NewInt(21000), env.header.BaseFee)
 	amount := new(big.Int).Sub(profit, fee)
+	if amount.Sign() == -1 {
+		return nil, errors.New("negative amount of proposer payout")
+	}
 	gasPrice := new(big.Int).Set(env.header.BaseFee)
 	chainId := w.chainConfig.ChainID
 	log.Debug("createProposerPayoutTx", "sender", sender, "chainId", chainId.String(), "nonce", nonce, "amount", amount.String(), "gas", params.TxGas, "baseFee", env.header.BaseFee.String(), "fee", fee)
