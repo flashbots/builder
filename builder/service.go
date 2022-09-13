@@ -8,7 +8,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth"
+	"github.com/ethereum/go-ethereum/flashbotsextra"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -170,16 +172,27 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *BuilderConfig) error
 		return errors.New("neither local nor remote relay specified")
 	}
 
-	ethereumService := NewEthereumService(backend)
-
 	// TODO: move to proper flags
-	var ds IDatabaseService
-	ds, err = NewDatabaseService(os.Getenv("FLASHBOTS_POSTGRES_DSN"))
-	if err != nil {
-		log.Error("could not connect to the DB", "err", err)
-		ds = NilDbService{}
+	var ds flashbotsextra.IDatabaseService
+	dbDSN := os.Getenv("FLASHBOTS_POSTGRES_DSN")
+	if dbDSN != "" {
+		ds, err = flashbotsextra.NewDatabaseService(dbDSN)
+		if err != nil {
+			log.Error("could not connect to the DB", "err", err)
+			ds = flashbotsextra.NilDbService{}
+		}
+	} else {
+		log.Info("db dsn is not provided, starting nil db svc")
+		ds = flashbotsextra.NilDbService{}
 	}
 
+	// Bundle fetcher
+	mevBundleCh := make(chan []types.MevBundle)
+	blockNumCh := make(chan int64)
+	bundleFetcher := flashbotsextra.NewBundleFetcher(backend, ds, blockNumCh, mevBundleCh, true)
+	go bundleFetcher.Run()
+
+	ethereumService := NewEthereumService(backend)
 	builderBackend := NewBuilder(builderSk, ds, beaconClient, relay, builderSigningDomain, ethereumService)
 	builderService := NewService(cfg.ListenAddr, localRelay, builderBackend)
 

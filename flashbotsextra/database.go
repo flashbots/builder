@@ -1,4 +1,4 @@
-package builder
+package flashbotsextra
 
 import (
 	"context"
@@ -13,13 +13,23 @@ import (
 	_ "github.com/lib/pq"
 )
 
+const (
+	highPrioLimitSize = 500
+	lowPrioLimitSize  = 100
+)
+
 type IDatabaseService interface {
 	ConsumeBuiltBlock(block *types.Block, bundles []types.SimulatedBundle, bidTrace *boostTypes.BidTrace)
+	GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error)
 }
 
 type NilDbService struct{}
 
 func (NilDbService) ConsumeBuiltBlock(*types.Block, []types.SimulatedBundle, *boostTypes.BidTrace) {}
+
+func (NilDbService) GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error) {
+	return []DbBundle{}, nil
+}
 
 type DatabaseService struct {
 	db *sqlx.DB
@@ -28,6 +38,7 @@ type DatabaseService struct {
 	insertBlockBuiltBundleNoIdStmt   *sqlx.NamedStmt
 	insertBlockBuiltBundleWithIdStmt *sqlx.NamedStmt
 	insertMissingBundleStmt          *sqlx.NamedStmt
+	fetchPrioBundlesStmt             *sqlx.NamedStmt
 }
 
 func NewDatabaseService(postgresDSN string) (*DatabaseService, error) {
@@ -56,17 +67,26 @@ func NewDatabaseService(postgresDSN string) (*DatabaseService, error) {
 		return nil, err
 	}
 
+	fetchPrioBundlesStmt, err := db.PrepareNamed("select bundle_hash, param_signed_txs, param_block_number, param_timestamp, received_timestamp, param_reverting_tx_hashes, coinbase_diff, total_gas_used, state_block_number, gas_fees, eth_sent_to_coinbase from bundles where is_high_prio = :is_high_prio and coinbase_diff*1e18/total_gas_used > 1000000000 and param_block_number = :param_block_number order by coinbase_diff/total_gas_used DESC limit :limit")
+	if err != nil {
+		return nil, err
+	}
 	return &DatabaseService{
 		db:                               db,
 		insertBuiltBlockStmt:             insertBuiltBlockStmt,
 		insertBlockBuiltBundleNoIdStmt:   insertBlockBuiltBundleNoIdStmt,
 		insertBlockBuiltBundleWithIdStmt: insertBlockBuiltBundleWithIdStmt,
 		insertMissingBundleStmt:          insertMissingBundleStmt,
+		fetchPrioBundlesStmt:             fetchPrioBundlesStmt,
 	}, nil
 }
 
 func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, bundles []types.SimulatedBundle, bidTrace *boostTypes.BidTrace) {
 	tx, err := ds.db.Beginx()
+	if err != nil {
+		log.Error("could not insert built block", "err", err)
+		return
+	}
 
 	blockData := BuiltBlock{
 		BlockNumber:          block.NumberU64(),
@@ -133,4 +153,24 @@ func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, bundles []types
 	if err != nil {
 		log.Error("could not commit DB trasnaction", "err", err)
 	}
+}
+func (ds *DatabaseService) GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error) {
+	var bundles []DbBundle
+	tx, err := ds.db.Beginx()
+	if err != nil {
+		log.Error("failed to begin db tx for get priority bundles", "err", err)
+		return nil, err
+	}
+	arg := map[string]interface{}{"param_block_number": uint64(blockNum), "is_high_prio": isHighPrio, "limit": lowPrioLimitSize}
+	if isHighPrio {
+		arg["limit"] = highPrioLimitSize
+	}
+	if err = tx.NamedStmtContext(ctx, ds.fetchPrioBundlesStmt).SelectContext(ctx, &bundles, arg); err != nil {
+		return nil, err
+	}
+	err = tx.Commit()
+	if err != nil {
+		log.Error("could not commit GetPriorityBundles transaction", "err", err)
+	}
+	return bundles, nil
 }
