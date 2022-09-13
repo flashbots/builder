@@ -1399,7 +1399,6 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorC
 			log.Warn("Proposer payout create tx failed due to not enough balance", "profit", profit.String())
 			return errors.New("proposer payout create tx failed due to not enough balance"), nil
 		}
-
 	}
 
 	return nil, blockBundles

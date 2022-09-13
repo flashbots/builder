@@ -619,6 +619,15 @@ func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]t
 	return ret, nil
 }
 
+// AddMevBundles adds a mev bundles to the pool
+func (pool *TxPool) AddMevBundles(mevBundles []types.MevBundle) error {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	pool.mevBundles = append(pool.mevBundles, mevBundles...)
+	return nil
+}
+
 // AddMevBundle adds a mev bundle to the pool
 func (pool *TxPool) AddMevBundle(txs types.Transactions, blockNumber *big.Int, minTimestamp, maxTimestamp uint64, revertingTxHashes []common.Hash) error {
 	bundleHasher := sha3.NewLegacyKeccak256()
