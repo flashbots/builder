@@ -82,6 +82,8 @@ const (
 
 	// staleThreshold is the maximum depth of the acceptable stale block.
 	staleThreshold = 7
+
+	paymentTxGas = 25000
 )
 
 var (
@@ -1319,7 +1321,7 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorC
 	var builderCoinbaseBalanceBefore *big.Int
 	if validatorCoinbase != nil {
 		builderCoinbaseBalanceBefore = env.state.GetBalance(w.coinbase)
-		if err := env.gasPool.SubGas(params.TxGas); err != nil {
+		if err := env.gasPool.SubGas(paymentTxGas); err != nil {
 			return err, nil
 		}
 	}
@@ -1366,7 +1368,7 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorC
 		log.Info("Before creating validator profit", "validatorCoinbase", validatorCoinbase.String(), "builderCoinbase", w.coinbase.String(), "builderCoinbaseBalanceBefore", builderCoinbaseBalanceBefore.String(), "builderCoinbaseBalanceAfter", builderCoinbaseBalanceAfter.String())
 
 		profit := new(big.Int).Sub(builderCoinbaseBalanceAfter, builderCoinbaseBalanceBefore)
-		env.gasPool.AddGas(params.TxGas)
+		env.gasPool.AddGas(paymentTxGas)
 		if profit.Sign() == 1 {
 			tx, err := w.createProposerPayoutTx(env, validatorCoinbase, profit)
 			if err != nil {
@@ -1813,14 +1815,14 @@ func (w *worker) createProposerPayoutTx(env *environment, recipient *common.Addr
 	sender := w.coinbase.String()
 	log.Info(sender)
 	nonce := env.state.GetNonce(w.coinbase)
-	fee := new(big.Int).Mul(big.NewInt(21000), env.header.BaseFee)
+	fee := new(big.Int).Mul(big.NewInt(paymentTxGas), env.header.BaseFee)
 	amount := new(big.Int).Sub(profit, fee)
 	if amount.Sign() == -1 {
 		return nil, errors.New("negative amount of proposer payout")
 	}
 	gasPrice := new(big.Int).Set(env.header.BaseFee)
 	chainId := w.chainConfig.ChainID
-	log.Debug("createProposerPayoutTx", "sender", sender, "chainId", chainId.String(), "nonce", nonce, "amount", amount.String(), "gas", params.TxGas, "baseFee", env.header.BaseFee.String(), "fee", fee)
-	tx := types.NewTransaction(nonce, *recipient, amount, params.TxGas, gasPrice, nil)
+	log.Debug("createProposerPayoutTx", "sender", sender, "chainId", chainId.String(), "nonce", nonce, "amount", amount.String(), "baseFee", env.header.BaseFee.String(), "fee", fee)
+	tx := types.NewTransaction(nonce, *recipient, amount, 25000, gasPrice, nil)
 	return types.SignTx(tx, types.LatestSignerForChainID(chainId), w.config.BuilderTxSigningKey)
 }
