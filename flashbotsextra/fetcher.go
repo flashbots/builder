@@ -95,6 +95,9 @@ func (b *bundleFetcher) fetchAndPush(ctx context.Context, pushMevBundles func(bu
 			}
 
 		case <-lowPrioBundleTicker.C:
+			if blockNum == 0 {
+				continue
+			}
 			ctxL, cancelL := context.WithTimeout(ctx, time.Second*3)
 			bundles, err := b.db.GetPriorityBundles(ctxL, blockNum, false)
 			cancelL()
