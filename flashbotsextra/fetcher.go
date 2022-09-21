@@ -44,8 +44,8 @@ func (b *bundleFetcher) Run() {
 		eventCh := make(chan core.ChainHeadEvent)
 		b.backend.BlockChain().SubscribeChainHeadEvent(eventCh)
 		pushBlockNum := func() {
-			for blockNum := range eventCh {
-				b.blockNumCh <- blockNum.Block.Header().Number.Int64()
+			for currentBlockNum := range eventCh {
+				b.blockNumCh <- currentBlockNum.Block.Header().Number.Int64()
 			}
 		}
 		addMevBundle := func() {
@@ -75,37 +75,37 @@ func (b *bundleFetcher) Run() {
 }
 
 func (b *bundleFetcher) fetchAndPush(ctx context.Context, pushMevBundles func(bundles []DbBundle)) {
-	var blockNum int64
+	var currentBlockNum int64
 	lowPrioBundleTicker := time.NewTicker(time.Second * 2)
 	defer lowPrioBundleTicker.Stop()
 
 	for {
 		select {
-		case blockNum = <-b.blockNumCh:
+		case currentBlockNum = <-b.blockNumCh:
 			ctxH, cancelH := context.WithTimeout(ctx, time.Second*3)
-			bundles, err := b.db.GetPriorityBundles(ctxH, blockNum, true)
+			bundles, err := b.db.GetPriorityBundles(ctxH, currentBlockNum+1, true)
 			cancelH()
 			if err != nil {
 				log.Error("failed to fetch high prio bundles", "err", err)
 				continue
 			}
-			log.Info("Fetching High prio bundles", "size", len(bundles), "blockNum", blockNum)
+			log.Info("Fetching High prio bundles", "size", len(bundles), "currentlyBuiltBlockNum", currentBlockNum+1)
 			if len(bundles) != 0 {
 				pushMevBundles(bundles)
 			}
 
 		case <-lowPrioBundleTicker.C:
-			if blockNum == 0 {
+			if currentBlockNum == 0 {
 				continue
 			}
 			ctxL, cancelL := context.WithTimeout(ctx, time.Second*3)
-			bundles, err := b.db.GetPriorityBundles(ctxL, blockNum, false)
+			bundles, err := b.db.GetPriorityBundles(ctxL, currentBlockNum+1, false)
 			cancelL()
 			if err != nil {
 				log.Error("failed to fetch low prio bundles", "err", err)
 				continue
 			}
-			log.Info("Fetching low prio bundles", "len", len(bundles), "blockNum", blockNum)
+			log.Info("Fetching low prio bundles", "len", len(bundles), "currentlyBuiltBlockNum", currentBlockNum+1)
 			if len(bundles) != 0 {
 				pushMevBundles(bundles)
 			}
