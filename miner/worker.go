@@ -83,7 +83,7 @@ const (
 	// staleThreshold is the maximum depth of the acceptable stale block.
 	staleThreshold = 7
 
-	paymentTxGas = 25000
+	paymentTxGas = 26000
 )
 
 var (
@@ -1823,6 +1823,6 @@ func (w *worker) createProposerPayoutTx(env *environment, recipient *common.Addr
 	gasPrice := new(big.Int).Set(env.header.BaseFee)
 	chainId := w.chainConfig.ChainID
 	log.Debug("createProposerPayoutTx", "sender", sender, "chainId", chainId.String(), "nonce", nonce, "amount", amount.String(), "baseFee", env.header.BaseFee.String(), "fee", fee)
-	tx := types.NewTransaction(nonce, *recipient, amount, 25000, gasPrice, nil)
+	tx := types.NewTransaction(nonce, *recipient, amount, paymentTxGas, gasPrice, nil)
 	return types.SignTx(tx, types.LatestSignerForChainID(chainId), w.config.BuilderTxSigningKey)
 }
