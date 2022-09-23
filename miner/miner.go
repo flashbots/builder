@@ -44,6 +44,13 @@ type Backend interface {
 	TxPool() *txpool.TxPool
 }
 
+type AlgoType int
+
+const (
+	ALGO_MEV_GETH AlgoType = iota
+	ALGO_GREEDY
+)
+
 // Config is the configuration parameters of mining.
 type Config struct {
 	Etherbase  common.Address `toml:",omitempty"` // Public address for block mining rewards
