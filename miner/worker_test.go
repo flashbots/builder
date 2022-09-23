@@ -673,3 +673,51 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 		}
 	}
 }
+
+func TestSimulateBundles(t *testing.T) {
+	w, _ := newTestWorker(t, ethashChainConfig, ethash.NewFaker(), rawdb.NewMemoryDatabase(), 0)
+	defer w.close()
+
+	env, err := w.prepareWork(&generateParams{gasLimit: 30000000})
+	if err != nil {
+		t.Fatalf("Failed to prepare work: %s", err)
+	}
+
+	signTx := func(nonce uint64) *types.Transaction {
+		tx, err := types.SignTx(types.NewTransaction(nonce, testUserAddress, big.NewInt(1000), params.TxGas, env.header.BaseFee, nil), types.HomesteadSigner{}, testBankKey)
+		if err != nil {
+			t.Fatalf("Failed to sign tx")
+		}
+		return tx
+	}
+
+	bundle1 := types.MevBundle{Txs: types.Transactions{signTx(0)}, Hash: common.HexToHash("0x01")}
+	// this bundle will fail
+	bundle2 := types.MevBundle{Txs: types.Transactions{signTx(1)}, Hash: common.HexToHash("0x02")}
+	bundle3 := types.MevBundle{Txs: types.Transactions{signTx(0)}, Hash: common.HexToHash("0x03")}
+
+	simBundles, err := w.simulateBundles(env, []types.MevBundle{bundle1, bundle2, bundle3}, nil)
+
+	if len(simBundles) != 2 {
+		t.Fatalf("Incorrect amount of sim bundles")
+	}
+
+	for _, simBundle := range simBundles {
+		if simBundle.OriginalBundle.Hash == common.HexToHash("0x02") {
+			t.Fatalf("bundle2 should fail")
+		}
+	}
+
+	// simulate 2 times to check cache
+	simBundles, err = w.simulateBundles(env, []types.MevBundle{bundle1, bundle2, bundle3}, nil)
+
+	if len(simBundles) != 2 {
+		t.Fatalf("Incorrect amount of sim bundles(cache)")
+	}
+
+	for _, simBundle := range simBundles {
+		if simBundle.OriginalBundle.Hash == common.HexToHash("0x02") {
+			t.Fatalf("bundle2 should fail(cache)")
+		}
+	}
+}
