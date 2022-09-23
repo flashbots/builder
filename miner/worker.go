@@ -253,7 +253,8 @@ type worker struct {
 
 	bundleCacheMu         sync.Mutex
 	bundleCacheHeaderHash common.Hash
-	bundleCache           map[common.Hash]simulatedBundle
+	bundleCacheSuccess    map[common.Hash]simulatedBundle
+	bundleCacheFailed     map[common.Hash]struct{}
 
 	snapshotMu       sync.RWMutex // The lock used to protect the snapshots below
 	snapshotBlock    *types.Block
@@ -370,7 +371,8 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
 		coinbase:           builderCoinbase,
 		flashbots:          flashbots,
-		bundleCache:        make(map[common.Hash]simulatedBundle),
+		bundleCacheSuccess: make(map[common.Hash]simulatedBundle),
+		bundleCacheFailed:  make(map[common.Hash]struct{}),
 	}
 
 	// Subscribe NewTxsEvent for tx pool
@@ -1740,38 +1742,61 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pe
 	w.bundleCacheMu.Lock()
 	defer w.bundleCacheMu.Unlock()
 
-	simulatedBundles := []simulatedBundle{}
-
-	var bundleCache map[common.Hash]simulatedBundle
+	var cacheSuccess map[common.Hash]simulatedBundle
+	var cacheFailed map[common.Hash]struct{}
 	if w.bundleCacheHeaderHash == env.header.Hash() {
-		bundleCache = w.bundleCache
+		cacheSuccess = w.bundleCacheSuccess
+		cacheFailed = w.bundleCacheFailed
 	} else {
-		bundleCache = make(map[common.Hash]simulatedBundle)
+		cacheSuccess = make(map[common.Hash]simulatedBundle)
+		cacheFailed = make(map[common.Hash]struct{})
 	}
 
-	for _, bundle := range bundles {
-		if simmed, ok := bundleCache[bundle.Hash]; ok {
-			simulatedBundles = append(simulatedBundles, simmed)
+	simResult := make([]*simulatedBundle, len(bundles))
+
+	var wg sync.WaitGroup
+	for i, bundle := range bundles {
+		if simmed, ok := cacheSuccess[bundle.Hash]; ok {
+			simResult[i] = &simmed
 			continue
 		}
 
-		if len(bundle.Txs) == 0 {
+		if _, ok := cacheFailed[bundle.Hash]; ok {
 			continue
 		}
-		state := env.state.Copy()
-		gasPool := new(core.GasPool).AddGas(env.header.GasLimit)
-		simmed, err := w.computeBundleGas(env, bundle, state, gasPool, pendingTxs, 0)
 
-		if err != nil {
-			log.Debug("Error computing gas for a bundle", "error", err)
-			continue
+		wg.Add(1)
+		go func(idx int, bundle types.MevBundle, state *state.StateDB) {
+			defer wg.Done()
+			if len(bundle.Txs) == 0 {
+				return
+			}
+			gasPool := new(core.GasPool).AddGas(env.header.GasLimit)
+			simmed, err := w.computeBundleGas(env, bundle, state, gasPool, pendingTxs, 0)
+
+			if err != nil {
+				log.Debug("Error computing gas for a bundle", "error", err)
+				return
+			}
+			simResult[idx] = &simmed
+		}(i, bundle, env.state.Copy())
+	}
+
+	wg.Wait()
+
+	simulatedBundles := make([]simulatedBundle, 0, len(bundles))
+	for i, bundle := range simResult {
+		if bundle != nil {
+			simulatedBundles = append(simulatedBundles, *bundle)
+			cacheSuccess[bundle.OriginalBundle.Hash] = *bundle
+		} else {
+			cacheFailed[bundles[i].Hash] = struct{}{}
 		}
-		bundleCache[bundle.Hash] = simmed
-		simulatedBundles = append(simulatedBundles, simmed)
 	}
 
 	w.bundleCacheHeaderHash = env.header.Hash()
-	w.bundleCache = bundleCache
+	w.bundleCacheSuccess = cacheSuccess
+	w.bundleCacheFailed = cacheFailed
 
 	return simulatedBundles, nil
 }
