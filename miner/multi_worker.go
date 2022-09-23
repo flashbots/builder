@@ -141,22 +141,54 @@ func (w *multiWorker) GetSealingBlockSync(parent common.Hash, timestamp uint64, 
 }
 
 func newMultiWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *multiWorker {
+	if config.AlgoType == ALGO_GREEDY {
+		return newMultiWorkerGreedy(config, chainConfig, engine, eth, mux, isLocalBlock, init)
+	} else {
+		return newMultiWorkerMevGeth(config, chainConfig, engine, eth, mux, isLocalBlock, init)
+	}
+}
+
+func newMultiWorkerGreedy(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *multiWorker {
+	queue := make(chan *task)
+
+	greedyWorker := newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, init, &flashbotsData{
+		isFlashbots:      true,
+		queue:            queue,
+		algoType:         ALGO_GREEDY,
+		maxMergedBundles: config.MaxMergedBundles,
+	})
+
+	log.Info("creating new greedy worker")
+	return &multiWorker{
+		regularWorker: greedyWorker,
+		workers:       []*worker{greedyWorker},
+	}
+}
+
+func newMultiWorkerMevGeth(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *multiWorker {
 	queue := make(chan *task)
 
 	regularWorker := newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, init, &flashbotsData{
-		isFlashbots: false,
-		queue:       queue,
+		isFlashbots:      false,
+		queue:            queue,
+		algoType:         ALGO_MEV_GETH,
+		maxMergedBundles: config.MaxMergedBundles,
 	})
 
 	workers := []*worker{regularWorker}
+	if config.AlgoType == ALGO_MEV_GETH {
+		for i := 1; i <= config.MaxMergedBundles; i++ {
+			workers = append(workers,
+				newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, init, &flashbotsData{
+					isFlashbots:      true,
+					queue:            queue,
+					algoType:         ALGO_MEV_GETH,
+					maxMergedBundles: i,
+				}))
+		}
+	}
 
-	workers = append(workers, newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, init, &flashbotsData{
-		isFlashbots:      true,
-		queue:            queue,
-		maxMergedBundles: config.MaxMergedBundles,
-	}))
-
-	log.Info("creating new merger worker", "config.MaxMergedBundles", config.MaxMergedBundles)
+	log.Info("creating multi worker", "config.MaxMergedBundles", config.MaxMergedBundles, "workers", len(workers))
 	return &multiWorker{
 		regularWorker: regularWorker,
 		workers:       workers,
@@ -167,5 +199,5 @@ type flashbotsData struct {
 	isFlashbots      bool
 	queue            chan *task
 	maxMergedBundles int
-	relayAddr        common.Address
+	algoType         AlgoType
 }
