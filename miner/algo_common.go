@@ -2,6 +2,9 @@ package miner
 
 import (
 	"errors"
+	"math/big"
+	"sync/atomic"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
@@ -10,8 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-	"math/big"
-	"sync/atomic"
 )
 
 const (
@@ -73,96 +74,6 @@ func checkInterrupt(i *int32) bool {
 
 // Simulate bundle on top of current state without modifying it
 // pending txs used to track if bundle tx is part of the mempool
-func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, interrupt *int32) (types.SimulatedBundle, error) {
-	stateDB := env.state.Copy()
-	gasPool := new(core.GasPool).AddGas(env.header.GasLimit)
-
-	var totalGasUsed uint64
-	gasFees := big.NewInt(0)
-	ethSentToCoinbase := big.NewInt(0)
-
-	for i, tx := range bundle.Txs {
-		if checkInterrupt(interrupt) {
-			return types.SimulatedBundle{}, errInterrupt
-		}
-
-		if env.header.BaseFee != nil && tx.Type() == 2 {
-			// Sanity check for extremely large numbers
-			if tx.GasFeeCap().BitLen() > 256 {
-				return types.SimulatedBundle{}, core.ErrFeeCapVeryHigh
-			}
-			if tx.GasTipCap().BitLen() > 256 {
-				return types.SimulatedBundle{}, core.ErrTipVeryHigh
-			}
-			// Ensure gasFeeCap is greater than or equal to gasTipCap.
-			if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
-				return types.SimulatedBundle{}, core.ErrTipAboveFeeCap
-			}
-		}
-
-		stateDB.Prepare(tx.Hash(), i+env.tcount)
-		coinbaseBalanceBefore := stateDB.GetBalance(env.coinbase)
-
-		var tempGasUsed uint64
-		receipt, err := core.ApplyTransaction(chData.chainConfig, chData.chain, &env.coinbase, gasPool, stateDB, env.header, tx, &tempGasUsed, *chData.chain.GetVMConfig())
-		if err != nil {
-			return types.SimulatedBundle{}, err
-		}
-		if receipt.Status == types.ReceiptStatusFailed && !containsHash(bundle.RevertingTxHashes, receipt.TxHash) {
-			return types.SimulatedBundle{}, errors.New("failed tx")
-		}
-
-		totalGasUsed += receipt.GasUsed
-
-		_, err = types.Sender(env.signer, tx)
-		if err != nil {
-			return types.SimulatedBundle{}, err
-		}
-
-		// see NOTE below
-		//txInPendingPool := false
-		//if accountTxs, ok := pendingTxs[from]; ok {
-		//	// check if tx is in pending pool
-		//	txNonce := tx.Nonce()
-		//
-		//	for _, accountTx := range accountTxs {
-		//		if accountTx.Nonce() == txNonce {
-		//			txInPendingPool = true
-		//			break
-		//		}
-		//	}
-		//}
-
-		gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
-		gasPrice, err := tx.EffectiveGasTip(env.header.BaseFee)
-		if err != nil {
-			return types.SimulatedBundle{}, err
-		}
-		gasFeesTx := gasUsed.Mul(gasUsed, gasPrice)
-		coinbaseBalanceAfter := stateDB.GetBalance(env.coinbase)
-		coinbaseDelta := big.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
-		coinbaseDelta.Sub(coinbaseDelta, gasFeesTx)
-		ethSentToCoinbase.Add(ethSentToCoinbase, coinbaseDelta)
-
-		// NOTE - it differs from prod!, if changed - change in commit bundle too
-		//if !txInPendingPool {
-		//	// If tx is not in pending pool, count the gas fees
-		//	gasFees.Add(gasFees, gasFeesTx)
-		//}
-		gasFees.Add(gasFees, gasFeesTx)
-	}
-
-	totalEth := new(big.Int).Add(ethSentToCoinbase, gasFees)
-
-	return types.SimulatedBundle{
-		MevGasPrice:       new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)),
-		TotalEth:          totalEth,
-		EthSentToCoinbase: ethSentToCoinbase,
-		TotalGasUsed:      totalGasUsed,
-		OriginalBundle:    bundle,
-	}, nil
-}
-
 func applyTransactionWithBlacklist(signer types.Signer, config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config, blacklist map[common.Address]struct{}) (*types.Receipt, *state.StateDB, error) {
 	// short circuit if blacklist is empty
 	if len(blacklist) == 0 {
