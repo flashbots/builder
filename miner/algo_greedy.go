@@ -14,6 +14,10 @@ type chainData struct {
 	blacklist   map[common.Address]struct{}
 }
 
+type IBuilder interface {
+	buildBlock(simBundles []types.SimulatedBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle)
+}
+
 // / To use it:
 // / 1. Copy relevant data from the worker
 // / 2. Call buildBlock
