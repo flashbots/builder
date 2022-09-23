@@ -244,11 +244,6 @@ type worker struct {
 	pendingMu    sync.RWMutex
 	pendingTasks map[common.Hash]*task
 
-	bundleCacheMu         sync.Mutex
-	bundleCacheHeaderHash common.Hash
-	bundleCacheSuccess    map[common.Hash]simulatedBundle
-	bundleCacheFailed     map[common.Hash]struct{}
-
 	snapshotMu       sync.RWMutex // The lock used to protect the snapshots below
 	snapshotBlock    *types.Block
 	snapshotReceipts types.Receipts
@@ -297,28 +292,30 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 			}
 		}
 	}
-	log.Info("builderCoinbase", builderCoinbase.String())
+	log.Info("new worker", "builderCoinbase", builderCoinbase.String())
 	exitCh := make(chan struct{})
 	taskCh := make(chan *task)
-	if flashbots.isFlashbots {
-		// publish to the flashbots queue
-		taskCh = flashbots.queue
-	} else {
-		// read from the flashbots queue
-		go func() {
-			for {
-				select {
-				case flashbotsTask := <-flashbots.queue:
+	if flashbots.algoType == ALGO_MEV_GETH {
+		if flashbots.isFlashbots {
+			// publish to the flashbots queue
+			taskCh = flashbots.queue
+		} else {
+			// read from the flashbots queue
+			go func() {
+				for {
 					select {
-					case taskCh <- flashbotsTask:
+					case flashbotsTask := <-flashbots.queue:
+						select {
+						case taskCh <- flashbotsTask:
+						case <-exitCh:
+							return
+						}
 					case <-exitCh:
 						return
 					}
-				case <-exitCh:
-					return
 				}
-			}
-		}()
+			}()
+		}
 	}
 
 	blockList := make(map[common.Address]struct{})
@@ -352,8 +349,6 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
 		coinbase:           builderCoinbase,
 		flashbots:          flashbots,
-		bundleCacheSuccess: make(map[common.Hash]simulatedBundle),
-		bundleCacheFailed:  make(map[common.Hash]struct{}),
 	}
 
 	// Subscribe NewTxsEvent for tx pool
@@ -372,7 +367,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	worker.wg.Add(2)
 	go worker.mainLoop()
 	go worker.newWorkLoop(recommit)
-	if !flashbots.isFlashbots {
+	if flashbots.algoType != ALGO_MEV_GETH || !flashbots.isFlashbots {
 		// only mine if not flashbots
 		worker.wg.Add(2)
 		go worker.resultLoop()
@@ -1433,7 +1428,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment, 
 		}
 
 		start := time.Now()
-		simBundles, err := w.simulateBundles(env, bundles, pending)
+		simBundles, err := w.simulateBundles(env, bundles, nil) /* do not consider gas impact of mempool txs as bundles are treated as transactions wrt ordering */
 		log.Debug("Simulated bundles", "time", time.Since(start), "bundles", len(bundles))
 		if err != nil {
 			log.Error("Failed to simulate flashbots bundles", "err", err)
@@ -1443,9 +1438,9 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment, 
 		bundlesToConsider = simBundles
 	}
 
-	buider := newGreedyBuilder(w.chain, w.chainConfig, w.blockList, env, interrupt)
 	start := time.Now()
-	newEnv, blockBundles := buider.buildBlock(bundlesToConsider, pending)
+	builder := newGreedyBuilder(w.chain, w.chainConfig, w.blockList, env, interrupt)
+	newEnv, blockBundles := builder.buildBlock(bundlesToConsider, pending)
 	log.Debug("Build block", "time", time.Since(start), "gas used", newEnv.header.GasUsed)
 	*env = *newEnv
 
@@ -1497,13 +1492,21 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 
 	var blockBundles []types.SimulatedBundle
 	if !params.noTxs {
+		var err error
 		start := time.Now()
-		err, mergedBundles := w.fillTransactionsAlgoWorker(nil, work, &validatorCoinbase)
+		switch w.flashbots.algoType {
+		case ALGO_GREEDY:
+			err, blockBundles = w.fillTransactionsAlgoWorker(nil, work, &validatorCoinbase)
+		case ALGO_MEV_GETH:
+			err, blockBundles = w.fillTransactions(nil, work, &validatorCoinbase)
+		default:
+			err, blockBundles = w.fillTransactions(nil, work, &validatorCoinbase)
+		}
+
 		if err != nil {
 			return nil, err
 		}
-		blockBundles = mergedBundles
-		log.Info("Filled block with transactions", "time", time.Since(start), "gas used", work.header.GasUsed)
+		log.Info("Filled block with transactions", "time", time.Since(start), "gas used", work.header.GasUsed, "txs", work.txs)
 	}
 	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts)
 	if err != nil {
@@ -1735,15 +1738,22 @@ func (w *worker) mergeBundles(env *environment, bundles []simulatedBundle, pendi
 	}, mergedBundles, count, nil
 }
 
+var (
+	g_bundleCacheMu         sync.Mutex
+	g_bundleCacheHeaderHash common.Hash
+	g_bundleCacheSuccess    map[common.Hash]simulatedBundle = make(map[common.Hash]simulatedBundle)
+	g_bundleCacheFailed     map[common.Hash]struct{}        = make(map[common.Hash]struct{})
+)
+
 func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pendingTxs map[common.Address]types.Transactions) ([]simulatedBundle, error) {
-	w.bundleCacheMu.Lock()
-	defer w.bundleCacheMu.Unlock()
+	g_bundleCacheMu.Lock()
+	defer g_bundleCacheMu.Unlock()
 
 	var cacheSuccess map[common.Hash]simulatedBundle
 	var cacheFailed map[common.Hash]struct{}
-	if w.bundleCacheHeaderHash == env.header.Hash() {
-		cacheSuccess = w.bundleCacheSuccess
-		cacheFailed = w.bundleCacheFailed
+	if g_bundleCacheHeaderHash == env.header.Hash() {
+		cacheSuccess = g_bundleCacheSuccess
+		cacheFailed = g_bundleCacheFailed
 	} else {
 		cacheSuccess = make(map[common.Hash]simulatedBundle)
 		cacheFailed = make(map[common.Hash]struct{})
@@ -1791,9 +1801,9 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pe
 		}
 	}
 
-	w.bundleCacheHeaderHash = env.header.Hash()
-	w.bundleCacheSuccess = cacheSuccess
-	w.bundleCacheFailed = cacheFailed
+	g_bundleCacheHeaderHash = env.header.Hash()
+	g_bundleCacheSuccess = cacheSuccess
+	g_bundleCacheFailed = cacheFailed
 
 	return simulatedBundles, nil
 }
@@ -1858,24 +1868,23 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 
 		totalGasUsed += receipt.GasUsed
 
-		// NOTE: see note below
-		//from, err := types.Sender(env.signer, tx)
-		//if err != nil {
-		//	return simulatedBundle{}, err
-		//}
-		//
-		//txInPendingPool := false
-		//if accountTxs, ok := pendingTxs[from]; ok {
-		//	// check if tx is in pending pool
-		//	txNonce := tx.Nonce()
-		//
-		//	for _, accountTx := range accountTxs {
-		//		if accountTx.Nonce() == txNonce {
-		//			txInPendingPool = true
-		//			break
-		//		}
-		//	}
-		//}
+		from, err := types.Sender(env.signer, tx)
+		if err != nil {
+			return simulatedBundle{}, err
+		}
+
+		txInPendingPool := false
+		if accountTxs, ok := pendingTxs[from]; ok {
+			// check if tx is in pending pool
+			txNonce := tx.Nonce()
+
+			for _, accountTx := range accountTxs {
+				if accountTx.Nonce() == txNonce {
+					txInPendingPool = true
+					break
+				}
+			}
+		}
 
 		gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
 		gasPrice, err := tx.EffectiveGasTip(env.header.BaseFee)
@@ -1888,11 +1897,10 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 		coinbaseDelta.Sub(coinbaseDelta, gasFeesTx)
 		ethSentToCoinbase.Add(ethSentToCoinbase, coinbaseDelta)
 
-		// NOTE: differs from prod, the reason is that it can't be manipulated anymore
-		//if !txInPendingPool {
-		// If tx is not in pending pool, count the gas fees
-		gasFees.Add(gasFees, gasFeesTx)
-		//}
+		if !txInPendingPool {
+			// If tx is not in pending pool, count the gas fees
+			gasFees.Add(gasFees, gasFeesTx)
+		}
 	}
 
 	totalEth := new(big.Int).Add(ethSentToCoinbase, gasFees)

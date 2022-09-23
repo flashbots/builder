@@ -43,6 +43,13 @@ type Backend interface {
 	TxPool() *core.TxPool
 }
 
+type AlgoType int
+
+const (
+	ALGO_MEV_GETH AlgoType = iota
+	ALGO_GREEDY
+)
+
 // Config is the configuration parameters of mining.
 type Config struct {
 	Etherbase           common.Address    `toml:",omitempty"` // Public address for block mining rewards (default = first account)
@@ -52,11 +59,11 @@ type Config struct {
 	GasFloor            uint64            // Target gas floor for mined blocks.
 	GasCeil             uint64            // Target gas ceiling for mined blocks.
 	GasPrice            *big.Int          // Minimum gas price for mining a transaction
+	AlgoType            AlgoType          // Algorithm to use for block building
 	Recommit            time.Duration     // The time interval for miner to re-create mining work.
 	Noverify            bool              // Disable remote mining solution verification(only useful in ethash).
 	BuilderTxSigningKey *ecdsa.PrivateKey // Signing key of builder coinbase to make transaction to validator
 	MaxMergedBundles    int
-	TrustedRelays       []common.Address `toml:",omitempty"` // Trusted relay addresses to receive tasks from.
 	Blocklist           []common.Address `toml:",omitempty"`
 }
 
