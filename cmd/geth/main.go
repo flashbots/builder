@@ -125,6 +125,7 @@ var (
 		utils.MinerNotifyFlag,
 		utils.MinerGasLimitFlag,
 		utils.MinerGasPriceFlag,
+		utils.MinerAlgoTypeFlag,
 		utils.MinerEtherbaseFlag,
 		utils.MinerExtraDataFlag,
 		utils.MinerRecommitIntervalFlag,
