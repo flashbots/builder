@@ -92,7 +92,6 @@ func (b *Builder) Stop() error {
 }
 
 func (b *Builder) onSealedBlock(block *types.Block, bundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, proposerFeeRecipient boostTypes.Address, attrs *BuilderPayloadAttributes) error {
-	start := time.Now()
 	executableData := beacon.BlockToExecutableData(block)
 	payload, err := executableDataToExecutionPayload(executableData)
 	if err != nil {
@@ -137,11 +136,9 @@ func (b *Builder) onSealedBlock(block *types.Block, bundles []types.SimulatedBun
 	if err != nil {
 		log.Error("could not submit block", "err", err, "bundles", len(bundles))
 		return err
-	} else {
-		log.Info("could submit block", "bundles", len(bundles))
 	}
 
-	log.Info("submitted block", "header", block.Header(), "bid", blockBidMsg, "time", time.Since(start))
+	log.Info("submitted block", "slot", blockBidMsg.Slot, "value", blockBidMsg.Value.String(), "parent", blockBidMsg.ParentHash, "hash", block.Hash(), "bundles", len(bundles))
 
 	return nil
 }
@@ -172,7 +169,7 @@ func (b *Builder) OnPayloadAttribute(attrs *BuilderPayloadAttributes) error {
 
 	parentBlock := b.eth.GetBlockByHash(attrs.HeadHash)
 	if parentBlock == nil {
-		log.Info("Block hash not found in blocktree", "head block hash", attrs.HeadHash)
+		log.Warn("Block hash not found in blocktree", "head block hash", attrs.HeadHash)
 		return errors.New("parent block not found in blocktree")
 	}
 
