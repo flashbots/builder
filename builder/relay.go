@@ -103,8 +103,7 @@ func (r *RemoteRelay) updateValidatorsMap(currentSlot uint64, retries int) error
 	r.lastRequestedSlot = currentSlot
 	r.validatorsLock.Unlock()
 
-	log.Info("Updated validators", "new", newMap, "for slot", currentSlot)
-
+	log.Info("Updated validators", "count", len(newMap), "slot", currentSlot)
 	return nil
 }
 

@@ -89,7 +89,7 @@ func (b *bundleFetcher) fetchAndPush(ctx context.Context, pushMevBundles func(bu
 				log.Error("failed to fetch high prio bundles", "err", err)
 				continue
 			}
-			log.Info("Fetching High prio bundles", "size", len(bundles), "currentlyBuiltBlockNum", currentBlockNum+1)
+			log.Debug("Fetching High prio bundles", "size", len(bundles), "currentlyBuiltBlockNum", currentBlockNum+1)
 			if len(bundles) != 0 {
 				pushMevBundles(bundles)
 			}
@@ -105,7 +105,7 @@ func (b *bundleFetcher) fetchAndPush(ctx context.Context, pushMevBundles func(bu
 				log.Error("failed to fetch low prio bundles", "err", err)
 				continue
 			}
-			log.Info("Fetching low prio bundles", "len", len(bundles), "currentlyBuiltBlockNum", currentBlockNum+1)
+			log.Debug("Fetching low prio bundles", "len", len(bundles), "currentlyBuiltBlockNum", currentBlockNum+1)
 			if len(bundles) != 0 {
 				pushMevBundles(bundles)
 			}
