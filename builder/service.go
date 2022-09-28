@@ -193,7 +193,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *BuilderConfig) error
 	go bundleFetcher.Run()
 
 	ethereumService := NewEthereumService(backend)
-	builderBackend := NewBuilder(builderSk, ds, beaconClient, relay, builderSigningDomain, ethereumService)
+	builderBackend := NewBuilder(builderSk, ds, relay, builderSigningDomain, ethereumService)
 	builderService := NewService(cfg.ListenAddr, localRelay, builderBackend)
 
 	stack.RegisterAPIs([]rpc.API{

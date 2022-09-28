@@ -75,12 +75,13 @@ func TestOnPayloadAttributes(t *testing.T) {
 
 	testEthService := &testEthereumService{synced: true, testExecutableData: testExecutableData, testBlock: testBlock}
 
-	builder := NewBuilder(sk, flashbotsextra.NilDbService{}, &testBeacon, &testRelay, bDomain, testEthService)
+	builder := NewBuilder(sk, flashbotsextra.NilDbService{}, &testRelay, bDomain, testEthService)
 	builder.Start()
 	defer builder.Stop()
 
 	err = builder.OnPayloadAttribute(testPayloadAttributes)
 	require.NoError(t, err)
+	time.Sleep(time.Second * 3)
 
 	require.NotNil(t, testRelay.submittedMsg)
 	expectedProposerPubkey, err := boostTypes.HexToPubkey(testBeacon.validator.Pk.String())
@@ -128,11 +129,11 @@ func TestOnPayloadAttributes(t *testing.T) {
 
 	// Clear the submitted message and check that the job will be ran again and but a new message will not be submitted since the profit is the same
 	testRelay.submittedMsg = nil
-	time.Sleep(1200 * time.Millisecond)
+	time.Sleep(2200 * time.Millisecond)
 	require.Nil(t, testRelay.submittedMsg)
 
 	// Up the profit, expect to get the block
 	testEthService.testBlock.Profit.SetInt64(11)
-	time.Sleep(1200 * time.Millisecond)
+	time.Sleep(2200 * time.Millisecond)
 	require.NotNil(t, testRelay.submittedMsg)
 }

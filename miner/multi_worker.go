@@ -156,6 +156,7 @@ func newMultiWorkerGreedy(config *Config, chainConfig *params.ChainConfig, engin
 		queue:            queue,
 		algoType:         ALGO_GREEDY,
 		maxMergedBundles: config.MaxMergedBundles,
+		bundleCache:      NewBundleCache(),
 	})
 
 	log.Info("creating new greedy worker")
@@ -168,11 +169,14 @@ func newMultiWorkerGreedy(config *Config, chainConfig *params.ChainConfig, engin
 func newMultiWorkerMevGeth(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *multiWorker {
 	queue := make(chan *task)
 
+	bundleCache := NewBundleCache()
+
 	regularWorker := newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, init, &flashbotsData{
 		isFlashbots:      false,
 		queue:            queue,
 		algoType:         ALGO_MEV_GETH,
 		maxMergedBundles: config.MaxMergedBundles,
+		bundleCache:      bundleCache,
 	})
 
 	workers := []*worker{regularWorker}
@@ -184,6 +188,7 @@ func newMultiWorkerMevGeth(config *Config, chainConfig *params.ChainConfig, engi
 					queue:            queue,
 					algoType:         ALGO_MEV_GETH,
 					maxMergedBundles: i,
+					bundleCache:      bundleCache,
 				}))
 		}
 	}
@@ -200,4 +205,5 @@ type flashbotsData struct {
 	queue            chan *task
 	maxMergedBundles int
 	algoType         AlgoType
+	bundleCache      *BundleCache
 }
