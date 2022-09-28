@@ -1917,7 +1917,6 @@ func signalToErr(signal int32) error {
 
 func (w *worker) createProposerPayoutTx(env *environment, recipient *common.Address, profit *big.Int) (*types.Transaction, error) {
 	sender := w.coinbase.String()
-	log.Info(sender)
 	nonce := env.state.GetNonce(w.coinbase)
 	fee := new(big.Int).Mul(big.NewInt(paymentTxGas), env.header.BaseFee)
 	amount := new(big.Int).Sub(profit, fee)
