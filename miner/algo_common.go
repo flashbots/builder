@@ -174,7 +174,7 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 		default:
 			// Strange error, discard the transaction and get the next in line (note, the
 			// nonce-too-high clause will prevent us from executing in vain).
-			log.Debug("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
+			log.Trace("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
 			return nil, shiftTx, err
 		}
 	}
@@ -231,12 +231,12 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 		receipt, _, err := tmpEnvDiff.commitTx(tx, chData)
 
 		if err != nil {
-			log.Debug("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
+			log.Trace("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
 			return err
 		}
 
 		if receipt.Status != types.ReceiptStatusSuccessful && !bundle.OriginalBundle.RevertingHash(tx.Hash()) {
-			log.Debug("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
+			log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
 			return errors.New("bundle tx revert")
 		}
 
@@ -256,7 +256,7 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	bundleSimEffGP.Mul(bundleSimEffGP, big.NewInt(99))
 
 	if bundleSimEffGP.Cmp(bundleActualEffGP) == 1 {
-		log.Debug("Bundle underpays after inclusion", "bundle", bundle.OriginalBundle.Hash)
+		log.Trace("Bundle underpays after inclusion", "bundle", bundle.OriginalBundle.Hash)
 		return errors.New("bundle underpays")
 	}
 
