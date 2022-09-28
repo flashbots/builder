@@ -208,6 +208,7 @@ func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consens
 	w := newWorker(testConfig, chainConfig, engine, backend, new(event.TypeMux), nil, false, &flashbotsData{
 		isFlashbots: false,
 		queue:       nil,
+		bundleCache: NewBundleCache(),
 	})
 	w.setEtherbase(testBankAddress)
 	return w, backend
