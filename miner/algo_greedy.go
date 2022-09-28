@@ -42,10 +42,6 @@ func (b *greedyBuilder) buildBlock(simBundles []types.SimulatedBundle, transacti
 	env := b.inputEnvironment.copy()
 
 	orders := types.NewTransactionsByPriceAndNonce(env.signer, transactions, simBundles, env.header.BaseFee)
-	log.Debug("buildBlock", "totalBundles", len(simBundles))
-	for _, bundle := range simBundles {
-		log.Debug("buildBlock", "simBHash", bundle.OriginalBundle.Hash)
-	}
 	envDiff := newEnvironmentDiff(env)
 
 	usedBundles := make([]types.SimulatedBundle, 0)
