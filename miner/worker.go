@@ -628,14 +628,16 @@ func (w *worker) mainLoop() {
 			}
 
 		case req := <-w.getWorkCh:
-			block, err := w.generateWork(req.params)
-			if err != nil {
-				req.err <- err
-				req.result <- nil
-			} else {
-				req.err <- nil
-				req.result <- block
-			}
+			go func() {
+				block, err := w.generateWork(req.params)
+				if err != nil {
+					req.err <- err
+					req.result <- nil
+				} else {
+					req.err <- nil
+					req.result <- block
+				}
+			}()
 		case ev := <-w.chainSideCh:
 			// Short circuit for duplicate side blocks
 			if _, exist := w.localUncles[ev.Block.Hash()]; exist {
@@ -1738,37 +1740,16 @@ func (w *worker) mergeBundles(env *environment, bundles []simulatedBundle, pendi
 	}, mergedBundles, count, nil
 }
 
-var (
-	g_bundleCacheMu         sync.Mutex
-	g_bundleCacheHeaderHash common.Hash
-	g_bundleCacheSuccess    map[common.Hash]simulatedBundle = make(map[common.Hash]simulatedBundle)
-	g_bundleCacheFailed     map[common.Hash]struct{}        = make(map[common.Hash]struct{})
-)
-
 func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pendingTxs map[common.Address]types.Transactions) ([]simulatedBundle, error) {
-	g_bundleCacheMu.Lock()
-	defer g_bundleCacheMu.Unlock()
-
-	var cacheSuccess map[common.Hash]simulatedBundle
-	var cacheFailed map[common.Hash]struct{}
-	if g_bundleCacheHeaderHash == env.header.Hash() {
-		cacheSuccess = g_bundleCacheSuccess
-		cacheFailed = g_bundleCacheFailed
-	} else {
-		cacheSuccess = make(map[common.Hash]simulatedBundle)
-		cacheFailed = make(map[common.Hash]struct{})
-	}
+	headerHash := env.header.Hash()
+	simCache := w.flashbots.bundleCache.GetBundleCache(headerHash)
 
 	simResult := make([]*simulatedBundle, len(bundles))
 
 	var wg sync.WaitGroup
 	for i, bundle := range bundles {
-		if simmed, ok := cacheSuccess[bundle.Hash]; ok {
-			simResult[i] = &simmed
-			continue
-		}
-
-		if _, ok := cacheFailed[bundle.Hash]; ok {
+		if simmed, ok := simCache.GetSimulatedBundle(bundle.Hash); ok {
+			simResult[i] = simmed
 			continue
 		}
 
@@ -1791,19 +1772,14 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pe
 
 	wg.Wait()
 
+	simCache.UpdateSimulatedBundles(simResult, bundles)
+
 	simulatedBundles := make([]simulatedBundle, 0, len(bundles))
-	for i, bundle := range simResult {
+	for _, bundle := range simResult {
 		if bundle != nil {
 			simulatedBundles = append(simulatedBundles, *bundle)
-			cacheSuccess[bundle.OriginalBundle.Hash] = *bundle
-		} else {
-			cacheFailed[bundles[i].Hash] = struct{}{}
 		}
 	}
-
-	g_bundleCacheHeaderHash = env.header.Hash()
-	g_bundleCacheSuccess = cacheSuccess
-	g_bundleCacheFailed = cacheFailed
 
 	return simulatedBundles, nil
 }
