@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"golang.org/x/time/rate"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -30,8 +31,10 @@ func newTestBackend(t *testing.T, forkchoiceData *beacon.ExecutableDataV1, block
 	beaconClient := &testBeaconClient{validator: validator}
 	localRelay := NewLocalRelay(sk, beaconClient, bDomain, cDomain, ForkData{}, true)
 	ethService := &testEthereumService{synced: true, testExecutableData: forkchoiceData, testBlock: block}
-	backend := NewBuilder(sk, flashbotsextra.NilDbService{}, beaconClient, localRelay, bDomain, ethService)
+	backend := NewBuilder(sk, flashbotsextra.NilDbService{}, localRelay, bDomain, ethService)
 	// service := NewService("127.0.0.1:31545", backend)
+
+	backend.limiter = rate.NewLimiter(rate.Inf, 0)
 
 	return backend, localRelay, validator
 }
@@ -143,6 +146,7 @@ func TestGetHeader(t *testing.T) {
 	require.Equal(t, 204, rr.Code)
 
 	backend.OnPayloadAttribute(&BuilderPayloadAttributes{})
+	time.Sleep(2 * time.Second)
 
 	path = fmt.Sprintf("/eth/v1/builder/header/%d/%s/%s", 0, forkchoiceData.ParentHash.Hex(), validator.Pk.String())
 	rr = testRequest(t, relay, "GET", path, nil)
@@ -190,6 +194,7 @@ func TestGetPayload(t *testing.T) {
 
 	registerValidator(t, validator, relay)
 	backend.OnPayloadAttribute(&BuilderPayloadAttributes{})
+	time.Sleep(2 * time.Second)
 
 	path := fmt.Sprintf("/eth/v1/builder/header/%d/%s/%s", 0, forkchoiceData.ParentHash.Hex(), validator.Pk.String())
 	rr := testRequest(t, relay, "GET", path, nil)
