@@ -1382,30 +1382,25 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorC
 
 	if validatorCoinbase != nil && w.config.BuilderTxSigningKey != nil {
 		builderCoinbaseBalanceAfter := env.state.GetBalance(w.coinbase)
-		log.Info("Before creating validator profit", "validatorCoinbase", validatorCoinbase.String(), "builderCoinbase", w.coinbase.String(), "builderCoinbaseBalanceBefore", builderCoinbaseBalanceBefore.String(), "builderCoinbaseBalanceAfter", builderCoinbaseBalanceAfter.String())
+		log.Trace("Before creating validator profit", "validatorCoinbase", validatorCoinbase.String(), "builderCoinbase", w.coinbase.String(), "builderCoinbaseBalanceBefore", builderCoinbaseBalanceBefore.String(), "builderCoinbaseBalanceAfter", builderCoinbaseBalanceAfter.String())
 
 		profit := new(big.Int).Sub(builderCoinbaseBalanceAfter, builderCoinbaseBalanceBefore)
 		env.gasPool.AddGas(paymentTxGas)
 		if profit.Sign() == 1 {
 			tx, err := w.createProposerPayoutTx(env, validatorCoinbase, profit)
 			if err != nil {
-				log.Error("Proposer payout create tx failed", "err", err)
 				return fmt.Errorf("proposer payout create tx failed - %v", err), nil
 			}
 			if tx != nil {
-				log.Info("Proposer payout create tx succeeded, proceeding to commit tx")
 				_, err = w.commitTransaction(env, tx)
 				if err != nil {
-					log.Error("Proposer payout commit tx failed", "hash", tx.Hash().String(), "err", err)
 					return fmt.Errorf("proposer payout commit tx failed - %v", err), nil
 				}
-				log.Info("Proposer payout commit tx succeeded", "hash", tx.Hash().String())
 				env.tcount++
 			} else {
 				return errors.New("proposer payout create tx failed due to tx is nil"), nil
 			}
 		} else {
-			log.Warn("Proposer payout create tx failed due to not enough balance", "profit", profit.String())
 			return errors.New("proposer payout create tx failed due to not enough balance"), nil
 		}
 	}
@@ -1452,35 +1447,30 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment, 
 	start := time.Now()
 	builder := newGreedyBuilder(w.chain, w.chainConfig, w.blockList, env, interrupt)
 	newEnv, blockBundles := builder.buildBlock(bundlesToConsider, pending)
-	log.Debug("Build block", "time", time.Since(start), "gas used", newEnv.header.GasUsed)
+	log.Debug("Build block", "time", time.Since(start), "gasUsed", newEnv.header.GasUsed)
 	*env = *newEnv
 
 	if validatorCoinbase != nil && w.config.BuilderTxSigningKey != nil {
 		builderCoinbaseBalanceAfter := env.state.GetBalance(w.coinbase)
-		log.Info("Before creating validator profit", "validatorCoinbase", validatorCoinbase.String(), "builderCoinbase", w.coinbase.String(), "builderCoinbaseBalanceBefore", builderCoinbaseBalanceBefore.String(), "builderCoinbaseBalanceAfter", builderCoinbaseBalanceAfter.String())
+		log.Trace("Before creating validator profit", "validatorCoinbase", validatorCoinbase.String(), "builderCoinbase", w.coinbase.String(), "builderCoinbaseBalanceBefore", builderCoinbaseBalanceBefore.String(), "builderCoinbaseBalanceAfter", builderCoinbaseBalanceAfter.String())
 
 		profit := new(big.Int).Sub(builderCoinbaseBalanceAfter, builderCoinbaseBalanceBefore)
 		env.gasPool.AddGas(params.TxGas)
 		if profit.Sign() == 1 {
 			tx, err := w.createProposerPayoutTx(env, validatorCoinbase, profit)
 			if err != nil {
-				log.Error("Proposer payout create tx failed", "err", err)
 				return fmt.Errorf("proposer payout create tx failed - %v", err), nil
 			}
 			if tx != nil {
-				log.Info("Proposer payout create tx succeeded, proceeding to commit tx")
 				_, err = w.commitTransaction(env, tx)
 				if err != nil {
-					log.Error("Proposer payout commit tx failed", "hash", tx.Hash().String(), "err", err)
 					return fmt.Errorf("proposer payout commit tx failed - %v", err), nil
 				}
-				log.Info("Proposer payout commit tx succeeded", "hash", tx.Hash().String())
 				env.tcount++
 			} else {
 				return errors.New("proposer payout create tx failed due to tx is nil"), nil
 			}
 		} else {
-			log.Warn("Proposer payout create tx failed due to not enough balance", "profit", profit.String())
 			return errors.New("proposer payout create tx failed due to not enough balance"), nil
 		}
 
@@ -1509,7 +1499,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 		if errors.Is(err, errBlockInterruptedByTimeout) {
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.newpayloadTimeout))
 		}
-		log.Info("Filled block with transactions", "time", time.Since(start), "gas used", work.header.GasUsed, "txs", work.txs)
+		log.Debug("Filled block with transactions", "time", time.Since(start), "gas used", work.header.GasUsed, "txs", len(work.txs))
 	}
 	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts, params.withdrawals)
 	if err != nil {
@@ -1936,7 +1926,7 @@ func (w *worker) createProposerPayoutTx(env *environment, recipient *common.Addr
 	}
 	gasPrice := new(big.Int).Set(env.header.BaseFee)
 	chainId := w.chainConfig.ChainID
-	log.Debug("createProposerPayoutTx", "sender", sender, "chainId", chainId.String(), "nonce", nonce, "amount", amount.String(), "baseFee", env.header.BaseFee.String(), "fee", fee)
+	log.Trace("createProposerPayoutTx", "sender", sender, "chainId", chainId.String(), "nonce", nonce, "amount", amount.String(), "baseFee", env.header.BaseFee.String(), "fee", fee)
 	tx := types.NewTransaction(nonce, *recipient, amount, paymentTxGas, gasPrice, nil)
 	return types.SignTx(tx, types.LatestSignerForChainID(chainId), w.config.BuilderTxSigningKey)
 }
