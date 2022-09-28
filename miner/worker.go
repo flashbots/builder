@@ -1424,9 +1424,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment, 
 			return err, nil
 		}
 
-		start := time.Now()
 		simBundles, err := w.simulateBundles(env, bundles, nil) /* do not consider gas impact of mempool txs as bundles are treated as transactions wrt ordering */
-		log.Debug("Simulated bundles", "time", time.Since(start), "bundles", len(bundles))
 		if err != nil {
 			log.Error("Failed to simulate flashbots bundles", "err", err)
 			return err, nil
@@ -1435,10 +1433,8 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment, 
 		bundlesToConsider = simBundles
 	}
 
-	start := time.Now()
 	builder := newGreedyBuilder(w.chain, w.chainConfig, w.blockList, env, interrupt)
 	newEnv, blockBundles := builder.buildBlock(bundlesToConsider, pending)
-	log.Debug("Build block", "time", time.Since(start), "gasUsed", newEnv.header.GasUsed)
 	*env = *newEnv
 
 	if validatorCoinbase != nil && w.config.BuilderTxSigningKey != nil {
@@ -1472,6 +1468,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment, 
 
 // generateWork generates a sealing block based on the given parameters.
 func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
+	start := time.Now()
 	validatorCoinbase := params.coinbase
 	// Set builder coinbase to be passed to beacon header
 	params.coinbase = w.coinbase
@@ -1485,7 +1482,6 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 	var blockBundles []types.SimulatedBundle
 	if !params.noTxs {
 		var err error
-		start := time.Now()
 		switch w.flashbots.algoType {
 		case ALGO_GREEDY:
 			err, blockBundles = w.fillTransactionsAlgoWorker(nil, work, &validatorCoinbase)
@@ -1498,7 +1494,6 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 		if err != nil {
 			return nil, err
 		}
-		log.Debug("Filled block with transactions", "time", time.Since(start), "gas used", work.header.GasUsed, "txs", len(work.txs))
 	}
 	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts)
 	if err != nil {
@@ -1530,7 +1525,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 	}
 
 	block.Profit.Set(lastTx.Value())
-	log.Info("Block finalized and assembled", "blockProfit", ethIntToFloat(block.Profit), "bundles", len(blockBundles), "gasUsed", block.GasUsed())
+	log.Info("Block finalized and assembled", "blockProfit", ethIntToFloat(block.Profit), "txs", len(work.txs), "bundles", len(blockBundles), "gasUsed", block.GasUsed(), "time", time.Since(start))
 
 	if params.onBlock != nil {
 		go params.onBlock(block, blockBundles)
@@ -1729,6 +1724,7 @@ func (w *worker) mergeBundles(env *environment, bundles []simulatedBundle, pendi
 }
 
 func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pendingTxs map[common.Address]types.Transactions) ([]simulatedBundle, error) {
+	start := time.Now()
 	headerHash := env.header.Hash()
 	simCache := w.flashbots.bundleCache.GetBundleCache(headerHash)
 
@@ -1751,7 +1747,7 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pe
 			simmed, err := w.computeBundleGas(env, bundle, state, gasPool, pendingTxs, 0)
 
 			if err != nil {
-				log.Debug("Error computing gas for a bundle", "error", err)
+				log.Trace("Error computing gas for a bundle", "error", err)
 				return
 			}
 			simResult[idx] = &simmed
@@ -1769,6 +1765,8 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pe
 		}
 	}
 
+	okBundles := len(bundles) - len(simulatedBundles)
+	log.Debug("Simulated bundles", "block", env.header.Number, "allBundles", len(bundles), "okBundles", okBundles, "time", time.Since(start))
 	return simulatedBundles, nil
 }
 
