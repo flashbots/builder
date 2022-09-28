@@ -66,7 +66,7 @@ func (b *greedyBuilder) buildBlock(simBundles []types.SimulatedBundle, transacti
 			}
 
 			if err != nil {
-				log.Info("could not apply tx", "hash", order.Tx.Hash(), "err", err)
+				log.Trace("could not apply tx", "hash", order.Tx.Hash(), "err", err)
 				continue
 			}
 			effGapPrice, err := order.Tx.EffectiveGasTip(env.header.BaseFee)
@@ -79,11 +79,11 @@ func (b *greedyBuilder) buildBlock(simBundles []types.SimulatedBundle, transacti
 			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt)
 			orders.Pop()
 			if err != nil {
-				log.Info("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
+				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
 				continue
 			}
 
-			log.Info("Included bundle", "bundleEGP", bundle.MevGasPrice.String(), "gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.TotalEth))
+			log.Trace("Included bundle", "bundleEGP", bundle.MevGasPrice.String(), "gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.TotalEth))
 			usedBundles = append(usedBundles, *bundle)
 		}
 	}
