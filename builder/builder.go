@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"errors"
+	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
 	"golang.org/x/time/rate"
 	"math/big"
 	_ "os"
@@ -49,6 +50,8 @@ type Builder struct {
 	ds                   flashbotsextra.IDatabaseService
 	relay                IRelay
 	eth                  IEthereumService
+	dryRun               bool
+	validator            *blockvalidation.BlockValidationAPI
 	builderSecretKey     *bls.SecretKey
 	builderPublicKey     boostTypes.PublicKey
 	builderSigningDomain boostTypes.Domain
@@ -62,7 +65,7 @@ type Builder struct {
 	slotCtxCancel context.CancelFunc
 }
 
-func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService) *Builder {
+func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, validator *blockvalidation.BlockValidationAPI) *Builder {
 	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
@@ -72,6 +75,8 @@ func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRe
 		ds:                   ds,
 		relay:                relay,
 		eth:                  eth,
+		dryRun:               dryRun,
+		validator:            validator,
 		builderSecretKey:     sk,
 		builderPublicKey:     pk,
 		builderSigningDomain: builderSigningDomain,
@@ -118,8 +123,6 @@ func (b *Builder) onSealedBlock(block *types.Block, bundles []types.SimulatedBun
 		Value:                *value,
 	}
 
-	go b.ds.ConsumeBuiltBlock(block, bundles, &blockBidMsg)
-
 	signature, err := boostTypes.SignMessage(&blockBidMsg, b.builderSigningDomain, b.builderSecretKey)
 	if err != nil {
 		log.Error("could not sign builder bid", "err", err)
@@ -132,10 +135,18 @@ func (b *Builder) onSealedBlock(block *types.Block, bundles []types.SimulatedBun
 		ExecutionPayload: payload,
 	}
 
-	err = b.relay.SubmitBlock(&blockSubmitReq)
-	if err != nil {
-		log.Error("could not submit block", "err", err, "bundles", len(bundles))
-		return err
+	if b.dryRun {
+		err = b.validator.ValidateBuilderSubmissionV1(&blockSubmitReq)
+		if err != nil {
+			log.Error("could not validate block", "err", err)
+		}
+	} else {
+		go b.ds.ConsumeBuiltBlock(block, bundles, &blockBidMsg)
+		err = b.relay.SubmitBlock(&blockSubmitReq)
+		if err != nil {
+			log.Error("could not submit block", "err", err, "bundles", len(bundles))
+			return err
+		}
 	}
 
 	log.Info("submitted block", "slot", blockBidMsg.Slot, "value", blockBidMsg.Value.String(), "parent", blockBidMsg.ParentHash, "hash", block.Hash(), "bundles", len(bundles))

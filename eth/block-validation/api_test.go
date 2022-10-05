@@ -101,7 +101,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	}
 	blockRequest.Message.Value = boostTypes.IntToU256(190526394825529)
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "inaccurate payment")
-	blockRequest.Message.Value = boostTypes.IntToU256(190215802060530)
+	blockRequest.Message.Value = boostTypes.IntToU256(190526394825530)
 	require.NoError(t, api.ValidateBuilderSubmissionV1(blockRequest))
 
 	// TODO: test with contract calling blacklisted address
@@ -142,7 +142,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	invalidPayload.LogsBloom = boostTypes.Bloom{}
 	copy(invalidPayload.ReceiptsRoot[:], hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")[:32])
 	blockRequest.ExecutionPayload = invalidPayload
-	copy(blockRequest.Message.BlockHash[:], hexutil.MustDecode("0x65cded68b85277f489f22497731d8cece9e42f0429a250a5022a9417408f3998")[:32])
+	copy(blockRequest.Message.BlockHash[:], hexutil.MustDecode("0x272872d14b2a8a0454e747ed472d82d8d5ce342cfafd65fa7b77aa6de1c061d4")[:32])
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "could not apply tx 3", "insufficient funds for gas * price + value")
 }
 

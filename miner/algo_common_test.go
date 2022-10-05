@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"github.com/stretchr/testify/require"
 	"math/big"
 	"testing"
 
@@ -26,6 +27,9 @@ var (
 	// Pay proxy is a contract that sends msg.value to address specified in calldata[0..32]
 	payProxyAddress = common.HexToAddress("0x1100000000000000000000000000000000000000")
 	payProxyCode    = hexutil.MustDecode("0x6000600060006000346000356000f1")
+	// log contract logs value that it receives
+	logContractAddress = common.HexToAddress("0x2200000000000000000000000000000000000000")
+	logContractCode    = hexutil.MustDecode("0x346000523460206000a1")
 )
 
 type signerList struct {
@@ -184,7 +188,7 @@ func genTestSetup() (*state.StateDB, chainData, signerList) {
 	db := rawdb.NewMemoryDatabase()
 	signerList := genSignerList(10, config)
 
-	genesisAlloc := genGenesisAlloc(signerList, []common.Address{payProxyAddress}, [][]byte{payProxyCode})
+	genesisAlloc := genGenesisAlloc(signerList, []common.Address{payProxyAddress, logContractAddress}, [][]byte{payProxyCode, logContractCode})
 
 	gspec := &core.Genesis{
 		Config: config,
@@ -491,4 +495,71 @@ func TestBlacklist(t *testing.T) {
 	if len(envDiff.newReceipts) != 0 {
 		t.Fatal("newReceipts changed")
 	}
+}
+
+func TestPayoutTxUtils(t *testing.T) {
+	availableFunds := big.NewInt(50000000000000000) // 0.05 eth
+
+	statedb, chData, signers := genTestSetup()
+
+	env := newEnvironment(chData, statedb, signers.addresses[0], GasLimit, big.NewInt(1))
+
+	// Sending payment to the plain EOA
+	gas, isEOA, err := estimatePayoutTxGas(env, signers.addresses[1], signers.addresses[2], signers.signers[1], chData)
+	require.Equal(t, uint64(21000), gas)
+	require.True(t, isEOA)
+	require.NoError(t, err)
+
+	expectedPayment := new(big.Int).Sub(availableFunds, big.NewInt(21000))
+	balanceBefore := env.state.GetBalance(signers.addresses[2])
+	rec, err := insertPayoutTx(env, signers.addresses[1], signers.addresses[2], gas, isEOA, availableFunds, signers.signers[1], chData)
+	balanceAfter := env.state.GetBalance(signers.addresses[2])
+	require.NoError(t, err)
+	require.NotNil(t, rec)
+	require.Equal(t, types.ReceiptStatusSuccessful, rec.Status)
+	require.Equal(t, uint64(21000), rec.GasUsed)
+	require.True(t, new(big.Int).Sub(balanceAfter, balanceBefore).Cmp(expectedPayment) == 0)
+
+	// Sending payment to the contract that logs event of the amount
+	gas, isEOA, err = estimatePayoutTxGas(env, signers.addresses[1], logContractAddress, signers.signers[1], chData)
+	require.Equal(t, uint64(22025), gas)
+	require.False(t, isEOA)
+	require.NoError(t, err)
+
+	expectedPayment = new(big.Int).Sub(availableFunds, big.NewInt(22025))
+	balanceBefore = env.state.GetBalance(logContractAddress)
+	rec, err = insertPayoutTx(env, signers.addresses[1], logContractAddress, gas, isEOA, availableFunds, signers.signers[1], chData)
+	balanceAfter = env.state.GetBalance(logContractAddress)
+	require.NoError(t, err)
+	require.NotNil(t, rec)
+	require.Equal(t, types.ReceiptStatusSuccessful, rec.Status)
+	require.Equal(t, uint64(22025), rec.GasUsed)
+	require.True(t, new(big.Int).Sub(balanceAfter, balanceBefore).Cmp(expectedPayment) == 0)
+
+	// Try requesting less gas for contract tx. We request 21k gas, but we must pay 22025
+	// iteration logic should set gas limit to 23k
+	expectedPayment = new(big.Int).Sub(availableFunds, big.NewInt(23000))
+	balanceBefore = env.state.GetBalance(logContractAddress)
+	rec, err = insertPayoutTx(env, signers.addresses[1], logContractAddress, 21000, isEOA, availableFunds, signers.signers[1], chData)
+	balanceAfter = env.state.GetBalance(logContractAddress)
+	require.NoError(t, err)
+	require.NotNil(t, rec)
+	require.Equal(t, types.ReceiptStatusSuccessful, rec.Status)
+	require.Equal(t, uint64(22025), rec.GasUsed)
+	require.True(t, new(big.Int).Sub(balanceAfter, balanceBefore).Cmp(expectedPayment) == 0)
+
+	// errors
+
+	_, err = insertPayoutTx(env, signers.addresses[1], signers.addresses[2], 21000, true, availableFunds, signers.signers[2], chData)
+	require.ErrorContains(t, err, "incorrect sender private key")
+	_, err = insertPayoutTx(env, signers.addresses[1], logContractAddress, 23000, false, availableFunds, signers.signers[2], chData)
+	require.ErrorContains(t, err, "incorrect sender private key")
+
+	_, err = insertPayoutTx(env, signers.addresses[1], signers.addresses[2], 21000, true, big.NewInt(21000-1), signers.signers[1], chData)
+	require.ErrorContains(t, err, "not enough funds available")
+	_, err = insertPayoutTx(env, signers.addresses[1], logContractAddress, 23000, false, big.NewInt(23000-1), signers.signers[1], chData)
+	require.ErrorContains(t, err, "not enough funds available")
+
+	_, err = insertPayoutTx(env, signers.addresses[1], signers.addresses[2], 20000, true, availableFunds, signers.signers[1], chData)
+	require.ErrorContains(t, err, "not enough gas")
 }

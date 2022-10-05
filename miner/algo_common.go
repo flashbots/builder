@@ -1,7 +1,9 @@
 package miner
 
 import (
+	"crypto/ecdsa"
 	"errors"
+	"fmt"
 	"math/big"
 	"sync/atomic"
 
@@ -19,6 +21,8 @@ const (
 	shiftTx = 1
 	popTx   = 2
 )
+
+var emptyCodeHash = common.HexToHash("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
 
 var errInterrupt = errors.New("miner worker interrupted")
 
@@ -262,4 +266,112 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 
 	*envDiff = *tmpEnvDiff
 	return nil
+}
+
+func estimatePayoutTxGas(env *environment, sender, receiver common.Address, prv *ecdsa.PrivateKey, chData chainData) (uint64, bool, error) {
+	if codeHash := env.state.GetCodeHash(receiver); codeHash == (common.Hash{}) || codeHash == emptyCodeHash {
+		return params.TxGas, true, nil
+	}
+	gasLimit := env.gasPool.Gas()
+
+	balance := new(big.Int).SetBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+	value := new(big.Int).SetBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+
+	diff := newEnvironmentDiff(env)
+	diff.state.SetBalance(sender, balance)
+	receipt, err := diff.commitPayoutTx(value, sender, receiver, gasLimit, prv, chData)
+	if err != nil {
+		return 0, false, err
+	}
+	return receipt.GasUsed, false, nil
+}
+
+func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint64, isEOA bool, availableFunds *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
+	diff := newEnvironmentDiff(env)
+	applyTx := func(gas uint64) (*types.Receipt, error) {
+		fee := new(big.Int).Mul(env.header.BaseFee, new(big.Int).SetUint64(gas))
+		amount := new(big.Int).Sub(availableFunds, fee)
+		if amount.Sign() < 0 {
+			return nil, errors.New("not enough funds available")
+		}
+		rec, err := diff.commitPayoutTx(amount, sender, receiver, gas, prv, chData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to commit payment tx: %w", err)
+		}
+		if rec.Status != types.ReceiptStatusSuccessful {
+			return nil, fmt.Errorf("payment tx failed")
+		}
+		return rec, nil
+	}
+
+	if isEOA {
+		rec, err := applyTx(gas)
+		if err != nil {
+			return nil, err
+		}
+		diff.applyToBaseEnv()
+		return rec, nil
+	}
+
+	var (
+		rec *types.Receipt
+		err error
+	)
+	for i := 0; i < 6; i++ {
+		rec, err = applyTx(gas)
+		if err != nil {
+			gas += 1000
+		} else {
+			break
+		}
+	}
+
+	if err != nil {
+		return nil, err
+	}
+	diff.applyToBaseEnv()
+	return rec, nil
+}
+
+func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver common.Address, gas uint64, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
+	senderBalance := envDiff.state.GetBalance(sender)
+
+	if gas < params.TxGas {
+		return nil, errors.New("not enough gas for intrinsic gas cost")
+	}
+
+	requiredBalance := new(big.Int).Mul(envDiff.header.BaseFee, new(big.Int).SetUint64(gas))
+	requiredBalance = requiredBalance.Add(requiredBalance, amount)
+	if requiredBalance.Cmp(senderBalance) > 0 {
+		return nil, errors.New("not enough balance")
+	}
+
+	signer := envDiff.baseEnvironment.signer
+	tx, err := types.SignNewTx(prv, signer, &types.DynamicFeeTx{
+		ChainID:   chData.chainConfig.ChainID,
+		Nonce:     envDiff.state.GetNonce(sender),
+		GasTipCap: new(big.Int),
+		GasFeeCap: envDiff.header.BaseFee,
+		Gas:       gas,
+		To:        &receiver,
+		Value:     amount,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	txSender, err := signer.Sender(tx)
+	if err != nil {
+		return nil, err
+	}
+	if txSender != sender {
+		return nil, errors.New("incorrect sender private key")
+	}
+
+	receipt, _, err := envDiff.commitTx(tx, chData)
+	if err != nil {
+		return nil, err
+	}
+
+	return receipt, nil
 }
