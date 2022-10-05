@@ -20,7 +20,10 @@ package miner
 import (
 	"crypto/ecdsa"
 	"fmt"
+	"github.com/ethereum/go-ethereum/crypto"
 	"math/big"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -82,6 +85,15 @@ type Miner struct {
 }
 
 func New(eth Backend, config *Config, chainConfig *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine, isLocalBlock func(header *types.Header) bool) *Miner {
+	if config.BuilderTxSigningKey == nil {
+		key := os.Getenv("BUILDER_TX_SIGNING_KEY")
+		if key, err := crypto.HexToECDSA(strings.TrimPrefix(key, "0x")); err != nil {
+			log.Error("Error parsing builder signing key from env", "err", err)
+		} else {
+			config.BuilderTxSigningKey = key
+		}
+	}
+
 	miner := &Miner{
 		eth:     eth,
 		mux:     mux,

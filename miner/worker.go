@@ -17,14 +17,11 @@
 package miner
 
 import (
-	"crypto/ecdsa"
 	"errors"
 	"fmt"
 	"math/big"
 
-	"os"
 	"sort"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -273,24 +270,11 @@ type worker struct {
 }
 
 func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool, flashbots *flashbotsData) *worker {
-	var err error
 	var builderCoinbase common.Address
-	key := os.Getenv("BUILDER_TX_SIGNING_KEY") // get builder private signing key
-	if key == "" {
-		log.Error("Builder signing key is empty, validator payout can not be done")
+	if config.BuilderTxSigningKey == nil {
+		log.Error("Builder tx signing key is not set")
 	} else {
-		config.BuilderTxSigningKey, err = crypto.HexToECDSA(strings.TrimPrefix(key, "0x"))
-		if err != nil {
-			log.Error("Error creating builder tx signing key", "error", err)
-		} else {
-			publicKey := config.BuilderTxSigningKey.Public()
-			publicKeyECDSA, ok := publicKey.(*ecdsa.PublicKey)
-			if ok {
-				builderCoinbase = crypto.PubkeyToAddress(*publicKeyECDSA)
-			} else {
-				log.Error("Cannot assert type, builder tx signing key")
-			}
-		}
+		builderCoinbase = crypto.PubkeyToAddress(config.BuilderTxSigningKey.PublicKey)
 	}
 	log.Info("new worker", "builderCoinbase", builderCoinbase.String())
 	exitCh := make(chan struct{})
@@ -1312,7 +1296,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 // fillTransactions retrieves the pending transactions from the txpool and fills them
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
-func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorCoinbase *common.Address) (error, []types.SimulatedBundle) {
+func (w *worker) fillTransactions(interrupt *int32, env *environment) (error, []types.SimulatedBundle) {
 	// Split the pending transactions into locals and remotes
 	// Fill the block with all available pending transactions.
 	pending := w.eth.TxPool().Pending(true)
@@ -1325,13 +1309,6 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorC
 	}
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(env.header.GasLimit)
-	}
-	var builderCoinbaseBalanceBefore *big.Int
-	if validatorCoinbase != nil {
-		builderCoinbaseBalanceBefore = env.state.GetBalance(w.coinbase)
-		if err := env.gasPool.SubGas(paymentTxGas); err != nil {
-			return err, nil
-		}
 	}
 
 	var blockBundles []types.SimulatedBundle
@@ -1371,49 +1348,17 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment, validatorC
 		}
 	}
 
-	if validatorCoinbase != nil && w.config.BuilderTxSigningKey != nil {
-		builderCoinbaseBalanceAfter := env.state.GetBalance(w.coinbase)
-		log.Trace("Before creating validator profit", "validatorCoinbase", validatorCoinbase.String(), "builderCoinbase", w.coinbase.String(), "builderCoinbaseBalanceBefore", builderCoinbaseBalanceBefore.String(), "builderCoinbaseBalanceAfter", builderCoinbaseBalanceAfter.String())
-
-		profit := new(big.Int).Sub(builderCoinbaseBalanceAfter, builderCoinbaseBalanceBefore)
-		env.gasPool.AddGas(paymentTxGas)
-		if profit.Sign() == 1 {
-			tx, err := w.createProposerPayoutTx(env, validatorCoinbase, profit)
-			if err != nil {
-				return fmt.Errorf("proposer payout create tx failed - %v", err), nil
-			}
-			if tx != nil {
-				_, err = w.commitTransaction(env, tx)
-				if err != nil {
-					return fmt.Errorf("proposer payout commit tx failed - %v", err), nil
-				}
-				env.tcount++
-			} else {
-				return errors.New("proposer payout create tx failed due to tx is nil"), nil
-			}
-		} else {
-			return errors.New("proposer payout create tx failed due to not enough balance"), nil
-		}
-	}
-
 	return nil, blockBundles
 }
 
 // fillTransactionsAlgoWorker retrieves the pending transactions and bundles from the txpool and fills them
 // into the given sealing block.
-func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment, validatorCoinbase *common.Address) (error, []types.SimulatedBundle) {
+func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) (error, []types.SimulatedBundle) {
 	// Split the pending transactions into locals and remotes
 	// Fill the block with all available pending transactions.
 	pending := w.eth.TxPool().Pending(true)
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(env.header.GasLimit)
-	}
-	var builderCoinbaseBalanceBefore *big.Int
-	if validatorCoinbase != nil {
-		builderCoinbaseBalanceBefore = env.state.GetBalance(w.coinbase)
-		if err := env.gasPool.SubGas(params.TxGas); err != nil {
-			return err, nil
-		}
 	}
 
 	var bundlesToConsider []types.SimulatedBundle
@@ -1437,32 +1382,6 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment, 
 	newEnv, blockBundles := builder.buildBlock(bundlesToConsider, pending)
 	*env = *newEnv
 
-	if validatorCoinbase != nil && w.config.BuilderTxSigningKey != nil {
-		builderCoinbaseBalanceAfter := env.state.GetBalance(w.coinbase)
-		log.Trace("Before creating validator profit", "validatorCoinbase", validatorCoinbase.String(), "builderCoinbase", w.coinbase.String(), "builderCoinbaseBalanceBefore", builderCoinbaseBalanceBefore.String(), "builderCoinbaseBalanceAfter", builderCoinbaseBalanceAfter.String())
-
-		profit := new(big.Int).Sub(builderCoinbaseBalanceAfter, builderCoinbaseBalanceBefore)
-		env.gasPool.AddGas(params.TxGas)
-		if profit.Sign() == 1 {
-			tx, err := w.createProposerPayoutTx(env, validatorCoinbase, profit)
-			if err != nil {
-				return fmt.Errorf("proposer payout create tx failed - %v", err), nil
-			}
-			if tx != nil {
-				_, err = w.commitTransaction(env, tx)
-				if err != nil {
-					return fmt.Errorf("proposer payout commit tx failed - %v", err), nil
-				}
-				env.tcount++
-			} else {
-				return errors.New("proposer payout create tx failed due to tx is nil"), nil
-			}
-		} else {
-			return errors.New("proposer payout create tx failed due to not enough balance"), nil
-		}
-
-	}
-
 	return nil, blockBundles
 }
 
@@ -1482,15 +1401,21 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 	var blockBundles []types.SimulatedBundle
 	if !params.noTxs {
 		var err error
-		switch w.flashbots.algoType {
-		case ALGO_GREEDY:
-			err, blockBundles = w.fillTransactionsAlgoWorker(nil, work, &validatorCoinbase)
-		case ALGO_MEV_GETH:
-			err, blockBundles = w.fillTransactions(nil, work, &validatorCoinbase)
-		default:
-			err, blockBundles = w.fillTransactions(nil, work, &validatorCoinbase)
+		paymentTxReserve, err := w.proposerTxPrepare(work, &validatorCoinbase)
+		if err != nil {
+			return nil, err
 		}
 
+		switch w.flashbots.algoType {
+		case ALGO_GREEDY:
+			err, blockBundles = w.fillTransactionsAlgoWorker(nil, work)
+		case ALGO_MEV_GETH:
+			err, blockBundles = w.fillTransactions(nil, work)
+		default:
+			err, blockBundles = w.fillTransactions(nil, work)
+		}
+
+		err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve)
 		if err != nil {
 			return nil, err
 		}
@@ -1562,7 +1487,7 @@ func (w *worker) commitWork(interrupt *int32, noempty bool, timestamp int64) {
 	}
 
 	// Fill pending transactions from the txpool
-	err, _ = w.fillTransactions(interrupt, work, nil)
+	err, _ = w.fillTransactions(interrupt, work)
 	if err != nil && !errors.Is(err, errBlockInterruptedByRecommit) {
 		work.discard()
 		return
@@ -1912,17 +1837,59 @@ func totalFees(block *types.Block, receipts []*types.Receipt) *big.Float {
 	return ethIntToFloat(feesWei)
 }
 
-func (w *worker) createProposerPayoutTx(env *environment, recipient *common.Address, profit *big.Int) (*types.Transaction, error) {
-	sender := w.coinbase.String()
-	nonce := env.state.GetNonce(w.coinbase)
-	fee := new(big.Int).Mul(big.NewInt(paymentTxGas), env.header.BaseFee)
-	amount := new(big.Int).Sub(profit, fee)
-	if amount.Sign() == -1 {
-		return nil, errors.New("negative amount of proposer payout")
+type proposerTxReservation struct {
+	builderBalance *big.Int
+	reservedGas    uint64
+	isEOA          bool
+}
+
+func (w *worker) proposerTxPrepare(env *environment, validatorCoinbase *common.Address) (*proposerTxReservation, error) {
+	if validatorCoinbase == nil || w.config.BuilderTxSigningKey == nil {
+		return nil, nil
 	}
-	gasPrice := new(big.Int).Set(env.header.BaseFee)
-	chainId := w.chainConfig.ChainID
-	log.Trace("createProposerPayoutTx", "sender", sender, "chainId", chainId.String(), "nonce", nonce, "amount", amount.String(), "baseFee", env.header.BaseFee.String(), "fee", fee)
-	tx := types.NewTransaction(nonce, *recipient, amount, paymentTxGas, gasPrice, nil)
-	return types.SignTx(tx, types.LatestSignerForChainID(chainId), w.config.BuilderTxSigningKey)
+
+	w.mu.Lock()
+	sender := w.coinbase
+	w.mu.Unlock()
+	builderBalance := env.state.GetBalance(sender)
+
+	chainData := chainData{w.chainConfig, w.chain, w.blockList}
+	gas, isEOA, err := estimatePayoutTxGas(env, sender, *validatorCoinbase, w.config.BuilderTxSigningKey, chainData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to estimate proposer payout gas: %w", err)
+	}
+
+	if err := env.gasPool.SubGas(gas); err != nil {
+		return nil, err
+	}
+
+	return &proposerTxReservation{
+		builderBalance: builderBalance,
+		reservedGas:    gas,
+		isEOA:          isEOA,
+	}, nil
+}
+
+func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Address, reserve *proposerTxReservation) error {
+	if reserve == nil || validatorCoinbase == nil {
+		return nil
+	}
+
+	w.mu.Lock()
+	sender := w.coinbase
+	w.mu.Unlock()
+	builderBalance := env.state.GetBalance(sender)
+
+	availableFunds := new(big.Int).Sub(builderBalance, reserve.builderBalance)
+	if availableFunds.Sign() <= 0 {
+		return errors.New("builder balance decreased")
+	}
+
+	env.gasPool.AddGas(reserve.reservedGas)
+	chainData := chainData{w.chainConfig, w.chain, w.blockList}
+	_, err := insertPayoutTx(env, sender, *validatorCoinbase, reserve.reservedGas, reserve.isEOA, availableFunds, w.config.BuilderTxSigningKey, chainData)
+	if err != nil {
+		return err
+	}
+	return nil
 }

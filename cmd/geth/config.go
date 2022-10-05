@@ -171,6 +171,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		Enabled:               ctx.IsSet(utils.BuilderEnabled.Name),
 		EnableValidatorChecks: ctx.IsSet(utils.BuilderEnableValidatorChecks.Name),
 		EnableLocalRelay:      ctx.IsSet(utils.BuilderEnableLocalRelay.Name),
+		DryRun:                ctx.IsSet(utils.BuilderDryRun.Name),
 		BuilderSecretKey:      ctx.String(utils.BuilderSecretKey.Name),
 		RelaySecretKey:        ctx.String(utils.BuilderRelaySecretKey.Name),
 		ListenAddr:            ctx.String(utils.BuilderListenAddr.Name),
@@ -179,6 +180,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		GenesisValidatorsRoot: ctx.String(utils.BuilderGenesisValidatorsRoot.Name),
 		BeaconEndpoint:        ctx.String(utils.BuilderBeaconEndpoint.Name),
 		RemoteRelayEndpoint:   ctx.String(utils.BuilderRemoteRelayEndpoint.Name),
+		ValidationBlocklist:   ctx.String(utils.BuilderBlockValidationBlacklistSourceFilePath.Name),
 	}
 	backend, eth := utils.RegisterEthService(stack, &cfg.Eth, bpConfig)
 
@@ -203,7 +205,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	// Configure log filter RPC API.
 	filterSystem := utils.RegisterFilterAPI(stack, backend, &cfg.Eth)
 
-	if err := blockvalidationapi.Register(stack, eth, ctx); err != nil {
+	if err := blockvalidationapi.Register(stack, eth, ctx.String(utils.BuilderBlockValidationBlacklistSourceFilePath.Name)); err != nil {
 		utils.Fatalf("Failed to register the Block Validation API: %v", err)
 	}
 

@@ -699,6 +699,10 @@ var (
 		Name:  "builder.local_relay",
 		Usage: "Enable the local relay",
 	}
+	BuilderDryRun = &cli.BoolFlag{
+		Name:  "builder.dry-run",
+		Usage: "Builder only validates blocks without submission to the relay",
+	}
 	BuilderSecretKey = &cli.StringFlag{
 		Name:    "builder.secret_key",
 		Usage:   "Builder key used for signing blocks",
@@ -1067,8 +1071,8 @@ var (
 	// Builder API flags
 	BuilderBlockValidationBlacklistSourceFilePath = &cli.StringFlag{
 		Name:     "builder.validation_blacklist",
-		Usage:    "Path to file containing blacklisted addresses, json-encoded list of strings. Default assumes CWD is repo's root",
-		Value:    "ofac_blacklist.json",
+		Usage:    "Path to file containing blacklisted addresses, json-encoded list of strings. Default assumes no blacklist",
+		Value:    "",
 		Category: flags.EthCategory,
 	}
 )
