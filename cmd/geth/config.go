@@ -168,7 +168,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	// Configure log filter RPC API.
 	filterSystem := utils.RegisterFilterAPI(stack, backend, &cfg.Eth)
 
-	if err := blockvalidationapi.Register(stack, eth, ctx); err != nil {
+	if err := blockvalidationapi.Register(stack, eth, ctx.String(utils.BuilderBlockValidationBlacklistSourceFilePath.Name)); err != nil {
 		utils.Fatalf("Failed to register the Block Validation API: %v", err)
 	}
 

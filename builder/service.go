@@ -3,6 +3,7 @@ package builder
 import (
 	"errors"
 	"fmt"
+	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
 	"net/http"
 	"os"
 
@@ -106,6 +107,7 @@ type BuilderConfig struct {
 	Enabled               bool
 	EnableValidatorChecks bool
 	EnableLocalRelay      bool
+	DryRun                bool
 	BuilderSecretKey      string
 	RelaySecretKey        string
 	ListenAddr            string
@@ -114,6 +116,7 @@ type BuilderConfig struct {
 	GenesisValidatorsRoot string
 	BeaconEndpoint        string
 	RemoteRelayEndpoint   string
+	ValidationBlocklist   string
 }
 
 func Register(stack *node.Node, backend *eth.Ethereum, cfg *BuilderConfig) error {
@@ -172,6 +175,18 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *BuilderConfig) error
 		return errors.New("neither local nor remote relay specified")
 	}
 
+	var validator *blockvalidation.BlockValidationAPI
+	if cfg.DryRun {
+		var accessVerifier *blockvalidation.AccessVerifier
+		if cfg.ValidationBlocklist != "" {
+			accessVerifier, err = blockvalidation.NewAccessVerifierFromFile(cfg.ValidationBlocklist)
+			if err != nil {
+				return fmt.Errorf("failed to load validation blocklist %w", err)
+			}
+		}
+		validator = blockvalidation.NewBlockValidationAPI(backend, accessVerifier)
+	}
+
 	// TODO: move to proper flags
 	var ds flashbotsextra.IDatabaseService
 	dbDSN := os.Getenv("FLASHBOTS_POSTGRES_DSN")
@@ -193,7 +208,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *BuilderConfig) error
 	go bundleFetcher.Run()
 
 	ethereumService := NewEthereumService(backend)
-	builderBackend := NewBuilder(builderSk, ds, relay, builderSigningDomain, ethereumService)
+	builderBackend := NewBuilder(builderSk, ds, relay, builderSigningDomain, ethereumService, cfg.DryRun, validator)
 	builderService := NewService(cfg.ListenAddr, localRelay, builderBackend)
 
 	stack.RegisterAPIs([]rpc.API{
