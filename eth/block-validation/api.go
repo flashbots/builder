@@ -7,7 +7,6 @@ import (
 	"math/big"
 	"os"
 
-	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/beacon"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -17,8 +16,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/urfave/cli/v2"
-
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
 
@@ -81,11 +78,11 @@ func NewAccessVerifierFromFile(path string) (*AccessVerifier, error) {
 }
 
 // Register adds catalyst APIs to the full node.
-func Register(stack *node.Node, backend *eth.Ethereum, ctx *cli.Context) error {
+func Register(stack *node.Node, backend *eth.Ethereum, blockValidationBlocklistFile string) error {
 	var accessVerifier *AccessVerifier
-	if ctx.IsSet(utils.BuilderBlockValidationBlacklistSourceFilePath.Name) {
+	if blockValidationBlocklistFile != "" {
 		var err error
-		accessVerifier, err = NewAccessVerifierFromFile(ctx.String(utils.BuilderBlockValidationBlacklistSourceFilePath.Name))
+		accessVerifier, err = NewAccessVerifierFromFile(blockValidationBlocklistFile)
 		if err != nil {
 			return err
 		}
