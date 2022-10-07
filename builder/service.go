@@ -3,9 +3,10 @@ package builder
 import (
 	"errors"
 	"fmt"
-	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
 	"net/http"
 	"os"
+
+	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"

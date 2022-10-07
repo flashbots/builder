@@ -2,11 +2,12 @@ package miner
 
 import (
 	"fmt"
+	"math/big"
+	"testing"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
-	"math/big"
-	"testing"
 )
 
 func TestBuildBlockGasLimit(t *testing.T) {
@@ -65,5 +66,4 @@ func TestTxWithMinerFeeHeap(t *testing.T) {
 			orders.Pop()
 		}
 	}
-
 }

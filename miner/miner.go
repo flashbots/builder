@@ -19,8 +19,8 @@ package miner
 
 import (
 	"crypto/ecdsa"
+	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/crypto"
 	"math/big"
 	"os"
 	"strings"
@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
@@ -53,6 +54,17 @@ const (
 	ALGO_MEV_GETH AlgoType = iota
 	ALGO_GREEDY
 )
+
+func AlgoTypeFlagToEnum(algoString string) (AlgoType, error) {
+	switch algoString {
+	case "mev-geth":
+		return ALGO_MEV_GETH, nil
+	case "greedy":
+		return ALGO_GREEDY, nil
+	default:
+		return ALGO_MEV_GETH, errors.New("algo not recognized")
+	}
+}
 
 // Config is the configuration parameters of mining.
 type Config struct {
