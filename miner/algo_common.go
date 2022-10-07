@@ -26,6 +26,12 @@ var emptyCodeHash = common.HexToHash("c5d2460186f7233c927e7db2dcc703c0e500b653ca
 
 var errInterrupt = errors.New("miner worker interrupted")
 
+type chainData struct {
+	chainConfig *params.ChainConfig
+	chain       *core.BlockChain
+	blacklist   map[common.Address]struct{}
+}
+
 type environmentDiff struct {
 	baseEnvironment *environment
 	header          *types.Header
@@ -51,7 +57,7 @@ func (e *environmentDiff) copy() *environmentDiff {
 	gasPool := new(core.GasPool).AddGas(e.gasPool.Gas())
 
 	return &environmentDiff{
-		baseEnvironment: e.baseEnvironment,
+		baseEnvironment: e.baseEnvironment.copy(),
 		header:          types.CopyHeader(e.header),
 		gasPool:         gasPool,
 		state:           e.state.Copy(),

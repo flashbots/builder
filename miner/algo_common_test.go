@@ -4,9 +4,10 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
-	"github.com/stretchr/testify/require"
 	"math/big"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 
 	mapset "github.com/deckarep/golang-set"
 	"github.com/ethereum/go-ethereum/common"
@@ -366,10 +367,8 @@ func TestCommitTxOverGasLimit(t *testing.T) {
 		t.Fatal("Env diff gas pool is not drained")
 	}
 
-	receipt, i, err = envDiff.commitTx(tx2, chData)
-	if err == nil {
-		t.Fatal("committed tx over gas limit")
-	}
+	_, _, err = envDiff.commitTx(tx2, chData)
+	require.Error(t, err, "committed tx over gas limit")
 }
 
 func TestErrorBundleCommit(t *testing.T) {
@@ -494,6 +493,36 @@ func TestBlacklist(t *testing.T) {
 
 	if len(envDiff.newReceipts) != 0 {
 		t.Fatal("newReceipts changed")
+	}
+}
+
+func TestGetSealingWorkAlgos(t *testing.T) {
+	t.Cleanup(func() {
+		testConfig.AlgoType = ALGO_MEV_GETH
+	})
+
+	for _, algoType := range []AlgoType{ALGO_MEV_GETH, ALGO_GREEDY} {
+		local := new(params.ChainConfig)
+		*local = *ethashChainConfig
+		local.TerminalTotalDifficulty = big.NewInt(0)
+		testConfig.AlgoType = algoType
+		testGetSealingWork(t, local, ethash.NewFaker(), true)
+	}
+}
+
+func TestGetSealingWorkAlgosWithProfit(t *testing.T) {
+	t.Cleanup(func() {
+		testConfig.AlgoType = ALGO_MEV_GETH
+		testConfig.BuilderTxSigningKey = nil
+	})
+
+	for _, algoType := range []AlgoType{ALGO_GREEDY} {
+		var err error
+		testConfig.BuilderTxSigningKey, err = crypto.GenerateKey()
+		require.NoError(t, err)
+		testConfig.AlgoType = algoType
+		t.Logf("running for %d", algoType)
+		testBundles(t)
 	}
 }
 

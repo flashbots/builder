@@ -2,12 +2,13 @@ package builder
 
 import (
 	"context"
-	"golang.org/x/time/rate"
 	"math/rand"
 	"sort"
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/time/rate"
 )
 
 type submission struct {

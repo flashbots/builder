@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"golang.org/x/time/rate"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"

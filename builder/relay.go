@@ -29,8 +29,6 @@ func (r *testRelay) GetValidatorForSlot(nextSlot uint64) (ValidatorData, error) 
 	r.requestedSlot = nextSlot
 	return r.validator, nil
 }
-func (r *testRelay) handleRegisterValidator(w http.ResponseWriter, req *http.Request) {
-}
 
 type RemoteRelay struct {
 	endpoint string

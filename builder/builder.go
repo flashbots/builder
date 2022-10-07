@@ -3,12 +3,13 @@ package builder
 import (
 	"context"
 	"errors"
-	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
-	"golang.org/x/time/rate"
 	"math/big"
 	_ "os"
 	"sync"
 	"time"
+
+	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
+	"golang.org/x/time/rate"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/beacon"

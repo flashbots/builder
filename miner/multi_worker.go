@@ -94,7 +94,7 @@ type resChPair struct {
 func (w *multiWorker) GetSealingBlockAsync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool, blockHook func(*types.Block, []types.SimulatedBundle)) (chan *types.Block, error) {
 	resChans := []resChPair{}
 
-	for _, worker := range append(w.workers) {
+	for _, worker := range w.workers {
 		resCh, errCh, err := worker.getSealingBlock(parent, timestamp, coinbase, gasLimit, random, noTxs, noExtra, blockHook)
 		if err != nil {
 			log.Error("could not start async block construction", "isFlashbotsWorker", worker.flashbots.isFlashbots, "#bundles", worker.flashbots.maxMergedBundles)
@@ -141,7 +141,7 @@ func (w *multiWorker) GetSealingBlockSync(parent common.Hash, timestamp uint64, 
 }
 
 func newMultiWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *multiWorker {
-	if config.AlgoType == ALGO_GREEDY {
+	if config.AlgoType != ALGO_MEV_GETH {
 		return newMultiWorkerGreedy(config, chainConfig, engine, eth, mux, isLocalBlock, init)
 	} else {
 		return newMultiWorkerMevGeth(config, chainConfig, engine, eth, mux, isLocalBlock, init)
@@ -154,7 +154,7 @@ func newMultiWorkerGreedy(config *Config, chainConfig *params.ChainConfig, engin
 	greedyWorker := newWorker(config, chainConfig, engine, eth, mux, isLocalBlock, init, &flashbotsData{
 		isFlashbots:      true,
 		queue:            queue,
-		algoType:         ALGO_GREEDY,
+		algoType:         config.AlgoType,
 		maxMergedBundles: config.MaxMergedBundles,
 		bundleCache:      NewBundleCache(),
 	})
