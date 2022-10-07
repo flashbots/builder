@@ -41,9 +41,6 @@ var (
 	testValidatorKey, _ = crypto.HexToECDSA("28c3cd61b687fdd03488e167a5d84f50269df2a4c29a2cfb1390903aa775c5d0")
 	testValidatorAddr   = crypto.PubkeyToAddress(testValidatorKey.PublicKey)
 
-	testMinerKey, _ = crypto.HexToECDSA("28c3cd61b687fdd03488e167a5d84f50269df2a4c29a2cfb1390903aa775c5d0")
-	testMinerAddr   = crypto.PubkeyToAddress(testValidatorKey.PublicKey)
-
 	testBalance = big.NewInt(2e18)
 )
 
@@ -57,7 +54,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	api := NewBlockValidationAPI(ethservice, nil)
 	parent := preMergeBlocks[len(preMergeBlocks)-1]
 
-	api.eth.APIBackend.Miner().SetEtherbase(testMinerAddr)
+	api.eth.APIBackend.Miner().SetEtherbase(testValidatorAddr)
 
 	// This EVM code generates a log when the contract is created.
 	logCode := common.Hex2Bytes("60606040525b7f24ec1d3ff24c2f6ff210738839dbc339cd45a5294d85c79361016243157aae7b60405180905060405180910390a15b600a8060416000396000f360606040526008565b00")
@@ -142,7 +139,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	invalidPayload.LogsBloom = boostTypes.Bloom{}
 	copy(invalidPayload.ReceiptsRoot[:], hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")[:32])
 	blockRequest.ExecutionPayload = invalidPayload
-	copy(blockRequest.Message.BlockHash[:], hexutil.MustDecode("0x272872d14b2a8a0454e747ed472d82d8d5ce342cfafd65fa7b77aa6de1c061d4")[:32])
+	copy(blockRequest.Message.BlockHash[:], hexutil.MustDecode("0x2ff468dee2e05f1f58744d5496f3ab22fdc23c8141f86f907b4b0f2c8e22afc4")[:32])
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "could not apply tx 3", "insufficient funds for gas * price + value")
 }
 
