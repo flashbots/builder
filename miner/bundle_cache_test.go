@@ -1,9 +1,10 @@
 package miner
 
 import (
+	"testing"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"testing"
 )
 
 func TestBundleCacheEntry(t *testing.T) {
