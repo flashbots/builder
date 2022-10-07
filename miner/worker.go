@@ -79,8 +79,6 @@ const (
 
 	// staleThreshold is the maximum depth of the acceptable stale block.
 	staleThreshold = 7
-
-	paymentTxGas = 26000
 )
 
 var (
@@ -276,6 +274,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	} else {
 		builderCoinbase = crypto.PubkeyToAddress(config.BuilderTxSigningKey.PublicKey)
 	}
+
 	log.Info("new worker", "builderCoinbase", builderCoinbase.String())
 	exitCh := make(chan struct{})
 	taskCh := make(chan *task)
@@ -1307,9 +1306,6 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) (error, []
 			localTxs[account] = txs
 		}
 	}
-	if env.gasPool == nil {
-		env.gasPool = new(core.GasPool).AddGas(env.header.GasLimit)
-	}
 
 	var blockBundles []types.SimulatedBundle
 	if w.flashbots.isFlashbots {
@@ -1357,25 +1353,9 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 	// Split the pending transactions into locals and remotes
 	// Fill the block with all available pending transactions.
 	pending := w.eth.TxPool().Pending(true)
-	if env.gasPool == nil {
-		env.gasPool = new(core.GasPool).AddGas(env.header.GasLimit)
-	}
-
-	var bundlesToConsider []types.SimulatedBundle
-	if w.flashbots.isFlashbots {
-		bundles, err := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
-		if err != nil {
-			log.Error("Failed to fetch pending bundles", "err", err)
-			return err, nil
-		}
-
-		simBundles, err := w.simulateBundles(env, bundles, nil) /* do not consider gas impact of mempool txs as bundles are treated as transactions wrt ordering */
-		if err != nil {
-			log.Error("Failed to simulate flashbots bundles", "err", err)
-			return err, nil
-		}
-
-		bundlesToConsider = simBundles
+	bundlesToConsider, err := w.getSimulatedBundles(env)
+	if err != nil {
+		return err, nil
 	}
 
 	builder := newGreedyBuilder(w.chain, w.chainConfig, w.blockList, env, interrupt)
@@ -1383,6 +1363,27 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 	*env = *newEnv
 
 	return nil, blockBundles
+}
+
+func (w *worker) getSimulatedBundles(env *environment) ([]types.SimulatedBundle, error) {
+	if !w.flashbots.isFlashbots {
+		return nil, nil
+	}
+
+	bundles, err := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
+	if err != nil {
+		log.Error("Failed to fetch pending bundles", "err", err)
+		return nil, err
+	}
+
+	// TODO: consider interrupt
+	simBundles, err := w.simulateBundles(env, bundles, nil) /* do not consider gas impact of mempool txs as bundles are treated as transactions wrt ordering */
+	if err != nil {
+		log.Error("Failed to simulate flashbots bundles", "err", err)
+		return nil, err
+	}
+
+	return simBundles, nil
 }
 
 // generateWork generates a sealing block based on the given parameters.
@@ -1398,28 +1399,53 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 	}
 	defer work.discard()
 
-	var blockBundles []types.SimulatedBundle
-	if !params.noTxs {
-		var err error
-		paymentTxReserve, err := w.proposerTxPrepare(work, &validatorCoinbase)
+	finalizeFn := func(env *environment, blockBundles []types.SimulatedBundle) (*types.Block, error) {
+		block, err := w.finalizeBlock(env, validatorCoinbase)
 		if err != nil {
+			log.Error("could not finalize block", "err", err)
 			return nil, err
 		}
 
-		switch w.flashbots.algoType {
-		case ALGO_GREEDY:
-			err, blockBundles = w.fillTransactionsAlgoWorker(nil, work)
-		case ALGO_MEV_GETH:
-			err, blockBundles = w.fillTransactions(nil, work)
-		default:
-			err, blockBundles = w.fillTransactions(nil, work)
+		log.Info("Block finalized and assembled", "blockProfit", ethIntToFloat(block.Profit), "txs", len(env.txs), "bundles", len(blockBundles), "gasUsed", block.GasUsed(), "time", time.Since(start))
+		if params.onBlock != nil {
+			go params.onBlock(block, blockBundles)
 		}
 
-		err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve)
-		if err != nil {
-			return nil, err
-		}
+		return block, nil
 	}
+
+	if params.noTxs {
+		return finalizeFn(work, nil)
+	}
+
+	paymentTxReserve, err := w.proposerTxPrepare(work, &validatorCoinbase)
+	if err != nil {
+		return nil, err
+	}
+
+	var blockBundles []types.SimulatedBundle
+	switch w.flashbots.algoType {
+	case ALGO_GREEDY:
+		err, blockBundles = w.fillTransactionsAlgoWorker(nil, work)
+	case ALGO_MEV_GETH:
+		err, blockBundles = w.fillTransactions(nil, work)
+	default:
+		err, blockBundles = w.fillTransactions(nil, work)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve)
+	if err != nil {
+		return nil, err
+	}
+
+	return finalizeFn(work, blockBundles)
+}
+
+func (w *worker) finalizeBlock(work *environment, validatorCoinbase common.Address) (*types.Block, error) {
 	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts)
 	if err != nil {
 		return nil, err
@@ -1431,6 +1457,16 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 		return block, nil
 	}
 
+	blockProfit, err := w.checkProposerPayment(work, validatorCoinbase)
+	if err != nil {
+		return nil, err
+	}
+
+	block.Profit = blockProfit
+	return block, nil
+}
+
+func (w *worker) checkProposerPayment(work *environment, validatorCoinbase common.Address) (*big.Int, error) {
 	if len(work.txs) == 0 {
 		return nil, errors.New("no proposer payment tx")
 	} else if len(work.receipts) == 0 {
@@ -1445,18 +1481,11 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 	}
 	lastTxTo := lastTx.To()
 	if lastTxTo == nil || *lastTxTo != validatorCoinbase {
-		log.Error("last transaction is not to the proposer!", "err", err, "lastTx", lastTx)
+		log.Error("last transaction is not to the proposer!", "lastTx", lastTx)
 		return nil, errors.New("last transaction is not proposer payment")
 	}
 
-	block.Profit.Set(lastTx.Value())
-	log.Info("Block finalized and assembled", "blockProfit", ethIntToFloat(block.Profit), "txs", len(work.txs), "bundles", len(blockBundles), "gasUsed", block.GasUsed(), "time", time.Since(start))
-
-	if params.onBlock != nil {
-		go params.onBlock(block, blockBundles)
-	}
-
-	return block, nil
+	return new(big.Int).Set(lastTx.Value()), nil
 }
 
 // commitWork generates several new sealing tasks based on the parent block

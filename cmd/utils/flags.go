@@ -1746,14 +1746,11 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 		cfg.GasPrice = flags.GlobalBig(ctx, MinerGasPriceFlag.Name)
 	}
 	if ctx.IsSet(MinerAlgoTypeFlag.Name) {
-		switch ctx.String(MinerAlgoTypeFlag.Name) {
-		case "greedy":
-			cfg.AlgoType = miner.ALGO_GREEDY
-		case "mev-geth":
-			cfg.AlgoType = miner.ALGO_MEV_GETH
-		default:
+		algoType, err := miner.AlgoTypeFlagToEnum(ctx.String(MinerAlgoTypeFlag.Name))
+		if err != nil {
 			Fatalf("Invalid algo in --miner.algotype: %s", ctx.String(MinerAlgoTypeFlag.Name))
 		}
+		cfg.AlgoType = algoType
 	}
 	if ctx.IsSet(MinerRecommitIntervalFlag.Name) {
 		cfg.Recommit = ctx.Duration(MinerRecommitIntervalFlag.Name)
