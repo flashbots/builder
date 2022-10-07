@@ -2,9 +2,10 @@ package builder
 
 import (
 	"context"
+	"time"
+
 	"github.com/ethereum/go-ethereum/log"
 	"golang.org/x/time/rate"
-	"time"
 )
 
 // runResubmitLoop checks for update signal and calls submit respecting provided rate limiter and context

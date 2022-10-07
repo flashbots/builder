@@ -577,6 +577,19 @@ func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transa
 	}
 }
 
+func (t *TransactionsByPriceAndNonce) DeepCopy() *TransactionsByPriceAndNonce {
+	newT := &TransactionsByPriceAndNonce{
+		txs:     make(map[common.Address]Transactions),
+		heads:   append(TxByPriceAndTime{}, t.heads...),
+		signer:  t.signer,
+		baseFee: new(big.Int).Set(t.baseFee),
+	}
+	for k, v := range t.txs {
+		newT.txs[k] = v
+	}
+	return newT
+}
+
 // Peek returns the next transaction by price.
 func (t *TransactionsByPriceAndNonce) Peek() *TxWithMinerFee {
 	if len(t.heads) == 0 {

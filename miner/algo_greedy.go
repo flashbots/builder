@@ -8,16 +8,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-type chainData struct {
-	chainConfig *params.ChainConfig
-	chain       *core.BlockChain
-	blacklist   map[common.Address]struct{}
-}
-
-type IBuilder interface {
-	buildBlock(simBundles []types.SimulatedBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle)
-}
-
 // / To use it:
 // / 1. Copy relevant data from the worker
 // / 2. Call buildBlock
@@ -37,14 +27,8 @@ func newGreedyBuilder(chain *core.BlockChain, chainConfig *params.ChainConfig, b
 	}
 }
 
-func (b *greedyBuilder) buildBlock(simBundles []types.SimulatedBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle) {
-
-	env := b.inputEnvironment.copy()
-
-	orders := types.NewTransactionsByPriceAndNonce(env.signer, transactions, simBundles, env.header.BaseFee)
-	envDiff := newEnvironmentDiff(env)
-
-	usedBundles := make([]types.SimulatedBundle, 0)
+func (b *greedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) []types.SimulatedBundle {
+	usedBundles := []types.SimulatedBundle{}
 
 	for {
 		order := orders.Peek()
@@ -65,7 +49,7 @@ func (b *greedyBuilder) buildBlock(simBundles []types.SimulatedBundle, transacti
 				log.Trace("could not apply tx", "hash", order.Tx.Hash(), "err", err)
 				continue
 			}
-			effGapPrice, err := order.Tx.EffectiveGasTip(env.header.BaseFee)
+			effGapPrice, err := order.Tx.EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
 			if err == nil {
 				log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
 			}
@@ -84,6 +68,13 @@ func (b *greedyBuilder) buildBlock(simBundles []types.SimulatedBundle, transacti
 		}
 	}
 
+	return usedBundles
+}
+
+func (b *greedyBuilder) buildBlock(simBundles []types.SimulatedBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle) {
+	orders := types.NewTransactionsByPriceAndNonce(b.inputEnvironment.signer, transactions, simBundles, b.inputEnvironment.header.BaseFee)
+	envDiff := newEnvironmentDiff(b.inputEnvironment.copy())
+	usedBundles := b.mergeOrdersIntoEnvDiff(envDiff, orders)
 	envDiff.applyToBaseEnv()
-	return env, usedBundles
+	return envDiff.baseEnvironment, usedBundles
 }
