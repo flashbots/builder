@@ -41,6 +41,13 @@ func (a *AccessVerifier) verifyTraces(tracer *logger.AccessListTracer) error {
 	return nil
 }
 
+func (a *AccessVerifier) isBlacklisted(addr common.Address) error {
+	if _, present := a.blacklistedAddresses[addr]; present {
+		return fmt.Errorf("transaction from blacklisted address %s", addr.String())
+	}
+	return nil
+}
+
 func (a *AccessVerifier) verifyTransactions(signer types.Signer, txs types.Transactions) error {
 	for _, tx := range txs {
 		from, err := signer.Sender(tx)
@@ -149,6 +156,12 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *boostTypes.Bu
 	var vmconfig vm.Config
 	var tracer *logger.AccessListTracer = nil
 	if api.accessVerifier != nil {
+		if err := api.accessVerifier.isBlacklisted(block.Coinbase()); err != nil {
+			return err
+		}
+		if err := api.accessVerifier.isBlacklisted(feeRecipient); err != nil {
+			return err
+		}
 		if err := api.accessVerifier.verifyTransactions(types.LatestSigner(api.eth.BlockChain().Config()), block.Transactions()); err != nil {
 			return err
 		}
