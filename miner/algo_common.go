@@ -293,25 +293,24 @@ func estimatePayoutTxGas(env *environment, sender, receiver common.Address, prv 
 }
 
 func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint64, isEOA bool, availableFunds *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
-	diff := newEnvironmentDiff(env)
-	applyTx := func(gas uint64) (*types.Receipt, error) {
+	applyTx := func(envDiff *environmentDiff, gas uint64) (*types.Receipt, error) {
 		fee := new(big.Int).Mul(env.header.BaseFee, new(big.Int).SetUint64(gas))
 		amount := new(big.Int).Sub(availableFunds, fee)
 		if amount.Sign() < 0 {
 			return nil, errors.New("not enough funds available")
 		}
-		rec, err := diff.commitPayoutTx(amount, sender, receiver, gas, prv, chData)
+		rec, err := envDiff.commitPayoutTx(amount, sender, receiver, gas, prv, chData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to commit payment tx: %w", err)
-		}
-		if rec.Status != types.ReceiptStatusSuccessful {
+		} else if rec.Status != types.ReceiptStatusSuccessful {
 			return nil, fmt.Errorf("payment tx failed")
 		}
 		return rec, nil
 	}
 
 	if isEOA {
-		rec, err := applyTx(gas)
+		diff := newEnvironmentDiff(env)
+		rec, err := applyTx(diff, gas)
 		if err != nil {
 			return nil, err
 		}
@@ -319,24 +318,36 @@ func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint6
 		return rec, nil
 	}
 
-	var (
-		rec *types.Receipt
-		err error
-	)
+	var err error
 	for i := 0; i < 6; i++ {
-		rec, err = applyTx(gas)
+		diff := newEnvironmentDiff(env)
+		var rec *types.Receipt
+		rec, err = applyTx(diff, gas)
 		if err != nil {
 			gas += 1000
-		} else {
-			break
+			continue
 		}
+
+		if gas == rec.GasUsed {
+			diff.applyToBaseEnv()
+			return rec, nil
+		}
+
+		exactEnvDiff := newEnvironmentDiff(env)
+		exactRec, err := applyTx(exactEnvDiff, rec.GasUsed)
+		if err != nil {
+			diff.applyToBaseEnv()
+			return rec, nil
+		}
+		exactEnvDiff.applyToBaseEnv()
+		return exactRec, nil
 	}
 
-	if err != nil {
-		return nil, err
+	if err == nil {
+		return nil, errors.New("could not estimate gas")
 	}
-	diff.applyToBaseEnv()
-	return rec, nil
+
+	return nil, err
 }
 
 func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver common.Address, gas uint64, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {

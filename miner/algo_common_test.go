@@ -548,6 +548,7 @@ func TestPayoutTxUtils(t *testing.T) {
 	require.Equal(t, types.ReceiptStatusSuccessful, rec.Status)
 	require.Equal(t, uint64(21000), rec.GasUsed)
 	require.True(t, new(big.Int).Sub(balanceAfter, balanceBefore).Cmp(expectedPayment) == 0)
+	require.Equal(t, env.state.GetNonce(signers.addresses[1]), uint64(1))
 
 	// Sending payment to the contract that logs event of the amount
 	gas, isEOA, err = estimatePayoutTxGas(env, signers.addresses[1], logContractAddress, signers.signers[1], chData)
@@ -564,10 +565,10 @@ func TestPayoutTxUtils(t *testing.T) {
 	require.Equal(t, types.ReceiptStatusSuccessful, rec.Status)
 	require.Equal(t, uint64(22025), rec.GasUsed)
 	require.True(t, new(big.Int).Sub(balanceAfter, balanceBefore).Cmp(expectedPayment) == 0)
+	require.Equal(t, env.state.GetNonce(signers.addresses[1]), uint64(2))
 
 	// Try requesting less gas for contract tx. We request 21k gas, but we must pay 22025
-	// iteration logic should set gas limit to 23k
-	expectedPayment = new(big.Int).Sub(availableFunds, big.NewInt(23000))
+	expectedPayment = new(big.Int).Sub(availableFunds, big.NewInt(22025))
 	balanceBefore = env.state.GetBalance(logContractAddress)
 	rec, err = insertPayoutTx(env, signers.addresses[1], logContractAddress, 21000, isEOA, availableFunds, signers.signers[1], chData)
 	balanceAfter = env.state.GetBalance(logContractAddress)
@@ -576,6 +577,7 @@ func TestPayoutTxUtils(t *testing.T) {
 	require.Equal(t, types.ReceiptStatusSuccessful, rec.Status)
 	require.Equal(t, uint64(22025), rec.GasUsed)
 	require.True(t, new(big.Int).Sub(balanceAfter, balanceBefore).Cmp(expectedPayment) == 0)
+	require.Equal(t, env.state.GetNonce(signers.addresses[1]), uint64(3))
 
 	// errors
 
@@ -591,4 +593,6 @@ func TestPayoutTxUtils(t *testing.T) {
 
 	_, err = insertPayoutTx(env, signers.addresses[1], signers.addresses[2], 20000, true, availableFunds, signers.signers[1], chData)
 	require.ErrorContains(t, err, "not enough gas")
+
+	require.Equal(t, env.state.GetNonce(signers.addresses[1]), uint64(3))
 }
