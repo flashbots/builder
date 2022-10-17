@@ -97,7 +97,7 @@ func (b *Builder) Stop() error {
 	return nil
 }
 
-func (b *Builder) onSealedBlock(block *types.Block, bundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, proposerFeeRecipient boostTypes.Address, attrs *BuilderPayloadAttributes) error {
+func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, proposerFeeRecipient boostTypes.Address, attrs *BuilderPayloadAttributes) error {
 	executableData := beacon.BlockToExecutableData(block)
 	payload, err := executableDataToExecutionPayload(executableData)
 	if err != nil {
@@ -142,15 +142,15 @@ func (b *Builder) onSealedBlock(block *types.Block, bundles []types.SimulatedBun
 			log.Error("could not validate block", "err", err)
 		}
 	} else {
-		go b.ds.ConsumeBuiltBlock(block, bundles, &blockBidMsg)
+		go b.ds.ConsumeBuiltBlock(block, ordersClosedAt, sealedAt, commitedBundles, allBundles, &blockBidMsg)
 		err = b.relay.SubmitBlock(&blockSubmitReq)
 		if err != nil {
-			log.Error("could not submit block", "err", err, "bundles", len(bundles))
+			log.Error("could not submit block", "err", err, "#commitedBundles", len(commitedBundles))
 			return err
 		}
 	}
 
-	log.Info("submitted block", "slot", blockBidMsg.Slot, "value", blockBidMsg.Value.String(), "parent", blockBidMsg.ParentHash, "hash", block.Hash(), "bundles", len(bundles))
+	log.Info("submitted block", "slot", blockBidMsg.Slot, "value", blockBidMsg.Value.String(), "parent", blockBidMsg.ParentHash, "hash", block.Hash(), "#commitedBundles", len(commitedBundles))
 
 	return nil
 }
@@ -212,6 +212,14 @@ func (b *Builder) OnPayloadAttribute(attrs *BuilderPayloadAttributes) error {
 	return nil
 }
 
+type blockQueueEntry struct {
+	block           *types.Block
+	ordersCloseTime time.Time
+	sealedAt        time.Time
+	commitedBundles []types.SimulatedBundle
+	allBundles      []types.SimulatedBundle
+}
+
 func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTypes.PublicKey, feeRecipient boostTypes.Address, attrs *BuilderPayloadAttributes) {
 	ctx, cancel := context.WithTimeout(slotCtx, 12*time.Second)
 	defer cancel()
@@ -229,8 +237,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 		queueMu                  sync.Mutex
 		queueLastSubmittedProfit = new(big.Int)
 		queueBestProfit          = new(big.Int)
-		queueBestBlock           *types.Block
-		queueBestBundles         []types.SimulatedBundle
+		queueBestEntry           blockQueueEntry
 	)
 
 	log.Debug("runBuildingJob", "slot", attrs.Slot, "parent", attrs.HeadHash)
@@ -238,7 +245,8 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 	submitBestBlock := func() {
 		queueMu.Lock()
 		if queueLastSubmittedProfit.Cmp(queueBestProfit) < 0 {
-			err := b.onSealedBlock(queueBestBlock, queueBestBundles, proposerPubkey, feeRecipient, attrs)
+			err := b.onSealedBlock(queueBestEntry.block, queueBestEntry.ordersCloseTime, queueBestEntry.sealedAt, queueBestEntry.commitedBundles, queueBestEntry.allBundles, proposerPubkey, feeRecipient, attrs)
+
 			if err != nil {
 				log.Error("could not run sealed block hook", "err", err)
 			} else {
@@ -252,16 +260,23 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock)
 
 	// Populates queue with submissions that increase block profit
-	blockHook := func(block *types.Block, bundles []types.SimulatedBundle) {
+	blockHook := func(block *types.Block, ordersCloseTime time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle) {
 		if ctx.Err() != nil {
 			return
 		}
 
+		sealedAt := time.Now()
+
 		queueMu.Lock()
 		defer queueMu.Unlock()
 		if block.Profit.Cmp(queueBestProfit) > 0 {
-			queueBestBlock = block
-			queueBestBundles = bundles
+			queueBestEntry = blockQueueEntry{
+				block:           block,
+				ordersCloseTime: ordersCloseTime,
+				sealedAt:        sealedAt,
+				commitedBundles: commitedBundles,
+				allBundles:      allBundles,
+			}
 			queueBestProfit.Set(block.Profit)
 
 			select {

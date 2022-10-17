@@ -1303,7 +1303,8 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 // fillTransactions retrieves the pending transactions from the txpool and fills them
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
-func (w *worker) fillTransactions(interrupt *int32, env *environment) (error, []types.SimulatedBundle) {
+// Returns error if any, otherwise the bundles that made it into the block and all bundles that passed simulation
+func (w *worker) fillTransactions(interrupt *int32, env *environment) (error, []types.SimulatedBundle, []types.SimulatedBundle) {
 	// Split the pending transactions into locals and remotes
 	// Fill the block with all available pending transactions.
 	pending := w.eth.TxPool().Pending(true)
@@ -1316,61 +1317,67 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) (error, []
 	}
 
 	var blockBundles []types.SimulatedBundle
+	var allBundles []types.SimulatedBundle
 	if w.flashbots.isFlashbots {
 		bundles, err := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
 		if err != nil {
 			log.Error("Failed to fetch pending transactions", "err", err)
-			return err, nil
+			return err, nil, nil
 		}
 
-		bundleTxs, bundle, mergedBundles, numBundles, err := w.generateFlashbotsBundle(env, bundles, pending)
+		var bundleTxs types.Transactions
+		var resultingBundle simulatedBundle
+		var mergedBundles []types.SimulatedBundle
+		var numBundles int
+		bundleTxs, resultingBundle, mergedBundles, numBundles, allBundles, err = w.generateFlashbotsBundle(env, bundles, pending)
 		if err != nil {
 			log.Error("Failed to generate flashbots bundle", "err", err)
-			return err, nil
+			return err, nil, nil
 		}
-		log.Info("Flashbots bundle", "ethToCoinbase", ethIntToFloat(bundle.TotalEth), "gasUsed", bundle.TotalGasUsed, "bundleScore", bundle.MevGasPrice, "bundleLength", len(bundleTxs), "numBundles", numBundles, "worker", w.flashbots.maxMergedBundles)
+		log.Info("Flashbots bundle", "ethToCoinbase", ethIntToFloat(resultingBundle.TotalEth), "gasUsed", resultingBundle.TotalGasUsed, "bundleScore", resultingBundle.MevGasPrice, "bundleLength", len(bundleTxs), "numBundles", numBundles, "worker", w.flashbots.maxMergedBundles)
 		if len(bundleTxs) == 0 {
-			return errors.New("no bundles to apply"), nil
+			return errors.New("no bundles to apply"), nil, nil
 		}
 		if err := w.commitBundle(env, bundleTxs, interrupt); err != nil {
-			return err, nil
+			return err, nil, nil
 		}
 		blockBundles = mergedBundles
-		env.profit.Add(env.profit, bundle.EthSentToCoinbase)
+		env.profit.Add(env.profit, resultingBundle.EthSentToCoinbase)
 	}
 
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, nil, env.header.BaseFee)
 		if err := w.commitTransactions(env, txs, interrupt); err != nil {
-			return err, nil
+			return err, nil, nil
 		}
 	}
 	if len(remoteTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, nil, env.header.BaseFee)
 		if err := w.commitTransactions(env, txs, interrupt); err != nil {
-			return err, nil
+			return err, nil, nil
 		}
 	}
 
-	return nil, blockBundles
+	return nil, blockBundles, allBundles
 }
 
 // fillTransactionsAlgoWorker retrieves the pending transactions and bundles from the txpool and fills them
 // into the given sealing block.
-func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) (error, []types.SimulatedBundle) {
+// Returns error if any, otherwise the bundles that made it into the block and all bundles that passed simulation
+func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) (error, []types.SimulatedBundle, []types.SimulatedBundle) {
 	// Split the pending transactions into locals and remotes
 	// Fill the block with all available pending transactions.
 	pending := w.eth.TxPool().Pending(true)
 	bundlesToConsider, err := w.getSimulatedBundles(env)
 	if err != nil {
-		return err, nil
+		return err, nil, nil
 	}
 
 	builder := newGreedyBuilder(w.chain, w.chainConfig, w.blockList, env, interrupt)
 	newEnv, blockBundles := builder.buildBlock(bundlesToConsider, pending)
 	*env = *newEnv
 
-	return nil, blockBundles
+	return nil, blockBundles, bundlesToConsider
 }
 
 func (w *worker) getSimulatedBundles(env *environment) ([]types.SimulatedBundle, error) {
@@ -1567,17 +1574,18 @@ func (w *worker) isTTDReached(header *types.Header) bool {
 
 type simulatedBundle = types.SimulatedBundle
 
-func (w *worker) generateFlashbotsBundle(env *environment, bundles []types.MevBundle, pendingTxs map[common.Address]types.Transactions) (types.Transactions, simulatedBundle, []types.SimulatedBundle, int, error) {
+func (w *worker) generateFlashbotsBundle(env *environment, bundles []types.MevBundle, pendingTxs map[common.Address]types.Transactions) (types.Transactions, simulatedBundle, []types.SimulatedBundle, int, []types.SimulatedBundle, error) {
 	simulatedBundles, err := w.simulateBundles(env, bundles, pendingTxs)
 	if err != nil {
-		return nil, simulatedBundle{}, nil, 0, err
+		return nil, simulatedBundle{}, nil, 0, nil, err
 	}
 
 	sort.SliceStable(simulatedBundles, func(i, j int) bool {
 		return simulatedBundles[j].MevGasPrice.Cmp(simulatedBundles[i].MevGasPrice) < 0
 	})
 
-	return w.mergeBundles(env, simulatedBundles, pendingTxs)
+	bundleTxs, bundle, mergedBundles, numBundles, err := w.mergeBundles(env, simulatedBundles, pendingTxs)
+	return bundleTxs, bundle, mergedBundles, numBundles, simulatedBundles, err
 }
 
 func (w *worker) mergeBundles(env *environment, bundles []simulatedBundle, pendingTxs map[common.Address]types.Transactions) (types.Transactions, simulatedBundle, []types.SimulatedBundle, int, error) {
@@ -1678,8 +1686,7 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pe
 		}
 	}
 
-	okBundles := len(bundles) - len(simulatedBundles)
-	log.Debug("Simulated bundles", "block", env.header.Number, "allBundles", len(bundles), "okBundles", okBundles, "time", time.Since(start))
+	log.Debug("Simulated bundles", "block", env.header.Number, "allBundles", len(bundles), "okBundles", len(simulatedBundles), "time", time.Since(start))
 	return simulatedBundles, nil
 }
 

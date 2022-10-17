@@ -23,6 +23,8 @@ type BuiltBlock struct {
 	BuilderPubkey        string    `db:"builder_pubkey"`
 	Timestamp            uint64    `db:"timestamp"`
 	TimestampDatetime    time.Time `db:"timestamp_datetime"`
+	OrdersClosedAt       time.Time `db:"orders_closed_at"`
+	SealedAt             time.Time `db:"sealed_at"`
 }
 
 type BuiltBlockBundle struct {
@@ -47,6 +49,11 @@ type DbBundle struct {
 	StateBlockNumber  uint64 `db:"state_block_number"`
 	GasFees           string `db:"gas_fees"`
 	EthSentToCoinbase string `db:"eth_sent_to_coinbase"`
+}
+
+type blockAndBundleId struct {
+	BlockId  uint64 `db:"block_id"`
+	BundleId uint64 `db:"bundle_id"`
 }
 
 func SimulatedBundleToDbBundle(bundle *types.SimulatedBundle) DbBundle {
