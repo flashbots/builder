@@ -276,18 +276,21 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 	return miner.worker.regularWorker.pendingLogsFeed.Subscribe(ch)
 }
 
+// Accepts the block, time at which orders were taken, bundles which were used to build the block and all bundles that were considered for the block
+type BlockHookFn = func(*types.Block, time.Time, []types.SimulatedBundle, []types.SimulatedBundle)
+
 // GetSealingBlockAsync requests to generate a sealing block according to the
 // given parameters. Regardless of whether the generation is successful or not,
 // there is always a result that will be returned through the result channel.
 // The difference is that if the execution fails, the returned result is nil
 // and the concrete error is dropped silently.
-func (miner *Miner) GetSealingBlockAsync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, blockHook func(*types.Block, []types.SimulatedBundle)) (chan *types.Block, error) {
+func (miner *Miner) GetSealingBlockAsync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, blockHook BlockHookFn) (chan *types.Block, error) {
 	return miner.worker.GetSealingBlockAsync(parent, timestamp, coinbase, gasLimit, random, noTxs, false, blockHook)
 }
 
 // GetSealingBlockSync creates a sealing block according to the given parameters.
 // If the generation is failed or the underlying work is already closed, an error
 // will be returned.
-func (miner *Miner) GetSealingBlockSync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, blockHook func(*types.Block, []types.SimulatedBundle)) (*types.Block, error) {
+func (miner *Miner) GetSealingBlockSync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, blockHook BlockHookFn) (*types.Block, error) {
 	return miner.worker.GetSealingBlockSync(parent, timestamp, coinbase, gasLimit, random, noTxs, false, blockHook)
 }
