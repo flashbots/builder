@@ -9,10 +9,11 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/miner"
 )
 
 type IEthereumService interface {
-	BuildBlock(attrs *BuilderPayloadAttributes, sealedBlockCallback func(*types.Block, []types.SimulatedBundle)) error
+	BuildBlock(attrs *BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error
 	GetBlockByHash(hash common.Hash) *types.Block
 	Synced() bool
 }
@@ -22,10 +23,11 @@ type testEthereumService struct {
 	testExecutableData *beacon.ExecutableDataV1
 	testBlock          *types.Block
 	testBundlesMerged  []types.SimulatedBundle
+	testAllBundles     []types.SimulatedBundle
 }
 
-func (t *testEthereumService) BuildBlock(attrs *BuilderPayloadAttributes, sealedBlockCallback func(*types.Block, []types.SimulatedBundle)) error {
-	sealedBlockCallback(t.testBlock, t.testBundlesMerged)
+func (t *testEthereumService) BuildBlock(attrs *BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error {
+	sealedBlockCallback(t.testBlock, time.Now(), t.testBundlesMerged, t.testAllBundles)
 	return nil
 }
 
@@ -41,7 +43,7 @@ func NewEthereumService(eth *eth.Ethereum) *EthereumService {
 	return &EthereumService{eth: eth}
 }
 
-func (s *EthereumService) BuildBlock(attrs *BuilderPayloadAttributes, sealedBlockCallback func(*types.Block, []types.SimulatedBundle)) error {
+func (s *EthereumService) BuildBlock(attrs *BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error {
 	// Send a request to generate a full block in the background.
 	// The result can be obtained via the returned channel.
 	resCh, err := s.eth.Miner().GetSealingBlockAsync(attrs.HeadHash, uint64(attrs.Timestamp), attrs.SuggestedFeeRecipient, attrs.GasLimit, attrs.Random, false, sealedBlockCallback)

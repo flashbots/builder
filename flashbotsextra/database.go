@@ -19,13 +19,14 @@ const (
 )
 
 type IDatabaseService interface {
-	ConsumeBuiltBlock(block *types.Block, bundles []types.SimulatedBundle, bidTrace *boostTypes.BidTrace)
+	ConsumeBuiltBlock(block *types.Block, OrdersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, bidTrace *boostTypes.BidTrace)
 	GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error)
 }
 
 type NilDbService struct{}
 
-func (NilDbService) ConsumeBuiltBlock(*types.Block, []types.SimulatedBundle, *boostTypes.BidTrace) {}
+func (NilDbService) ConsumeBuiltBlock(block *types.Block, _ time.Time, _ time.Time, _ []types.SimulatedBundle, _ []types.SimulatedBundle, _ *boostTypes.BidTrace) {
+}
 
 func (NilDbService) GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error) {
 	return []DbBundle{}, nil
@@ -34,11 +35,9 @@ func (NilDbService) GetPriorityBundles(ctx context.Context, blockNum int64, isHi
 type DatabaseService struct {
 	db *sqlx.DB
 
-	insertBuiltBlockStmt             *sqlx.NamedStmt
-	insertBlockBuiltBundleNoIdStmt   *sqlx.NamedStmt
-	insertBlockBuiltBundleWithIdStmt *sqlx.NamedStmt
-	insertMissingBundleStmt          *sqlx.NamedStmt
-	fetchPrioBundlesStmt             *sqlx.NamedStmt
+	insertBuiltBlockStmt    *sqlx.NamedStmt
+	insertMissingBundleStmt *sqlx.NamedStmt
+	fetchPrioBundlesStmt    *sqlx.NamedStmt
 }
 
 func NewDatabaseService(postgresDSN string) (*DatabaseService, error) {
@@ -47,17 +46,7 @@ func NewDatabaseService(postgresDSN string) (*DatabaseService, error) {
 		return nil, err
 	}
 
-	insertBuiltBlockStmt, err := db.PrepareNamed("insert into built_blocks (block_number, profit, slot, hash, gas_limit, gas_used, base_fee, parent_hash, proposer_pubkey, proposer_fee_recipient, builder_pubkey, timestamp, timestamp_datetime) values (:block_number, :profit, :slot, :hash, :gas_limit, :gas_used, :base_fee, :parent_hash, :proposer_pubkey, :proposer_fee_recipient, :builder_pubkey, :timestamp, to_timestamp(:timestamp)) returning block_id")
-	if err != nil {
-		return nil, err
-	}
-
-	insertBlockBuiltBundleNoIdStmt, err := db.PrepareNamed("insert into built_blocks_bundles (block_id, bundle_id) select :block_id, id from bundles where bundle_hash = :bundle_hash and param_block_number = :block_number returning bundle_id")
-	if err != nil {
-		return nil, err
-	}
-
-	insertBlockBuiltBundleWithIdStmt, err := db.PrepareNamed("insert into built_blocks_bundles (block_id, bundle_id) select :block_id, :bundle_id returning bundle_id")
+	insertBuiltBlockStmt, err := db.PrepareNamed("insert into built_blocks (block_number, profit, slot, hash, gas_limit, gas_used, base_fee, parent_hash, proposer_pubkey, proposer_fee_recipient, builder_pubkey, timestamp, timestamp_datetime, orders_closed_at, sealed_at) values (:block_number, :profit, :slot, :hash, :gas_limit, :gas_used, :base_fee, :parent_hash, :proposer_pubkey, :proposer_fee_recipient, :builder_pubkey, :timestamp, to_timestamp(:timestamp), :orders_closed_at, :sealed_at) returning block_id")
 	if err != nil {
 		return nil, err
 	}
@@ -72,22 +61,101 @@ func NewDatabaseService(postgresDSN string) (*DatabaseService, error) {
 		return nil, err
 	}
 	return &DatabaseService{
-		db:                               db,
-		insertBuiltBlockStmt:             insertBuiltBlockStmt,
-		insertBlockBuiltBundleNoIdStmt:   insertBlockBuiltBundleNoIdStmt,
-		insertBlockBuiltBundleWithIdStmt: insertBlockBuiltBundleWithIdStmt,
-		insertMissingBundleStmt:          insertMissingBundleStmt,
-		fetchPrioBundlesStmt:             fetchPrioBundlesStmt,
+		db:                      db,
+		insertBuiltBlockStmt:    insertBuiltBlockStmt,
+		insertMissingBundleStmt: insertMissingBundleStmt,
+		fetchPrioBundlesStmt:    fetchPrioBundlesStmt,
 	}, nil
 }
 
-func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, bundles []types.SimulatedBundle, bidTrace *boostTypes.BidTrace) {
-	tx, err := ds.db.Beginx()
-	if err != nil {
-		log.Error("could not insert built block", "err", err)
-		return
+func Min(l int, r int) int {
+	if l < r {
+		return l
+	}
+	return r
+}
+
+func (ds *DatabaseService) getBundleIds(ctx context.Context, blockNumber uint64, bundles []types.SimulatedBundle) (map[string]uint64, error) {
+	if len(bundles) == 0 {
+		return nil, nil
 	}
 
+	bundleIdsMap := make(map[string]uint64, len(bundles))
+
+	// Batch by 500
+	requestsToMake := [][]string{make([]string, 0, Min(500, len(bundles)))}
+	cRequestInd := 0
+	for i, bundle := range bundles {
+		if i != 0 && i%500 == 0 {
+			cRequestInd += 1
+			requestsToMake = append(requestsToMake, make([]string, 0, Min(500, len(bundles)-i)))
+		}
+		requestsToMake[cRequestInd] = append(requestsToMake[cRequestInd], bundle.OriginalBundle.Hash.String())
+	}
+
+	for _, request := range requestsToMake {
+		query, args, err := sqlx.In("select id, bundle_hash from bundles where param_block_number = ? and bundle_hash in (?)", blockNumber, request)
+		if err != nil {
+			return nil, err
+		}
+		query = ds.db.Rebind(query)
+
+		queryRes := []struct {
+			Id         uint64 `db:"id"`
+			BundleHash string `db:"bundle_hash"`
+		}{}
+		err = ds.db.SelectContext(ctx, &queryRes, query, args...)
+		if err != nil {
+			return nil, err
+		}
+
+		for _, row := range queryRes {
+			bundleIdsMap[row.BundleHash] = row.Id
+		}
+	}
+
+	return bundleIdsMap, nil
+}
+
+// TODO: cache locally for current block!
+func (ds *DatabaseService) getBundleIdsAndInsertMissingBundles(ctx context.Context, blockNumber uint64, bundles []types.SimulatedBundle) (map[string]uint64, error) {
+	bundleIdsMap, err := ds.getBundleIds(ctx, blockNumber, bundles)
+	if err != nil {
+		return nil, err
+	}
+
+	toRetry := []types.SimulatedBundle{}
+	for _, bundle := range bundles {
+		bundleHashString := bundle.OriginalBundle.Hash.String()
+		if _, found := bundleIdsMap[bundleHashString]; found {
+			continue
+		}
+
+		var bundleId uint64
+		missingBundleData := SimulatedBundleToDbBundle(&bundle)                        // nolint: gosec
+		err = ds.insertMissingBundleStmt.GetContext(ctx, &bundleId, missingBundleData) // not using the tx as it relies on the unique constraint!
+		if err == nil {
+			bundleIdsMap[bundleHashString] = bundleId
+		} else if err == sql.ErrNoRows /* conflict, someone else inserted the bundle before we could */ {
+			toRetry = append(toRetry, bundle)
+		} else {
+			log.Error("could not insert missing bundle", "err", err)
+		}
+	}
+
+	retriedBundleIds, err := ds.getBundleIds(ctx, blockNumber, toRetry)
+	if err != nil {
+		return nil, err
+	}
+
+	for hash, id := range retriedBundleIds {
+		bundleIdsMap[hash] = id
+	}
+
+	return bundleIdsMap, nil
+}
+
+func (ds *DatabaseService) insertBuildBlock(tx *sqlx.Tx, ctx context.Context, block *types.Block, bidTrace *boostTypes.BidTrace, ordersClosedAt time.Time, sealedAt time.Time) (uint64, error) {
 	blockData := BuiltBlock{
 		BlockNumber:          block.NumberU64(),
 		Profit:               new(big.Rat).SetFrac(block.Profit, big.NewInt(1e18)).FloatString(18),
@@ -101,52 +169,88 @@ func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, bundles []types
 		ProposerFeeRecipient: bidTrace.ProposerFeeRecipient.String(),
 		BuilderPubkey:        bidTrace.BuilderPubkey.String(),
 		Timestamp:            block.Time(),
+		OrdersClosedAt:       ordersClosedAt.UTC(),
+		SealedAt:             sealedAt.UTC(),
 	}
 
+	var blockId uint64
+	if err := tx.NamedStmtContext(ctx, ds.insertBuiltBlockStmt).GetContext(ctx, &blockId, blockData); err != nil {
+		log.Error("could not insert built block", "err", err)
+		return 0, err
+	}
+
+	return blockId, nil
+}
+
+func (ds *DatabaseService) insertBuildBlockBundleIds(tx *sqlx.Tx, ctx context.Context, blockId uint64, bundleIds []uint64) error {
+	if len(bundleIds) == 0 {
+		return nil
+	}
+
+	toInsert := make([]blockAndBundleId, len(bundleIds))
+	for i, bundleId := range bundleIds {
+		toInsert[i] = blockAndBundleId{blockId, bundleId}
+	}
+
+	_, err := tx.NamedExecContext(ctx, "insert into built_blocks_bundles (block_id, bundle_id) values (:block_id, :bundle_id)", toInsert)
+	return err
+}
+
+func (ds *DatabaseService) insertAllBlockBundleIds(tx *sqlx.Tx, ctx context.Context, blockId uint64, bundleIdsMap map[string]uint64) error {
+	if len(bundleIdsMap) == 0 {
+		return nil
+	}
+
+	toInsert := make([]blockAndBundleId, 0, len(bundleIdsMap))
+	for _, bundleId := range bundleIdsMap {
+		toInsert = append(toInsert, blockAndBundleId{blockId, bundleId})
+	}
+
+	_, err := tx.NamedExecContext(ctx, "insert into built_blocks_all_bundles (block_id, bundle_id) values (:block_id, :bundle_id)", toInsert)
+	return err
+}
+
+func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, bidTrace *boostTypes.BidTrace) {
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
-	var blockId uint64
-	if err = tx.NamedStmtContext(ctx, ds.insertBuiltBlockStmt).GetContext(ctx, &blockId, blockData); err != nil {
-		log.Error("could not insert built block", "err", err)
-		tx.Rollback()
+
+	bundleIdsMap, err := ds.getBundleIdsAndInsertMissingBundles(ctx, block.NumberU64(), allBundles)
+	if err != nil {
+		log.Error("could not insert bundles", "err", err)
+	}
+
+	tx, err := ds.db.Beginx()
+	if err != nil {
+		log.Error("could not open DB transaction", "err", err)
 		return
 	}
 
-	for _, bundle := range bundles {
-		bundleData := BuiltBlockBundle{
-			BlockId:     blockId,
-			BundleId:    nil,
-			BlockNumber: blockData.BlockNumber,
-			BundleHash:  bundle.OriginalBundle.Hash.String(),
-		}
+	blockId, err := ds.insertBuildBlock(tx, ctx, block, bidTrace, ordersClosedAt, sealedAt)
+	if err != nil {
+		tx.Rollback()
+		log.Error("could not insert built block", "err", err)
+		return
+	}
 
-		var bundleId uint64
-		err := tx.NamedStmtContext(ctx, ds.insertBlockBuiltBundleNoIdStmt).GetContext(ctx, &bundleId, bundleData)
-		if err == nil {
-			continue
+	commitedBundlesIds := make([]uint64, 0, len(commitedBundles))
+	for _, bundle := range commitedBundles {
+		if id, found := bundleIdsMap[bundle.OriginalBundle.Hash.String()]; found {
+			commitedBundlesIds = append(commitedBundlesIds, id)
 		}
+	}
 
-		if err != sql.ErrNoRows {
-			log.Error("could not insert bundle", "err", err)
-			// Try anyway
-		}
+	err = ds.insertBuildBlockBundleIds(tx, ctx, blockId, commitedBundlesIds)
+	if err != nil {
+		tx.Rollback()
+		log.Error("could not insert built block bundles", "err", err)
+		return
+	}
 
-		missingBundleData := SimulatedBundleToDbBundle(&bundle)
-		err = ds.insertMissingBundleStmt.GetContext(ctx, &bundleId, missingBundleData) // not using the tx as it relies on the unique constraint!
-		if err == nil {
-			bundleData.BundleId = &bundleId
-			_, err = tx.NamedStmtContext(ctx, ds.insertBlockBuiltBundleWithIdStmt).ExecContext(ctx, bundleData)
-			if err != nil {
-				log.Error("could not insert built block bundle after inserting missing bundle", "err", err)
-			}
-		} else if err == sql.ErrNoRows /* conflict, someone else inserted the bundle before we could */ {
-			if err := tx.NamedStmtContext(ctx, ds.insertBlockBuiltBundleNoIdStmt).GetContext(ctx, &bundleId, bundleData); err != nil {
-				log.Error("could not insert bundle on retry", "err", err)
-				continue
-			}
-		} else {
-			log.Error("could not insert missing bundle", "err", err)
-		}
+	err = ds.insertAllBlockBundleIds(tx, ctx, blockId, bundleIdsMap)
+	if err != nil {
+		tx.Rollback()
+		log.Error("could not insert built block all bundles", "err", err)
+		return
 	}
 
 	err = tx.Commit()

@@ -91,7 +91,7 @@ type resChPair struct {
 	errCh chan error
 }
 
-func (w *multiWorker) GetSealingBlockAsync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool, blockHook func(*types.Block, []types.SimulatedBundle)) (chan *types.Block, error) {
+func (w *multiWorker) GetSealingBlockAsync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool, blockHook BlockHookFn) (chan *types.Block, error) {
 	resChans := []resChPair{}
 
 	for _, worker := range w.workers {
@@ -128,7 +128,7 @@ func (w *multiWorker) GetSealingBlockAsync(parent common.Hash, timestamp uint64,
 	return resCh, nil
 }
 
-func (w *multiWorker) GetSealingBlockSync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool, blockHook func(*types.Block, []types.SimulatedBundle)) (*types.Block, error) {
+func (w *multiWorker) GetSealingBlockSync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool, blockHook BlockHookFn) (*types.Block, error) {
 	resCh, err := w.GetSealingBlockAsync(parent, timestamp, coinbase, gasLimit, random, noTxs, noExtra, blockHook)
 	if err != nil {
 		return nil, err

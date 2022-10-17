@@ -93,7 +93,7 @@ func TestBuildBlock(t *testing.T) {
 	service := NewEthereumService(ethservice)
 	service.eth.APIBackend.Miner().SetEtherbase(common.Address{0x05, 0x11})
 
-	err := service.BuildBlock(testPayloadAttributes, func(block *types.Block, _ []types.SimulatedBundle) {
+	err := service.BuildBlock(testPayloadAttributes, func(block *types.Block, _ time.Time, _ []types.SimulatedBundle, _ []types.SimulatedBundle) {
 		executableData := beacon.BlockToExecutableData(block)
 		require.Equal(t, common.Address{0x05, 0x11}, executableData.FeeRecipient)
 		require.Equal(t, common.Hash{0x05, 0x10}, executableData.Random)
