@@ -688,72 +688,98 @@ var (
 	}
 	// Builder API settings
 	BuilderEnabled = &cli.BoolFlag{
-		Name:  "builder",
-		Usage: "Enable the builder",
+		Name:     "builder",
+		Usage:    "Enable the builder",
+		Category: flags.BuilderCategory,
 	}
 	BuilderEnableValidatorChecks = &cli.BoolFlag{
-		Name:  "builder.validator_checks",
-		Usage: "Enable the validator checks",
+		Name:     "builder.validator_checks",
+		Usage:    "Enable the validator checks",
+		Category: flags.BuilderCategory,
+	}
+	BuilderBlockValidationBlacklistSourceFilePath = &cli.StringFlag{
+		Name:     "builder.validation_blacklist",
+		Usage:    "Path to file containing blacklisted addresses, json-encoded list of strings. Default assumes CWD is repo's root",
+		Value:    "ofac_blacklist.json",
+		Category: flags.BuilderCategory,
 	}
 	BuilderEnableLocalRelay = &cli.BoolFlag{
-		Name:  "builder.local_relay",
-		Usage: "Enable the local relay",
+		Name:     "builder.local_relay",
+		Usage:    "Enable the local relay",
+		Category: flags.BuilderCategory,
 	}
 	BuilderDisableBundleFetcher = &cli.BoolFlag{
-		Name:  "builder.no_bundle_fetcher",
-		Usage: "Disable the bundle fetcher",
+		Name:     "builder.no_bundle_fetcher",
+		Usage:    "Disable the bundle fetcher",
+		Category: flags.BuilderCategory,
 	}
 	BuilderDryRun = &cli.BoolFlag{
-		Name:  "builder.dry-run",
-		Usage: "Builder only validates blocks without submission to the relay",
+		Name:     "builder.dry-run",
+		Usage:    "Builder only validates blocks without submission to the relay",
+		Category: flags.BuilderCategory,
 	}
 	BuilderSecretKey = &cli.StringFlag{
-		Name:    "builder.secret_key",
-		Usage:   "Builder key used for signing blocks",
-		EnvVars: []string{"BUILDER_SECRET_KEY"},
-		Value:   "0x2fc12ae741f29701f8e30f5de6350766c020cb80768a0ff01e6838ffd2431e11",
+		Name:     "builder.secret_key",
+		Usage:    "Builder key used for signing blocks",
+		EnvVars:  []string{"BUILDER_SECRET_KEY"},
+		Value:    "0x2fc12ae741f29701f8e30f5de6350766c020cb80768a0ff01e6838ffd2431e11",
+		Category: flags.BuilderCategory,
 	}
 	BuilderRelaySecretKey = &cli.StringFlag{
-		Name:    "builder.relay_secret_key",
-		Usage:   "Builder local relay API key used for signing headers",
-		EnvVars: []string{"BUILDER_RELAY_SECRET_KEY"},
-		Value:   "0x2fc12ae741f29701f8e30f5de6350766c020cb80768a0ff01e6838ffd2431e11",
+		Name:     "builder.relay_secret_key",
+		Usage:    "Builder local relay API key used for signing headers",
+		EnvVars:  []string{"BUILDER_RELAY_SECRET_KEY"},
+		Value:    "0x2fc12ae741f29701f8e30f5de6350766c020cb80768a0ff01e6838ffd2431e11",
+		Category: flags.BuilderCategory,
 	}
 	BuilderListenAddr = &cli.StringFlag{
-		Name:    "builder.listen_addr",
-		Usage:   "Listening address for builder endpoint",
-		EnvVars: []string{"BUILDER_LISTEN_ADDR"},
-		Value:   ":28545",
+		Name:     "builder.listen_addr",
+		Usage:    "Listening address for builder endpoint",
+		EnvVars:  []string{"BUILDER_LISTEN_ADDR"},
+		Value:    ":28545",
+		Category: flags.BuilderCategory,
 	}
 	BuilderGenesisForkVersion = &cli.StringFlag{
-		Name:    "builder.genesis_fork_version",
-		Usage:   "Gensis fork version. For kiln use 0x70000069",
-		EnvVars: []string{"BUILDER_GENESIS_FORK_VERSION"},
-		Value:   "0x00000000",
+		Name:     "builder.genesis_fork_version",
+		Usage:    "Gensis fork version.",
+		EnvVars:  []string{"BUILDER_GENESIS_FORK_VERSION"},
+		Value:    "0x00000000",
+		Category: flags.BuilderCategory,
 	}
 	BuilderBellatrixForkVersion = &cli.StringFlag{
-		Name:    "builder.bellatrix_fork_version",
-		Usage:   "Bellatrix fork version. For kiln use 0x70000071",
-		EnvVars: []string{"BUILDER_BELLATRIX_FORK_VERSION"},
-		Value:   "0x02000000",
+		Name:     "builder.bellatrix_fork_version",
+		Usage:    "Bellatrix fork version.",
+		EnvVars:  []string{"BUILDER_BELLATRIX_FORK_VERSION"},
+		Value:    "0x02000000",
+		Category: flags.BuilderCategory,
 	}
 	BuilderGenesisValidatorsRoot = &cli.StringFlag{
-		Name:    "builder.genesis_validators_root",
-		Usage:   "Genesis validators root of the network. For kiln use 0x99b09fcd43e5905236c370f184056bec6e6638cfc31a323b304fc4aa789cb4ad",
-		EnvVars: []string{"BUILDER_GENESIS_VALIDATORS_ROOT"},
-		Value:   "0x0000000000000000000000000000000000000000000000000000000000000000",
+		Name:     "builder.genesis_validators_root",
+		Usage:    "Genesis validators root of the network.",
+		EnvVars:  []string{"BUILDER_GENESIS_VALIDATORS_ROOT"},
+		Value:    "0x0000000000000000000000000000000000000000000000000000000000000000",
+		Category: flags.BuilderCategory,
 	}
 	BuilderBeaconEndpoint = &cli.StringFlag{
-		Name:    "builder.beacon_endpoint",
-		Usage:   "Beacon endpoint to connect to for beacon chain data",
-		EnvVars: []string{"BUILDER_BEACON_ENDPOINT"},
-		Value:   "http://127.0.0.1:5052",
+		Name:     "builder.beacon_endpoint",
+		Usage:    "Beacon endpoint to connect to for beacon chain data",
+		EnvVars:  []string{"BUILDER_BEACON_ENDPOINT"},
+		Value:    "http://127.0.0.1:5052",
+		Category: flags.BuilderCategory,
 	}
 	BuilderRemoteRelayEndpoint = &cli.StringFlag{
-		Name:    "builder.remote_relay_endpoint",
-		Usage:   "Relay endpoint to connect to for validator registration data, if not provided will expose validator registration locally",
-		EnvVars: []string{"BUILDER_REMOTE_RELAY_ENDPOINT"},
-		Value:   "",
+		Name:     "builder.remote_relay_endpoint",
+		Usage:    "Relay endpoint to connect to for validator registration data, if not provided will expose validator registration locally",
+		EnvVars:  []string{"BUILDER_REMOTE_RELAY_ENDPOINT"},
+		Value:    "",
+		Category: flags.BuilderCategory,
+	}
+	BuilderSecondaryRemoteRelayEndpoints = &cli.StringFlag{
+		Name:     "builder.secondary_remote_relay_endpoints",
+		Usage:    "Comma separated relay endpoints to connect to for validator registration data missing from the primary remote relay, and to push blocks for registrations missing from or matching the primary",
+		EnvVars:  []string{"BUILDER_SECONDARY_REMOTE_RELAY_ENDPOINTS"},
+		Value:    "",
+		Category: flags.BuilderCategory,
 	}
 	// RPC settings
 	IPCDisabledFlag = &cli.BoolFlag{
@@ -1070,14 +1096,6 @@ var (
 		Usage:    "InfluxDB organization name (v2 only)",
 		Value:    metrics.DefaultConfig.InfluxDBOrganization,
 		Category: flags.MetricsCategory,
-	}
-
-	// Builder API flags
-	BuilderBlockValidationBlacklistSourceFilePath = &cli.StringFlag{
-		Name:     "builder.validation_blacklist",
-		Usage:    "Path to file containing blacklisted addresses, json-encoded list of strings. Default assumes CWD is repo's root",
-		Value:    "ofac_blacklist.json",
-		Category: flags.EthCategory,
 	}
 )
 
@@ -1569,6 +1587,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.GenesisValidatorsRoot = ctx.String(BuilderGenesisValidatorsRoot.Name)
 	cfg.BeaconEndpoint = ctx.String(BuilderBeaconEndpoint.Name)
 	cfg.RemoteRelayEndpoint = ctx.String(BuilderRemoteRelayEndpoint.Name)
+	cfg.SecondaryRemoteRelayEndpoints = strings.Split(ctx.String(BuilderSecondaryRemoteRelayEndpoints.Name), ",")
 	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
 }
 
