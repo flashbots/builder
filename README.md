@@ -155,26 +155,69 @@ export your existing configuration:
 Builder-related options:
 ```
 $ geth --help
-BUILDER API OPTIONS:
+
+   BUILDER
+   
     --builder                      (default: false)
           Enable the builder
+   
     --builder.beacon_endpoint value (default: "http://127.0.0.1:5052")
+          Beacon endpoint to connect to for beacon chain data [$BUILDER_BEACON_ENDPOINT]
+   
     --builder.bellatrix_fork_version value (default: "0x02000000")
+          Bellatrix fork version. [$BUILDER_BELLATRIX_FORK_VERSION]
+   
     --builder.dry-run              (default: false)
+          Builder only validates blocks without submission to the relay
+   
     --builder.genesis_fork_version value (default: "0x00000000")
+          Gensis fork version. [$BUILDER_GENESIS_FORK_VERSION]
+   
     --builder.genesis_validators_root value (default: "0x0000000000000000000000000000000000000000000000000000000000000000")
+          Genesis validators root of the network. [$BUILDER_GENESIS_VALIDATORS_ROOT]
+   
     --builder.listen_addr value    (default: ":28545")
           Listening address for builder endpoint [$BUILDER_LISTEN_ADDR]
+   
     --builder.local_relay          (default: false)
+          Enable the local relay
+   
     --builder.no_bundle_fetcher    (default: false)
+          Disable the bundle fetcher
+   
     --builder.relay_secret_key value (default: "0x2fc12ae741f29701f8e30f5de6350766c020cb80768a0ff01e6838ffd2431e11")
+          Builder local relay API key used for signing headers [$BUILDER_RELAY_SECRET_KEY]
+   
     --builder.remote_relay_endpoint value
+          Relay endpoint to connect to for validator registration data, if not provided
+          will expose validator registration locally [$BUILDER_REMOTE_RELAY_ENDPOINT]
+   
+    --builder.secondary_remote_relay_endpoints value
+          Comma separated relay endpoints to connect to for validator registration data
+          missing from the primary remote relay, and to push blocks for registrations
+          missing from or matching the primary [$BUILDER_SECONDARY_REMOTE_RELAY_ENDPOINTS]
+   
     --builder.secret_key value     (default: "0x2fc12ae741f29701f8e30f5de6350766c020cb80768a0ff01e6838ffd2431e11")
+          Builder key used for signing blocks [$BUILDER_SECRET_KEY]
+   
+    --builder.validation_blacklist value (default: "ofac_blacklist.json")
+          Path to file containing blacklisted addresses, json-encoded list of strings.
+          Default assumes CWD is repo's root
+   
     --builder.validator_checks     (default: false)
-    --builder.validation_blacklist value
+          Enable the validator checks
+
+    MINER
+
     --miner.algotype value         (default: "mev-geth")
-    --miner.blocklist value
-    --miner.extradata value
+          Block building algorithm to use [=mev-geth] (mev-geth, greedy)
+   
+    --miner.blocklist value       
+          flashbots - Path to JSON file with list of blocked addresses. Miner will ignore
+          txs that touch mentioned addresses.
+
+    --miner.extradata value       
+          Block extra data set by the miner (default = client version)
 ```
 
 This will start `geth` in snap-sync mode with a DB memory allowance of 1GB, as the
