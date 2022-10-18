@@ -145,6 +145,7 @@ var (
 	builderApiFlags = []cli.Flag{
 		utils.BuilderEnabled,
 		utils.BuilderEnableValidatorChecks,
+		utils.BuilderBlockValidationBlacklistSourceFilePath,
 		utils.BuilderEnableLocalRelay,
 		utils.BuilderDisableBundleFetcher,
 		utils.BuilderDryRun,
@@ -156,6 +157,7 @@ var (
 		utils.BuilderGenesisValidatorsRoot,
 		utils.BuilderBeaconEndpoint,
 		utils.BuilderRemoteRelayEndpoint,
+		utils.BuilderSecondaryRemoteRelayEndpoints,
 	}
 
 	rpcFlags = []cli.Flag{

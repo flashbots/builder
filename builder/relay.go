@@ -15,20 +15,7 @@ import (
 	"github.com/flashbots/mev-boost/server"
 )
 
-type testRelay struct {
-	validator     ValidatorData
-	requestedSlot uint64
-	submittedMsg  *boostTypes.BuilderSubmitBlockRequest
-}
-
-func (r *testRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest) error {
-	r.submittedMsg = msg
-	return nil
-}
-func (r *testRelay) GetValidatorForSlot(nextSlot uint64) (ValidatorData, error) {
-	r.requestedSlot = nextSlot
-	return r.validator, nil
-}
+var ErrValidatorNotFound = errors.New("validator not found")
 
 type RemoteRelay struct {
 	endpoint string
@@ -135,10 +122,10 @@ func (r *RemoteRelay) GetValidatorForSlot(nextSlot uint64) (ValidatorData, error
 		return vd, nil
 	}
 
-	return ValidatorData{}, errors.New("validator not found")
+	return ValidatorData{}, ErrValidatorNotFound
 }
 
-func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest) error {
+func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ ValidatorData) error {
 	code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, r.endpoint+"/relay/v1/builder/blocks", msg, nil)
 	if err != nil {
 		return err
@@ -148,7 +135,7 @@ func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest) err
 	}
 
 	if r.localRelay != nil {
-		r.localRelay.SubmitBlock(msg)
+		r.localRelay.submitBlock(msg)
 	}
 
 	return nil

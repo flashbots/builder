@@ -79,7 +79,11 @@ func NewLocalRelay(sk *bls.SecretKey, beaconClient IBeaconClient, builderSigning
 	}
 }
 
-func (r *LocalRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest) error {
+func (r *LocalRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ ValidatorData) error {
+	return r.submitBlock(msg)
+}
+
+func (r *LocalRelay) submitBlock(msg *boostTypes.BuilderSubmitBlockRequest) error {
 	payloadHeader, err := boostTypes.PayloadToPayloadHeader(msg.ExecutionPayload)
 	if err != nil {
 		log.Error("could not convert payload to header", "err", err)

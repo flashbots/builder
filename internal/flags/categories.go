@@ -34,6 +34,7 @@ const (
 	LoggingCategory    = "LOGGING AND DEBUGGING"
 	MetricsCategory    = "METRICS AND STATS"
 	MiscCategory       = "MISC"
+	BuilderCategory    = "BUILDER"
 	DeprecatedCategory = "ALIASED (deprecated)"
 )
 
