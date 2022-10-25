@@ -1319,16 +1319,13 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) (error, []
 	var blockBundles []types.SimulatedBundle
 	var allBundles []types.SimulatedBundle
 	if w.flashbots.isFlashbots {
-		bundles, err := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
-		if err != nil {
-			log.Error("Failed to fetch pending transactions", "err", err)
-			return err, nil, nil
-		}
+		bundles := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
 
 		var bundleTxs types.Transactions
 		var resultingBundle simulatedBundle
 		var mergedBundles []types.SimulatedBundle
 		var numBundles int
+		var err error
 		bundleTxs, resultingBundle, mergedBundles, numBundles, allBundles, err = w.generateFlashbotsBundle(env, bundles, pending)
 		if err != nil {
 			log.Error("Failed to generate flashbots bundle", "err", err)
@@ -1385,11 +1382,7 @@ func (w *worker) getSimulatedBundles(env *environment) ([]types.SimulatedBundle,
 		return nil, nil
 	}
 
-	bundles, err := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
-	if err != nil {
-		log.Error("Failed to fetch pending bundles", "err", err)
-		return nil, err
-	}
+	bundles := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
 
 	// TODO: consider interrupt
 	simBundles, err := w.simulateBundles(env, bundles, nil) /* do not consider gas impact of mempool txs as bundles are treated as transactions wrt ordering */
