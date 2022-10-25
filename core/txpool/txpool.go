@@ -364,6 +364,7 @@ func (pool *TxPool) loop() {
 	defer report.Stop()
 	defer evict.Stop()
 	defer journal.Stop()
+	defer privateTx.Stop()
 
 	// Notify tests that the init phase is done
 	close(pool.initDoneCh)
@@ -588,7 +589,7 @@ func (pool *TxPool) AllMevBundles() []types.MevBundle {
 
 // MevBundles returns a list of bundles valid for the given blockNumber/blockTimestamp
 // also prunes bundles that are outdated
-func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]types.MevBundle, error) {
+func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) []types.MevBundle {
 	pool.mu.Lock()
 	defer pool.mu.Unlock()
 
@@ -616,7 +617,7 @@ func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]t
 	}
 
 	pool.mevBundles = bundles
-	return ret, nil
+	return ret
 }
 
 // AddMevBundles adds a mev bundles to the pool
