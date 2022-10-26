@@ -2490,5 +2490,21 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 		return fmt.Errorf("inaccurate payment %s, expected %s", paymentTx.Value().String(), expectedProfit.String())
 	}
 
+	if len(paymentTx.Data()) != 0 {
+		return fmt.Errorf("malformed proposer payment, contains calldata")
+	}
+
+	if paymentTx.GasPrice().Cmp(block.BaseFee()) != 0 {
+		return fmt.Errorf("malformed proposer payment, gas price not equal to base fee")
+	}
+
+	if paymentTx.GasTipCap().Cmp(block.BaseFee()) != 0 && paymentTx.GasTipCap().Sign() != 0 {
+		return fmt.Errorf("malformed proposer payment, unexpected gas tip cap")
+	}
+
+	if paymentTx.GasFeeCap().Cmp(block.BaseFee()) != 0 {
+		return fmt.Errorf("malformed proposer payment, unexpected gas fee cap")
+	}
+
 	return nil
 }
