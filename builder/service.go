@@ -108,6 +108,7 @@ type BuilderConfig struct {
 	Enabled               bool
 	EnableValidatorChecks bool
 	EnableLocalRelay      bool
+	DisableBundleFetcher  bool
 	DryRun                bool
 	BuilderSecretKey      string
 	RelaySecretKey        string
@@ -203,10 +204,12 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *BuilderConfig) error
 	}
 
 	// Bundle fetcher
-	mevBundleCh := make(chan []types.MevBundle)
-	blockNumCh := make(chan int64)
-	bundleFetcher := flashbotsextra.NewBundleFetcher(backend, ds, blockNumCh, mevBundleCh, true)
-	go bundleFetcher.Run()
+	if !cfg.DisableBundleFetcher {
+		mevBundleCh := make(chan []types.MevBundle)
+		blockNumCh := make(chan int64)
+		bundleFetcher := flashbotsextra.NewBundleFetcher(backend, ds, blockNumCh, mevBundleCh, true)
+		go bundleFetcher.Run()
+	}
 
 	ethereumService := NewEthereumService(backend)
 	builderBackend := NewBuilder(builderSk, ds, relay, builderSigningDomain, ethereumService, cfg.DryRun, validator)

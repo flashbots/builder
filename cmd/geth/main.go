@@ -146,6 +146,7 @@ var (
 		utils.BuilderEnabled,
 		utils.BuilderEnableValidatorChecks,
 		utils.BuilderEnableLocalRelay,
+		utils.BuilderDisableBundleFetcher,
 		utils.BuilderDryRun,
 		utils.BuilderSecretKey,
 		utils.BuilderRelaySecretKey,
