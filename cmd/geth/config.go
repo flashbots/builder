@@ -171,6 +171,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		Enabled:               ctx.IsSet(utils.BuilderEnabled.Name),
 		EnableValidatorChecks: ctx.IsSet(utils.BuilderEnableValidatorChecks.Name),
 		EnableLocalRelay:      ctx.IsSet(utils.BuilderEnableLocalRelay.Name),
+		DisableBundleFetcher:  ctx.IsSet(utils.BuilderDisableBundleFetcher.Name),
 		DryRun:                ctx.IsSet(utils.BuilderDryRun.Name),
 		BuilderSecretKey:      ctx.String(utils.BuilderSecretKey.Name),
 		RelaySecretKey:        ctx.String(utils.BuilderRelaySecretKey.Name),
