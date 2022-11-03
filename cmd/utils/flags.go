@@ -697,6 +697,10 @@ var (
 		Name:  "builder.local_relay",
 		Usage: "Enable the local relay",
 	}
+	BuilderDisableBundleFetcher = &cli.BoolFlag{
+		Name:  "builder.no_bundle_fetcher",
+		Usage: "Disable the bundle fetcher",
+	}
 	BuilderDryRun = &cli.BoolFlag{
 		Name:  "builder.dry-run",
 		Usage: "Builder only validates blocks without submission to the relay",
