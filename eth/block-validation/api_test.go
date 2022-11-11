@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
+	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/beacon"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -61,7 +62,8 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	cc, _ := types.SignTx(types.NewContractCreation(nonce+1, new(big.Int), 1000000, big.NewInt(2*params.InitialBaseFee), logCode), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
 	ethservice.TxPool().AddLocal(cc)
 
-	tx2, _ := types.SignTx(types.NewTransaction(nonce+2, testAddr, big.NewInt(10), 21000, big.NewInt(2*params.InitialBaseFee), nil), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
+	baseFee := misc.CalcBaseFee(params.AllEthashProtocolChanges, preMergeBlocks[len(preMergeBlocks)-1].Header())
+	tx2, _ := types.SignTx(types.NewTransaction(nonce+2, testAddr, big.NewInt(10), 21000, baseFee, nil), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
 	ethservice.TxPool().AddLocal(tx2)
 
 	execData, err := assembleBlock(api, parent.Hash(), &beacon.PayloadAttributesV1{
@@ -76,20 +78,34 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	proposerAddr := boostTypes.Address{}
 	proposerAddr.FromSlice(testAddr[:])
 
-	blockRequest := &boostTypes.BuilderSubmitBlockRequest{
-		Signature: boostTypes.Signature{},
-		Message: &boostTypes.BidTrace{
-			ParentHash:           boostTypes.Hash(execData.ParentHash),
-			BlockHash:            boostTypes.Hash(execData.BlockHash),
-			ProposerFeeRecipient: proposerAddr,
-			GasLimit:             execData.GasLimit,
-			GasUsed:              execData.GasUsed,
+	blockRequest := &BuilderBlockValidationRequest{
+		BuilderSubmitBlockRequest: boostTypes.BuilderSubmitBlockRequest{
+			Signature: boostTypes.Signature{},
+			Message: &boostTypes.BidTrace{
+				ParentHash:           boostTypes.Hash(execData.ParentHash),
+				BlockHash:            boostTypes.Hash(execData.BlockHash),
+				ProposerFeeRecipient: proposerAddr,
+				GasLimit:             execData.GasLimit,
+				GasUsed:              execData.GasUsed,
+			},
+			ExecutionPayload: payload,
 		},
-		ExecutionPayload: payload,
+		RegisteredGasLimit: execData.GasLimit,
 	}
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "inaccurate payment")
 	blockRequest.Message.Value = boostTypes.IntToU256(10)
 	require.NoError(t, api.ValidateBuilderSubmissionV1(blockRequest))
+
+	blockRequest.Message.GasLimit += 1
+	blockRequest.ExecutionPayload.GasLimit += 1
+
+	oldHash := blockRequest.Message.BlockHash
+	copy(blockRequest.Message.BlockHash[:], hexutil.MustDecode("0xa6592f67b46f9567ff417defcc2e5ef40b7e3eafb04be990395ef3807d6c57e9")[:32])
+	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "incorrect gas limit set")
+
+	blockRequest.Message.GasLimit -= 1
+	blockRequest.ExecutionPayload.GasLimit -= 1
+	blockRequest.Message.BlockHash = oldHash
 
 	// TODO: test with contract calling blacklisted address
 	// Test tx from blacklisted address
@@ -128,7 +144,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	invalidPayload.LogsBloom = boostTypes.Bloom{}
 	copy(invalidPayload.ReceiptsRoot[:], hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")[:32])
 	blockRequest.ExecutionPayload = invalidPayload
-	copy(blockRequest.Message.BlockHash[:], hexutil.MustDecode("0x363c62185603aa2f97e3900c9f14f946b6daec0d95314c7dcf5b6ae58ab2819c")[:32])
+	copy(blockRequest.Message.BlockHash[:], hexutil.MustDecode("0xb91a7a79407584a835d814de77808a25e72d5025bc7691630e57c40d8c47ee33")[:32])
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "could not apply tx 3", "insufficient funds for gas * price + value")
 }
 

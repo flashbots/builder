@@ -29,7 +29,7 @@ type AccessVerifier struct {
 }
 
 func (a *AccessVerifier) verifyTraces(tracer *logger.AccessListTracer) error {
-	log.Info("x", "tracer.AccessList()", tracer.AccessList())
+	log.Trace("x", "tracer.AccessList()", tracer.AccessList())
 	for _, accessTuple := range tracer.AccessList() {
 		// TODO: should we ignore common.Address{}?
 		if _, found := a.blacklistedAddresses[accessTuple.Address]; found {
@@ -121,7 +121,12 @@ func NewBlockValidationAPI(eth *eth.Ethereum, accessVerifier *AccessVerifier) *B
 	}
 }
 
-func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *boostTypes.BuilderSubmitBlockRequest) error {
+type BuilderBlockValidationRequest struct {
+	boostTypes.BuilderSubmitBlockRequest
+	RegisteredGasLimit uint64 `json:"registered_gas_limit,string"`
+}
+
+func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockValidationRequest) error {
 	// TODO: fuzztest, make sure the validation is sound
 	// TODO: handle context!
 
@@ -171,7 +176,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *boostTypes.Bu
 		vmconfig = vm.Config{Tracer: tracer, Debug: true}
 	}
 
-	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, vmconfig)
+	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig)
 	if err != nil {
 		log.Error("invalid payload", "hash", payload.BlockHash.String(), "number", payload.BlockNumber, "parentHash", payload.ParentHash.String(), "err", err)
 		return err
