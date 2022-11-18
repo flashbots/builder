@@ -4,7 +4,7 @@ Official Golang execution layer implementation of the Ethereum protocol.
 
 Builder API implementing [builder spec](https://github.com/ethereum/builder-specs), making geth into a standalone block builder. 
 
-Run on your favorite network, including Kiln and local devnet.
+Run on your favorite network, including Mainnet, Goerli, Sepolia and local devnet.
 
 Requires forkchoice update to be sent for block building, on public testnets run beacon node modified to send forkchoice update on every slot [example modified beacon client (lighthouse)](https://github.com/flashbots/lighthouse)
 
