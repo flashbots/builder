@@ -71,7 +71,7 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 		coinbaseBalanceBefore := stateDB.GetBalance(env.coinbase)
 
 		var tempGasUsed uint64
-		receipt, err := core.ApplyTransaction(chData.chainConfig, chData.chain, &env.coinbase, gasPool, stateDB, env.header, tx, &tempGasUsed, *chData.chain.GetVMConfig())
+		receipt, err := core.ApplyTransaction(chData.chainConfig, chData.chain, &env.coinbase, gasPool, stateDB, env.header, tx, &tempGasUsed, *chData.chain.GetVMConfig(), nil)
 		if err != nil {
 			return types.SimulatedBundle{}, err
 		}
@@ -439,6 +439,8 @@ func TestBlacklist(t *testing.T) {
 	env := newEnvironment(chData, statedb, signers.addresses[0], GasLimit, big.NewInt(1))
 	envDiff := newEnvironmentDiff(env)
 
+	beforeRoot := statedb.IntermediateRoot(true)
+
 	blacklist := map[common.Address]struct{}{
 		signers.addresses[3]: {},
 	}
@@ -493,6 +495,11 @@ func TestBlacklist(t *testing.T) {
 
 	if len(envDiff.newReceipts) != 0 {
 		t.Fatal("newReceipts changed")
+	}
+
+	afterRoot := statedb.IntermediateRoot(true)
+	if beforeRoot != afterRoot {
+		t.Fatal("statedb root changed")
 	}
 }
 
