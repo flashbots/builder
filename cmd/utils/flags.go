@@ -1075,8 +1075,8 @@ var (
 	// Builder API flags
 	BuilderBlockValidationBlacklistSourceFilePath = &cli.StringFlag{
 		Name:     "builder.validation_blacklist",
-		Usage:    "Path to file containing blacklisted addresses, json-encoded list of strings. Default assumes no blacklist",
-		Value:    "",
+		Usage:    "Path to file containing blacklisted addresses, json-encoded list of strings. Default assumes CWD is repo's root",
+		Value:    "ofac_blacklist.json",
 		Category: flags.EthCategory,
 	}
 )
