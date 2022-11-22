@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
+
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
 
@@ -26,7 +27,7 @@ type AccessVerifier struct {
 }
 
 func (a *AccessVerifier) verifyTraces(tracer *logger.AccessListTracer) error {
-	log.Info("x", "tracer.AccessList()", tracer.AccessList())
+	log.Trace("x", "tracer.AccessList()", tracer.AccessList())
 	for _, accessTuple := range tracer.AccessList() {
 		// TODO: should we ignore common.Address{}?
 		if _, found := a.blacklistedAddresses[accessTuple.Address]; found {
@@ -35,6 +36,13 @@ func (a *AccessVerifier) verifyTraces(tracer *logger.AccessListTracer) error {
 		}
 	}
 
+	return nil
+}
+
+func (a *AccessVerifier) isBlacklisted(addr common.Address) error {
+	if _, present := a.blacklistedAddresses[addr]; present {
+		return fmt.Errorf("transaction from blacklisted address %s", addr.String())
+	}
 	return nil
 }
 
@@ -77,12 +85,16 @@ func NewAccessVerifierFromFile(path string) (*AccessVerifier, error) {
 	}, nil
 }
 
+type BlockValidationConfig struct {
+	BlacklistSourceFilePath string
+}
+
 // Register adds catalyst APIs to the full node.
-func Register(stack *node.Node, backend *eth.Ethereum, blockValidationBlocklistFile string) error {
+func Register(stack *node.Node, backend *eth.Ethereum, cfg BlockValidationConfig) error {
 	var accessVerifier *AccessVerifier
-	if blockValidationBlocklistFile != "" {
+	if cfg.BlacklistSourceFilePath != "" {
 		var err error
-		accessVerifier, err = NewAccessVerifierFromFile(blockValidationBlocklistFile)
+		accessVerifier, err = NewAccessVerifierFromFile(cfg.BlacklistSourceFilePath)
 		if err != nil {
 			return err
 		}
@@ -111,7 +123,12 @@ func NewBlockValidationAPI(eth *eth.Ethereum, accessVerifier *AccessVerifier) *B
 	}
 }
 
-func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *boostTypes.BuilderSubmitBlockRequest) error {
+type BuilderBlockValidationRequest struct {
+	boostTypes.BuilderSubmitBlockRequest
+	RegisteredGasLimit uint64 `json:"registered_gas_limit,string"`
+}
+
+func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockValidationRequest) error {
 	// TODO: fuzztest, make sure the validation is sound
 	// TODO: handle context!
 
@@ -146,6 +163,12 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *boostTypes.Bu
 	var vmconfig vm.Config
 	var tracer *logger.AccessListTracer = nil
 	if api.accessVerifier != nil {
+		if err := api.accessVerifier.isBlacklisted(block.Coinbase()); err != nil {
+			return err
+		}
+		if err := api.accessVerifier.isBlacklisted(feeRecipient); err != nil {
+			return err
+		}
 		if err := api.accessVerifier.verifyTransactions(types.LatestSigner(api.eth.BlockChain().Config()), block.Transactions()); err != nil {
 			return err
 		}
@@ -155,7 +178,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *boostTypes.Bu
 		vmconfig = vm.Config{Tracer: tracer, Debug: true}
 	}
 
-	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, vmconfig)
+	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig)
 	if err != nil {
 		log.Error("invalid payload", "hash", payload.BlockHash.String(), "number", payload.BlockNumber, "parentHash", payload.ParentHash.String(), "err", err)
 		return err
