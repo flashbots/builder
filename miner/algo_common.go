@@ -88,7 +88,7 @@ func applyTransactionWithBlacklist(signer types.Signer, config *params.ChainConf
 	// short circuit if blacklist is empty
 	if len(blacklist) == 0 {
 		snap := statedb.Snapshot()
-		receipt, err := core.ApplyTransaction(config, bc, author, gp, statedb, header, tx, usedGas, cfg)
+		receipt, err := core.ApplyTransaction(config, bc, author, gp, statedb, header, tx, usedGas, cfg, nil)
 		if err != nil {
 			statedb.RevertToSnapshot(snap)
 		}
@@ -114,29 +114,28 @@ func applyTransactionWithBlacklist(signer types.Signer, config *params.ChainConf
 	cfg.Tracer = touchTracer
 	cfg.Debug = true
 
-	usedGasTmp := *usedGas
-	gasPoolTmp := new(core.GasPool).AddGas(gp.Gas())
-	stateCopy := statedb.Copy()
-	snap := stateCopy.Snapshot()
-
-	stateCopy.Prepare(tx.Hash(), statedb.TxIndex())
-	receipt, err := core.ApplyTransaction(config, bc, author, gasPoolTmp, stateCopy, header, tx, &usedGasTmp, cfg)
-	if err != nil {
-		stateCopy.RevertToSnapshot(snap)
-		*usedGas = usedGasTmp
-		*gp = *gasPoolTmp
-		return receipt, stateCopy, err
+	hook := func() error {
+		for _, address := range touchTracer.TouchedAddresses() {
+			if _, in := blacklist[address]; in {
+				return errors.New("blacklist violation, tx trace")
+			}
+		}
+		return nil
 	}
 
-	for _, address := range touchTracer.TouchedAddresses() {
-		if _, in := blacklist[address]; in {
-			return nil, statedb, errors.New("blacklist violation, tx trace")
-		}
+	usedGasTmp := *usedGas
+	gasPoolTmp := new(core.GasPool).AddGas(gp.Gas())
+	snap := statedb.Snapshot()
+
+	receipt, err := core.ApplyTransaction(config, bc, author, gasPoolTmp, statedb, header, tx, &usedGasTmp, cfg, hook)
+	if err != nil {
+		statedb.RevertToSnapshot(snap)
+		return receipt, statedb, err
 	}
 
 	*usedGas = usedGasTmp
 	*gp = *gasPoolTmp
-	return receipt, stateCopy, nil
+	return receipt, statedb, err
 }
 
 // commit tx to envDiff

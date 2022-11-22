@@ -953,12 +953,7 @@ func (w *worker) updateSnapshot(env *environment) {
 func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*types.Log, error) {
 	gasPool := *env.gasPool
 	envGasUsed := env.header.GasUsed
-	var stateDB *state.StateDB
-	if len(w.blockList) != 0 {
-		stateDB = env.state.Copy()
-	} else {
-		stateDB = env.state
-	}
+	stateDB := env.state
 
 	// It's important to copy then .Prepare() - don't reorder.
 	stateDB.Prepare(tx.Hash(), env.tcount)
@@ -971,24 +966,26 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 	}
 
 	var tracer *logger.AccountTouchTracer
+	var hook func() error
 	config := *w.chain.GetVMConfig()
 	if len(w.blockList) != 0 {
 		tracer = logger.NewAccountTouchTracer()
 		config.Tracer = tracer
 		config.Debug = true
+		hook = func() error {
+			for _, address := range tracer.TouchedAddresses() {
+				if _, in := w.blockList[address]; in {
+					return errBlocklistViolation
+				}
+			}
+			return nil
+		}
 	}
 
-	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, &gasPool, stateDB, env.header, tx, &envGasUsed, config)
+	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, &gasPool, stateDB, env.header, tx, &envGasUsed, config, hook)
 	if err != nil {
 		stateDB.RevertToSnapshot(snapshot)
 		return nil, err
-	}
-	if len(w.blockList) != 0 {
-		for _, address := range tracer.TouchedAddresses() {
-			if _, in := w.blockList[address]; in {
-				return nil, errBlocklistViolation
-			}
-		}
 	}
 
 	*env.gasPool = gasPool
@@ -1727,7 +1724,7 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 			config.Tracer = tracer
 			config.Debug = true
 		}
-		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, gasPool, state, env.header, tx, &tempGasUsed, config)
+		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, gasPool, state, env.header, tx, &tempGasUsed, config, nil)
 		if err != nil {
 			return simulatedBundle{}, err
 		}
