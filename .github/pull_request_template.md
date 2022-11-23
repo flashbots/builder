@@ -8,6 +8,4 @@
 
 ---
 
-## ✅ I have run these commands
-
-* [ ] I have seen and agree to `CONTRIBUTING.md`
+* [ ] I have seen and agree to [`CONTRIBUTING.md`](https://github.com/flashbots/builder/blob/main/CONTRIBUTING.md)
