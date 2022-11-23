@@ -85,25 +85,12 @@ func NewAccessVerifierFromFile(path string) (*AccessVerifier, error) {
 	}, nil
 }
 
-type BlockValidationConfig struct {
-	BlacklistSourceFilePath string
-}
-
 // Register adds catalyst APIs to the full node.
-func Register(stack *node.Node, backend *eth.Ethereum, cfg BlockValidationConfig) error {
-	var accessVerifier *AccessVerifier
-	if cfg.BlacklistSourceFilePath != "" {
-		var err error
-		accessVerifier, err = NewAccessVerifierFromFile(cfg.BlacklistSourceFilePath)
-		if err != nil {
-			return err
-		}
-	}
-
+func Register(stack *node.Node, backend *eth.Ethereum) error {
 	stack.RegisterAPIs([]rpc.API{
 		{
 			Namespace: "flashbots",
-			Service:   NewBlockValidationAPI(backend, accessVerifier),
+			Service:   BlockValidationAPI(backend),
 		},
 	})
 	return nil
@@ -112,15 +99,6 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg BlockValidationConfig
 type BlockValidationAPI struct {
 	eth            *eth.Ethereum
 	accessVerifier *AccessVerifier
-}
-
-// NewConsensusAPI creates a new consensus api for the given backend.
-// The underlying blockchain needs to have a valid terminal total difficulty set.
-func NewBlockValidationAPI(eth *eth.Ethereum, accessVerifier *AccessVerifier) *BlockValidationAPI {
-	return &BlockValidationAPI{
-		eth:            eth,
-		accessVerifier: accessVerifier,
-	}
 }
 
 type BuilderBlockValidationRequest struct {
