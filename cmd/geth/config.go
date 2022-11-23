@@ -181,7 +181,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		GenesisValidatorsRoot: ctx.String(utils.BuilderGenesisValidatorsRoot.Name),
 		BeaconEndpoint:        ctx.String(utils.BuilderBeaconEndpoint.Name),
 		RemoteRelayEndpoint:   ctx.String(utils.BuilderRemoteRelayEndpoint.Name),
-		ValidationBlocklist:   ctx.String(utils.BuilderBlockValidationBlacklistSourceFilePath.Name),
 	}
 	backend, eth := utils.RegisterEthService(stack, &cfg.Eth, bpConfig)
 
@@ -207,9 +206,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	filterSystem := utils.RegisterFilterAPI(stack, backend, &cfg.Eth)
 
 	bvConfig := blockvalidationapi.BlockValidationConfig{}
-	if ctx.IsSet(utils.BuilderBlockValidationBlacklistSourceFilePath.Name) {
-		bvConfig.BlacklistSourceFilePath = ctx.String(utils.BuilderBlockValidationBlacklistSourceFilePath.Name)
-	}
 
 	if err := blockvalidationapi.Register(stack, eth, bvConfig); err != nil {
 		utils.Fatalf("Failed to register the Block Validation API: %v", err)
