@@ -92,6 +92,7 @@ type gethConfig struct {
 	Node     node.Config
 	Ethstats ethstatsConfig
 	Metrics  metrics.Config
+	Builder  builder.Config
 }
 
 func loadConfig(file string, cfg *gethConfig) error {
@@ -127,6 +128,7 @@ func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
 		Eth:     ethconfig.Defaults,
 		Node:    defaultNodeConfig(),
 		Metrics: metrics.DefaultConfig,
+		Builder: builder.DefaultConfig,
 	}
 
 	// Load config file.
@@ -152,6 +154,9 @@ func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
 		cfg.Ethstats.URL = ctx.String(utils.EthStatsURLFlag.Name)
 	}
 	applyMetricConfig(ctx, &cfg)
+
+	// Apply builder flags
+	utils.SetBuilderConfig(ctx, &cfg.Builder)
 
 	return stack, cfg
 }
