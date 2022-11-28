@@ -1554,6 +1554,24 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 	}
 }
 
+// SetBuilderConfig applies node-related command line flags to the config.
+func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
+	cfg.Enabled = ctx.IsSet(BuilderEnabled.Name)
+	cfg.EnableValidatorChecks = ctx.IsSet(BuilderEnableValidatorChecks.Name)
+	cfg.EnableLocalRelay = ctx.IsSet(BuilderEnableLocalRelay.Name)
+	cfg.DisableBundleFetcher = ctx.IsSet(BuilderDisableBundleFetcher.Name)
+	cfg.DryRun = ctx.IsSet(BuilderDryRun.Name)
+	cfg.BuilderSecretKey = ctx.String(BuilderSecretKey.Name)
+	cfg.RelaySecretKey = ctx.String(BuilderRelaySecretKey.Name)
+	cfg.ListenAddr = ctx.String(BuilderListenAddr.Name)
+	cfg.GenesisForkVersion = ctx.String(BuilderGenesisForkVersion.Name)
+	cfg.BellatrixForkVersion = ctx.String(BuilderBellatrixForkVersion.Name)
+	cfg.GenesisValidatorsRoot = ctx.String(BuilderGenesisValidatorsRoot.Name)
+	cfg.BeaconEndpoint = ctx.String(BuilderBeaconEndpoint.Name)
+	cfg.RemoteRelayEndpoint = ctx.String(BuilderRemoteRelayEndpoint.Name)
+	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
+}
+
 // SetNodeConfig applies node-related command line flags to the config.
 func SetNodeConfig(ctx *cli.Context, cfg *node.Config) {
 	SetP2PConfig(ctx, &cfg.P2P)
@@ -2112,7 +2130,7 @@ func SetDNSDiscoveryDefaults(cfg *ethconfig.Config, genesis common.Hash) {
 // RegisterEthService adds an Ethereum client to the stack.
 // The second return value is the full node instance, which may be nil if the
 // node is running as a light client.
-func RegisterEthService(stack *node.Node, cfg *ethconfig.Config, bpCfg *builder.BuilderConfig) (ethapi.Backend, *eth.Ethereum) {
+func RegisterEthService(stack *node.Node, cfg *ethconfig.Config, bpCfg *builder.Config) (ethapi.Backend, *eth.Ethereum) {
 	if cfg.SyncMode == downloader.LightSync {
 		backend, err := les.New(stack, cfg)
 		if err != nil {

@@ -92,6 +92,7 @@ type gethConfig struct {
 	Node     node.Config
 	Ethstats ethstatsConfig
 	Metrics  metrics.Config
+	Builder  builder.Config
 }
 
 func loadConfig(file string, cfg *gethConfig) error {
@@ -126,6 +127,7 @@ func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
 		Eth:     ethconfig.Defaults,
 		Node:    defaultNodeConfig(),
 		Metrics: metrics.DefaultConfig,
+		Builder: builder.DefaultConfig,
 	}
 
 	// Load config file.
@@ -152,6 +154,9 @@ func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
 	}
 	applyMetricConfig(ctx, &cfg)
 
+	// Apply builder flags
+	utils.SetBuilderConfig(ctx, &cfg.Builder)
+
 	return stack, cfg
 }
 
@@ -167,23 +172,8 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		cfg.Eth.OverrideTerminalTotalDifficultyPassed = &override
 	}
 
-	bpConfig := &builder.BuilderConfig{
-		Enabled:               ctx.IsSet(utils.BuilderEnabled.Name),
-		EnableValidatorChecks: ctx.IsSet(utils.BuilderEnableValidatorChecks.Name),
-		EnableLocalRelay:      ctx.IsSet(utils.BuilderEnableLocalRelay.Name),
-		DisableBundleFetcher:  ctx.IsSet(utils.BuilderDisableBundleFetcher.Name),
-		DryRun:                ctx.IsSet(utils.BuilderDryRun.Name),
-		BuilderSecretKey:      ctx.String(utils.BuilderSecretKey.Name),
-		RelaySecretKey:        ctx.String(utils.BuilderRelaySecretKey.Name),
-		ListenAddr:            ctx.String(utils.BuilderListenAddr.Name),
-		GenesisForkVersion:    ctx.String(utils.BuilderGenesisForkVersion.Name),
-		BellatrixForkVersion:  ctx.String(utils.BuilderBellatrixForkVersion.Name),
-		GenesisValidatorsRoot: ctx.String(utils.BuilderGenesisValidatorsRoot.Name),
-		BeaconEndpoint:        ctx.String(utils.BuilderBeaconEndpoint.Name),
-		RemoteRelayEndpoint:   ctx.String(utils.BuilderRemoteRelayEndpoint.Name),
-		ValidationBlocklist:   ctx.String(utils.BuilderBlockValidationBlacklistSourceFilePath.Name),
-	}
-	backend, eth := utils.RegisterEthService(stack, &cfg.Eth, bpConfig)
+	// Construct the backend service.
+	backend, eth := utils.RegisterEthService(stack, &cfg.Eth, &cfg.Builder)
 
 	// Warn users to migrate if they have a legacy freezer format.
 	if eth != nil && !ctx.IsSet(utils.IgnoreLegacyReceiptsFlag.Name) {
