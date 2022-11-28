@@ -104,24 +104,7 @@ func NewService(listenAddr string, localRelay *LocalRelay, builder *Builder) *Se
 	}
 }
 
-type BuilderConfig struct {
-	Enabled               bool
-	EnableValidatorChecks bool
-	EnableLocalRelay      bool
-	DisableBundleFetcher  bool
-	DryRun                bool
-	BuilderSecretKey      string
-	RelaySecretKey        string
-	ListenAddr            string
-	GenesisForkVersion    string
-	BellatrixForkVersion  string
-	GenesisValidatorsRoot string
-	BeaconEndpoint        string
-	RemoteRelayEndpoint   string
-	ValidationBlocklist   string
-}
-
-func Register(stack *node.Node, backend *eth.Ethereum, cfg *BuilderConfig) error {
+func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	envRelaySkBytes, err := hexutil.Decode(cfg.RelaySecretKey)
 	if err != nil {
 		return errors.New("incorrect builder API secret key provided")
