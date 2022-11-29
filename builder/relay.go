@@ -126,12 +126,13 @@ func (r *RemoteRelay) GetValidatorForSlot(nextSlot uint64) (ValidatorData, error
 }
 
 func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ ValidatorData) error {
+	log.Info("submitting block to remote relay", "endpoint", r.endpoint)
 	code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, r.endpoint+"/relay/v1/builder/blocks", msg, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("error sending http request to relay %s. err: %w", r.endpoint, err)
 	}
 	if code > 299 {
-		return fmt.Errorf("non-ok response code %d from relay ", code)
+		return fmt.Errorf("non-ok response code %d from relay %s", code, r.endpoint)
 	}
 
 	if r.localRelay != nil {

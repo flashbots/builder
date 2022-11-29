@@ -66,58 +66,59 @@ func (r *RemoteRelayAggregator) GetValidatorForSlot(nextSlot uint64) (ValidatorD
 	}
 
 	topRegistrationCh := make(chan ValidatorData, 1)
-	go func() {
-		registrations := make([]*RelayValidatorRegistration, 0, len(r.relays))
-		bestRelayIndex := len(r.relays)  // relay index of the topmost relay that gave us the registration
-		bestRelayRegistrationIndex := -1 // index into the registrations for the registration returned by topmost relay
-		for i := 0; i < len(r.relays); i++ {
-			relayRegistration := <-registrationsCh
-			if relayRegistration != nil {
-				registrations = append(registrations, relayRegistration)
-				// happy path for primary
-				if relayRegistration.relayI == 0 {
-					topRegistrationCh <- relayRegistration.vd
-				}
-				if relayRegistration.relayI < bestRelayIndex {
-					bestRelayIndex = relayRegistration.relayI
-					bestRelayRegistrationIndex = len(registrations) - 1
-				}
-			}
-		}
-
-		if len(registrations) == 0 {
-			close(topRegistrationCh)
-			return
-		}
-
-		r.registrationsCacheLock.Lock()
-		defer r.registrationsCacheLock.Unlock()
-
-		if nextSlot < r.registrationsCacheSlot {
-			// slot is outdated
-			close(topRegistrationCh)
-			return
-		}
-
-		if nextSlot > r.registrationsCacheSlot {
-			// clear the cache
-			r.registrationsCache = make(map[ValidatorData][]IRelay)
-		}
-
-		if bestRelayIndex != 0 {
-			// if bestRelayIndex == 0 it was already sent
-			topRegistrationCh <- registrations[bestRelayRegistrationIndex].vd
-		}
-
-		close(topRegistrationCh)
-
-		for _, relayRegistration := range registrations {
-			r.registrationsCache[relayRegistration.vd] = append(r.registrationsCache[relayRegistration.vd], r.relays[relayRegistration.relayI])
-		}
-	}()
+	go r.updateRelayRegistrations(nextSlot, registrationsCh, topRegistrationCh)
 
 	if vd, ok := <-topRegistrationCh; ok {
 		return vd, nil
 	}
 	return ValidatorData{}, ErrValidatorNotFound
+}
+
+func (r *RemoteRelayAggregator) updateRelayRegistrations(nextSlot uint64, registrationsCh chan *RelayValidatorRegistration, topRegistrationCh chan ValidatorData) {
+	defer close(topRegistrationCh)
+
+	r.registrationsCacheLock.Lock()
+	defer r.registrationsCacheLock.Unlock()
+
+	if nextSlot < r.registrationsCacheSlot {
+		// slot is outdated
+		return
+	}
+
+	registrations := make([]*RelayValidatorRegistration, 0, len(r.relays))
+	bestRelayIndex := len(r.relays)  // relay index of the topmost relay that gave us the registration
+	bestRelayRegistrationIndex := -1 // index into the registrations for the registration returned by topmost relay
+	for i := 0; i < len(r.relays); i++ {
+		relayRegistration := <-registrationsCh
+		if relayRegistration != nil {
+			registrations = append(registrations, relayRegistration)
+			// happy path for primary
+			if relayRegistration.relayI == 0 {
+				topRegistrationCh <- relayRegistration.vd
+			}
+			if relayRegistration.relayI < bestRelayIndex {
+				bestRelayIndex = relayRegistration.relayI
+				bestRelayRegistrationIndex = len(registrations) - 1
+			}
+		}
+	}
+
+	if len(registrations) == 0 {
+		return
+	}
+
+	if bestRelayIndex != 0 {
+		// if bestRelayIndex == 0 it was already sent
+		topRegistrationCh <- registrations[bestRelayRegistrationIndex].vd
+	}
+
+	if nextSlot > r.registrationsCacheSlot {
+		// clear the cache
+		r.registrationsCache = make(map[ValidatorData][]IRelay)
+		r.registrationsCacheSlot = nextSlot
+	}
+
+	for _, relayRegistration := range registrations {
+		r.registrationsCache[relayRegistration.vd] = append(r.registrationsCache[relayRegistration.vd], r.relays[relayRegistration.relayI])
+	}
 }
