@@ -106,6 +106,7 @@ func (c *Compiler) Compile() (string, []error) {
 
 	// turn the binary to hex
 	var bin strings.Builder
+	bin.Grow(len(c.binary))
 	for _, v := range c.binary {
 		switch v := v.(type) {
 		case vm.OpCode:
