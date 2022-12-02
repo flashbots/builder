@@ -17,6 +17,7 @@
 package asm
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math/big"
 	"os"
@@ -110,9 +111,9 @@ func (c *Compiler) Compile() (string, []error) {
 	for _, v := range c.binary {
 		switch v := v.(type) {
 		case vm.OpCode:
-			bin.WriteString(fmt.Sprintf("%x", []byte{byte(v)}))
+			bin.WriteString(hex.EncodeToString([]byte{byte(v)}))
 		case []byte:
-			bin.WriteString(fmt.Sprintf("%x", v))
+			bin.WriteString(hex.EncodeToString(v))
 		}
 	}
 	return bin.String(), errors
