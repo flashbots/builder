@@ -58,6 +58,9 @@ $ geth --help
    
     --builder.no_bundle_fetcher    (default: false)
           Disable the bundle fetcher
+
+    --builder.only_bundle_blocks   (default: false)
+          Submit only blocks with bundles
    
     --builder.relay_secret_key value (default: "0x2fc12ae741f29701f8e30f5de6350766c020cb80768a0ff01e6838ffd2431e11")
           Builder local relay API key used for signing headers [$BUILDER_RELAY_SECRET_KEY]
