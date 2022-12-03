@@ -169,6 +169,7 @@ var (
 		utils.BuilderSecondsInSlot,
 		utils.BuilderSlotsInEpoch,
 		utils.BuilderDisableBundleFetcher,
+		utils.BuilderOnlyBlocksWithBundles,
 		utils.BuilderDryRun,
 		utils.BuilderSecretKey,
 		utils.BuilderRelaySecretKey,

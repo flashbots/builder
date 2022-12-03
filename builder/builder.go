@@ -50,14 +50,15 @@ type IBuilder interface {
 }
 
 type Builder struct {
-	ds                   flashbotsextra.IDatabaseService
-	relay                IRelay
-	eth                  IEthereumService
-	dryRun               bool
-	validator            *blockvalidation.BlockValidationAPI
-	builderSecretKey     *bls.SecretKey
-	builderPublicKey     boostTypes.PublicKey
-	builderSigningDomain boostTypes.Domain
+	ds                    flashbotsextra.IDatabaseService
+	relay                 IRelay
+	eth                   IEthereumService
+	dryRun                bool
+	onlyBlocksWithBundles bool
+	validator             *blockvalidation.BlockValidationAPI
+	builderSecretKey      *bls.SecretKey
+	builderPublicKey      boostTypes.PublicKey
+	builderSigningDomain  boostTypes.Domain
 
 	limiter *rate.Limiter
 
@@ -68,21 +69,22 @@ type Builder struct {
 	slotCtxCancel context.CancelFunc
 }
 
-func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, validator *blockvalidation.BlockValidationAPI) *Builder {
+func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, validator *blockvalidation.BlockValidationAPI, onlyBlocksWithBundles bool) *Builder {
 	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
 
 	slotCtx, slotCtxCancel := context.WithCancel(context.Background())
 	return &Builder{
-		ds:                   ds,
-		relay:                relay,
-		eth:                  eth,
-		dryRun:               dryRun,
-		validator:            validator,
-		builderSecretKey:     sk,
-		builderPublicKey:     pk,
-		builderSigningDomain: builderSigningDomain,
+		ds:                    ds,
+		relay:                 relay,
+		eth:                   eth,
+		dryRun:                dryRun,
+		onlyBlocksWithBundles: onlyBlocksWithBundles,
+		validator:             validator,
+		builderSecretKey:      sk,
+		builderPublicKey:      pk,
+		builderSigningDomain:  builderSigningDomain,
 
 		limiter:       rate.NewLimiter(rate.Every(time.Millisecond), 510),
 		slot:          0,
@@ -124,6 +126,11 @@ func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, se
 		GasLimit:             executableData.GasLimit,
 		GasUsed:              executableData.GasUsed,
 		Value:                *value,
+	}
+
+	if b.onlyBlocksWithBundles && len(commitedBundles) == 0 {
+		log.Info("No bundles included, skipping block submission", "slot", blockBidMsg.Slot, "value", blockBidMsg.Value.String(), "parent", blockBidMsg.ParentHash, "hash", block.Hash())
+		return nil
 	}
 
 	signature, err := boostTypes.SignMessage(&blockBidMsg, b.builderSigningDomain, b.builderSecretKey)

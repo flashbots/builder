@@ -725,6 +725,11 @@ var (
 		Usage:    "Disable the bundle fetcher",
 		Category: flags.BuilderCategory,
 	}
+	BuilderOnlyBlocksWithBundles = &cli.BoolFlag{
+		Name:     "builder.only_bundle_blocks",
+		Usage:    "Submit only blocks with bundles",
+		Category: flags.BuilderCategory,
+	}
 	BuilderDryRun = &cli.BoolFlag{
 		Name:     "builder.dry-run",
 		Usage:    "Builder only validates blocks without submission to the relay",
@@ -1598,6 +1603,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.SlotsInEpoch = ctx.Uint64(BuilderSlotsInEpoch.Name)
 	cfg.SecondsInSlot = ctx.Uint64(BuilderSecondsInSlot.Name)
 	cfg.DisableBundleFetcher = ctx.IsSet(BuilderDisableBundleFetcher.Name)
+	cfg.OnlyBlocksWithBundles = ctx.IsSet(BuilderOnlyBlocksWithBundles.Name)
 	cfg.DryRun = ctx.IsSet(BuilderDryRun.Name)
 	cfg.BuilderSecretKey = ctx.String(BuilderSecretKey.Name)
 	cfg.RelaySecretKey = ctx.String(BuilderRelaySecretKey.Name)
