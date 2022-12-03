@@ -553,6 +553,11 @@ var (
 		Value:    "mev-geth",
 		Category: flags.MinerCategory,
 	}
+	MinerOnlyBlocksWithBundlesFlag = &cli.BoolFlag{
+		Name:     "miner.only_bundle_blocks",
+		Usage:    "Build only blocks with bundles",
+		Category: flags.MinerCategory,
+	}
 	MinerEtherbaseFlag = &cli.StringFlag{
 		Name:     "miner.etherbase",
 		Usage:    "Public address for block mining rewards (default = first account)",
@@ -723,11 +728,6 @@ var (
 	BuilderDisableBundleFetcher = &cli.BoolFlag{
 		Name:     "builder.no_bundle_fetcher",
 		Usage:    "Disable the bundle fetcher",
-		Category: flags.BuilderCategory,
-	}
-	BuilderOnlyBlocksWithBundles = &cli.BoolFlag{
-		Name:     "builder.only_bundle_blocks",
-		Usage:    "Submit only blocks with bundles",
 		Category: flags.BuilderCategory,
 	}
 	BuilderDryRun = &cli.BoolFlag{
@@ -1603,7 +1603,6 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.SlotsInEpoch = ctx.Uint64(BuilderSlotsInEpoch.Name)
 	cfg.SecondsInSlot = ctx.Uint64(BuilderSecondsInSlot.Name)
 	cfg.DisableBundleFetcher = ctx.IsSet(BuilderDisableBundleFetcher.Name)
-	cfg.OnlyBlocksWithBundles = ctx.IsSet(BuilderOnlyBlocksWithBundles.Name)
 	cfg.DryRun = ctx.IsSet(BuilderDryRun.Name)
 	cfg.BuilderSecretKey = ctx.String(BuilderSecretKey.Name)
 	cfg.RelaySecretKey = ctx.String(BuilderRelaySecretKey.Name)
@@ -1819,6 +1818,7 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 		}
 		cfg.AlgoType = algoType
 	}
+	cfg.OnlyBlocksWithBundles = ctx.IsSet(MinerOnlyBlocksWithBundlesFlag.Name)
 	if ctx.IsSet(MinerRecommitIntervalFlag.Name) {
 		cfg.Recommit = ctx.Duration(MinerRecommitIntervalFlag.Name)
 	}
