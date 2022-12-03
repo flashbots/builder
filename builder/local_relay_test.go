@@ -69,7 +69,7 @@ func TestValidatorRegistration(t *testing.T) {
 	rr := testRequest(t, relay, "POST", "/eth/v1/builder/validators", payload)
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.Contains(t, relay.validators, PubkeyHex(v.Pk.String()))
-	require.Equal(t, ValidatorData{Pubkey: PubkeyHex(v.Pk.String()), FeeRecipient: payload[0].Message.FeeRecipient, GasLimit: payload[0].Message.GasLimit, Timestamp: payload[0].Message.Timestamp}, relay.validators[PubkeyHex(v.Pk.String())])
+	require.Equal(t, FullValidatorData{ValidatorData: ValidatorData{Pubkey: PubkeyHex(v.Pk.String()), FeeRecipient: payload[0].Message.FeeRecipient, GasLimit: payload[0].Message.GasLimit}, Timestamp: payload[0].Message.Timestamp}, relay.validators[PubkeyHex(v.Pk.String())])
 
 	rr = testRequest(t, relay, "POST", "/eth/v1/builder/validators", payload)
 	require.Equal(t, http.StatusOK, rr.Code)
@@ -113,7 +113,7 @@ func registerValidator(t *testing.T, v *ValidatorPrivateData, relay *LocalRelay)
 	rr := testRequest(t, relay, "POST", "/eth/v1/builder/validators", payload)
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.Contains(t, relay.validators, PubkeyHex(v.Pk.String()))
-	require.Equal(t, ValidatorData{Pubkey: PubkeyHex(v.Pk.String()), FeeRecipient: payload[0].Message.FeeRecipient, GasLimit: payload[0].Message.GasLimit, Timestamp: payload[0].Message.Timestamp}, relay.validators[PubkeyHex(v.Pk.String())])
+	require.Equal(t, FullValidatorData{ValidatorData: ValidatorData{Pubkey: PubkeyHex(v.Pk.String()), FeeRecipient: payload[0].Message.FeeRecipient, GasLimit: payload[0].Message.GasLimit}, Timestamp: payload[0].Message.Timestamp}, relay.validators[PubkeyHex(v.Pk.String())])
 }
 
 func TestGetHeader(t *testing.T) {
