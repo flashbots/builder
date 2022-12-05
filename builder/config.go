@@ -33,6 +33,6 @@ var DefaultConfig = Config{
 	GenesisValidatorsRoot:         "0x0000000000000000000000000000000000000000000000000000000000000000",
 	BeaconEndpoint:                "http://127.0.0.1:5052",
 	RemoteRelayEndpoint:           "",
-	SecondaryRemoteRelayEndpoints: nil,
+	SecondaryRemoteRelayEndpoints: []string{},
 	ValidationBlocklist:           "",
 }
