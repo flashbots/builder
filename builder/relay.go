@@ -169,7 +169,6 @@ func (r *RemoteRelay) getSlotValidatorMapFromRelay() (map[uint64]ValidatorData, 
 			Pubkey:       pubkeyHex,
 			FeeRecipient: feeRecipient,
 			GasLimit:     data.Entry.Message.GasLimit,
-			Timestamp:    data.Entry.Message.Timestamp,
 		}
 	}
 
