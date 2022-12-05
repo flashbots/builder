@@ -34,7 +34,6 @@ func TestOnPayloadAttributes(t *testing.T) {
 			Pubkey:       PubkeyHex(testBeacon.validator.Pk.String()),
 			FeeRecipient: feeRecipient,
 			GasLimit:     10,
-			Timestamp:    15,
 		},
 	}
 
