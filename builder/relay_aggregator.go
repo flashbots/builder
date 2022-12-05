@@ -112,6 +112,10 @@ func (r *RemoteRelayAggregator) updateRelayRegistrations(nextSlot uint64, regist
 		topRegistrationCh <- registrations[bestRelayRegistrationIndex].vd
 	}
 
+	if nextSlot == r.registrationsCacheSlot {
+		return
+	}
+
 	if nextSlot > r.registrationsCacheSlot {
 		// clear the cache
 		r.registrationsCache = make(map[ValidatorData][]IRelay)

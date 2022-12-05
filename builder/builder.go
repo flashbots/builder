@@ -25,9 +25,8 @@ type PubkeyHex string
 
 type ValidatorData struct {
 	Pubkey       PubkeyHex
-	FeeRecipient boostTypes.Address `json:"feeRecipient"`
-	GasLimit     uint64             `json:"gasLimit"`
-	Timestamp    uint64             `json:"timestamp"`
+	FeeRecipient boostTypes.Address
+	GasLimit     uint64
 }
 
 type IBeaconClient interface {
@@ -137,7 +136,7 @@ func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, se
 	}
 
 	if b.dryRun {
-		err = b.validator.ValidateBuilderSubmissionV1(&blockvalidation.BuilderBlockValidationRequest{blockSubmitReq, vd.GasLimit})
+		err = b.validator.ValidateBuilderSubmissionV1(&blockvalidation.BuilderBlockValidationRequest{BuilderSubmitBlockRequest: blockSubmitReq, RegisteredGasLimit: vd.GasLimit})
 		if err != nil {
 			log.Error("could not validate block", "err", err)
 		}
