@@ -160,7 +160,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		return errors.New("neither local nor remote relay specified")
 	}
 
-	if len(cfg.SecondaryRemoteRelayEndpoints) > 0 {
+	if len(cfg.SecondaryRemoteRelayEndpoints) > 0 && !(len(cfg.SecondaryRemoteRelayEndpoints) == 1 && cfg.SecondaryRemoteRelayEndpoints[0] == "") {
 		secondaryRelays := make([]IRelay, len(cfg.SecondaryRemoteRelayEndpoints))
 		for i, endpoint := range cfg.SecondaryRemoteRelayEndpoints {
 			secondaryRelays[i] = NewRemoteRelay(endpoint, nil)
