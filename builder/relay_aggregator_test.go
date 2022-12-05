@@ -20,10 +20,9 @@ type testRelay struct {
 	gvsVd   ValidatorData
 	gvsErr  error
 
-	requestedSlot         uint64
-	submittedMsg          *boostTypes.BuilderSubmitBlockRequest
-	submittedMsgCh        chan *boostTypes.BuilderSubmitBlockRequest
-	submittedRegistration ValidatorData
+	requestedSlot  uint64
+	submittedMsg   *boostTypes.BuilderSubmitBlockRequest
+	submittedMsgCh chan *boostTypes.BuilderSubmitBlockRequest
 }
 
 type testRelayAggBackend struct {
