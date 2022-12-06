@@ -36,8 +36,8 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders 
 			break
 		}
 
-		if order.Tx != nil {
-			receipt, skip, err := envDiff.commitTx(order.Tx, b.chainData)
+		if tx := order.Tx(); tx != nil {
+			receipt, skip, err := envDiff.commitTx(tx, b.chainData)
 			switch skip {
 			case shiftTx:
 				orders.Shift()
@@ -46,15 +46,14 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders 
 			}
 
 			if err != nil {
-				log.Trace("could not apply tx", "hash", order.Tx.Hash(), "err", err)
+				log.Trace("could not apply tx", "hash", tx.Hash(), "err", err)
 				continue
 			}
-			effGapPrice, err := order.Tx.EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
+			effGapPrice, err := tx.EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
 			if err == nil {
 				log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
 			}
-		} else if order.Bundle != nil {
-			bundle := order.Bundle
+		} else if bundle := order.Bundle(); bundle != nil {
 			//log.Debug("buildBlock considering bundle", "egp", bundle.MevGasPrice.String(), "hash", bundle.OriginalBundle.Hash)
 			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt)
 			orders.Pop()

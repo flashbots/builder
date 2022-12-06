@@ -58,11 +58,11 @@ func TestTxWithMinerFeeHeap(t *testing.T) {
 			return
 		}
 
-		if order.Tx != nil {
-			fmt.Println("tx", order.Tx.Hash())
+		if order.Tx() != nil {
+			fmt.Println("tx", order.Tx().Hash())
 			orders.Shift()
-		} else if order.Bundle != nil {
-			fmt.Println("bundle", order.Bundle.OriginalBundle.Hash)
+		} else if order.Bundle() != nil {
+			fmt.Println("bundle", order.Bundle().OriginalBundle.Hash)
 			orders.Pop()
 		}
 	}

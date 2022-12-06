@@ -33,8 +33,12 @@ type AccountTouchTracer struct {
 // including tx sender and tx.to from the top level call
 func NewAccountTouchTracer() *AccountTouchTracer {
 	return &AccountTouchTracer{
-		touched: map[common.Address]struct{}{},
+		touched: make(map[common.Address]struct{}),
 	}
+}
+
+func (t *AccountTouchTracer) TouchedAddressesSet() map[common.Address]struct{} {
+	return t.touched
 }
 
 func (t *AccountTouchTracer) TouchedAddresses() []common.Address {

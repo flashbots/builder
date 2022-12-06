@@ -82,7 +82,7 @@ func TestBuildBlock(t *testing.T) {
 
 	parent := ethservice.BlockChain().CurrentBlock()
 
-	testPayloadAttributes := &BuilderPayloadAttributes{
+	testPayloadAttributes := &types.BuilderPayloadAttributes{
 		Timestamp:             hexutil.Uint64(parent.Time() + 1),
 		Random:                common.Hash{0x05, 0x10},
 		SuggestedFeeRecipient: common.Address{0x04, 0x10},

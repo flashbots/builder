@@ -64,7 +64,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 	require.NoError(t, err)
 	testBlock.Profit = big.NewInt(10)
 
-	testPayloadAttributes := &BuilderPayloadAttributes{
+	testPayloadAttributes := &types.BuilderPayloadAttributes{
 		Timestamp:             hexutil.Uint64(104),
 		Random:                common.Hash{0x05, 0x10},
 		SuggestedFeeRecipient: common.Address{0x04, 0x10},

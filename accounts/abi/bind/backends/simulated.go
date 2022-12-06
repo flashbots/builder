@@ -109,6 +109,21 @@ func NewSimulatedBackend(alloc core.GenesisAlloc, gasLimit uint64) *SimulatedBac
 	return NewSimulatedBackendWithDatabase(rawdb.NewMemoryDatabase(), alloc, gasLimit)
 }
 
+func NewSimulatedBackendChain(database ethdb.Database, blockchain *core.BlockChain) *SimulatedBackend {
+	backend := &SimulatedBackend{
+		database:   database,
+		blockchain: blockchain,
+		config:     blockchain.Config(),
+	}
+
+	filterBackend := &filterBackend{database, blockchain, backend}
+	backend.filterSystem = filters.NewFilterSystem(filterBackend, filters.Config{})
+	backend.events = filters.NewEventSystem(backend.filterSystem, false)
+	backend.rollback(blockchain.CurrentBlock())
+
+	return backend
+}
+
 // Close terminates the underlying blockchain's update loop.
 func (b *SimulatedBackend) Close() error {
 	b.blockchain.Stop()
