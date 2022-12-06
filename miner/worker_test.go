@@ -134,8 +134,8 @@ func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine 
 	}
 	switch e := engine.(type) {
 	case *clique.Clique:
-		gspec.ExtraData = make([]byte, 32+common.AddressLength+crypto.SignatureLength)
-		copy(gspec.ExtraData[32:32+common.AddressLength], testBankAddress.Bytes())
+		genesis.ExtraData = make([]byte, 32+common.AddressLength+crypto.SignatureLength)
+		copy(genesis.ExtraData[32:32+common.AddressLength], testBankAddress.Bytes())
 		e.Authorize(testBankAddress, func(account accounts.Account, s string, data []byte) ([]byte, error) {
 			return crypto.Sign(crypto.Keccak256(data), testBankKey)
 		})
@@ -210,8 +210,8 @@ func (b *testWorkerBackend) newRandomTx(creation bool, to common.Address, amt in
 	return tx
 }
 
-func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, alloc core.GenesisAlloc, blocks int) (*worker, *testWorkerBackend) {
-	backend := newTestWorkerBackend(t, chainConfig, engine, db, alloc, blocks)
+func newTestWorkerGenesis(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, genesis core.Genesis, blocks int) (*worker, *testWorkerBackend) {
+	backend := newTestWorkerBackend(t, chainConfig, engine, db, genesis, blocks)
 	backend.txPool.AddLocals(pendingTxs)
 	w := newWorker(testConfig, chainConfig, engine, backend, new(event.TypeMux), nil, false, &flashbotsData{
 		isFlashbots: testConfig.AlgoType != ALGO_MEV_GETH,
@@ -219,8 +219,19 @@ func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consens
 		bundleCache: NewBundleCache(),
 		algoType:    testConfig.AlgoType,
 	})
-	w.setEtherbase(testBankAddress)
+	if testConfig.BuilderTxSigningKey == nil {
+		w.setEtherbase(testBankAddress)
+	}
 	return w, backend
+}
+
+func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, alloc core.GenesisAlloc, blocks int) (*worker, *testWorkerBackend) {
+	var genesis = core.Genesis{
+		Config: chainConfig,
+		Alloc:  alloc,
+	}
+
+	return newTestWorkerGenesis(t, chainConfig, engine, db, genesis, blocks)
 }
 
 func TestGenerateBlockAndImportEthash(t *testing.T) {
@@ -764,20 +775,10 @@ func testBundles(t *testing.T) {
 	w.setEtherbase(crypto.PubkeyToAddress(testConfig.BuilderTxSigningKey.PublicKey))
 	defer w.close()
 
-	// This test chain imports the mined blocks.
-	db2 := rawdb.NewMemoryDatabase()
-	b.genesis.MustCommit(db2)
-	chain, _ := core.NewBlockChain(db2, nil, b.chain.Config(), engine, vm.Config{}, nil, nil)
-	defer chain.Stop()
-
 	// Ignore empty commit here for less noise.
 	w.skipSealHook = func(task *task) bool {
 		return len(task.receipts) == 0
 	}
-
-	// Wait for mined blocks.
-	sub := w.mux.Subscribe(core.NewMinedBlockEvent{})
-	defer sub.Unsubscribe()
 
 	rand.Seed(10)
 
@@ -816,23 +817,23 @@ func testBundles(t *testing.T) {
 			bundles[randomBundleIndex].Txs = append(bundles[randomBundleIndex].Txs, tx)
 		}
 
-		blockNumber := big.NewInt(0).Add(chain.CurrentBlock().Number(), big.NewInt(1))
+		blockNumber := big.NewInt(0).Add(w.chain.CurrentBlock().Number(), big.NewInt(1))
 		for _, bundle := range bundles {
 			err := b.txPool.AddMevBundle(bundle.Txs, blockNumber, 0, 0, nil)
 			require.NoError(t, err)
 		}
 
-		blockCh, errCh, err := w.getSealingBlock(chain.CurrentBlock().Hash(), chain.CurrentHeader().Time+12, testUserAddress, 0, common.Hash{}, false, false, nil)
+		blockCh, errCh, err := w.getSealingBlock(w.chain.CurrentBlock().Hash(), w.chain.CurrentHeader().Time+12, testUserAddress, 0, common.Hash{}, false, false, nil)
 		require.NoError(t, err)
 		select {
 		case block := <-blockCh:
-			state, err := chain.State()
+			state, err := w.chain.State()
 			require.NoError(t, err)
 			balancePre := state.GetBalance(testUserAddress)
-			if _, err := chain.InsertChain([]*types.Block{block}); err != nil {
+			if _, err := w.chain.InsertChain([]*types.Block{block}); err != nil {
 				t.Fatalf("failed to insert new mined block %d: %v", block.NumberU64(), err)
 			}
-			state, err = chain.StateAt(block.Root())
+			state, err = w.chain.StateAt(block.Root())
 			require.NoError(t, err)
 			balancePost := state.GetBalance(testUserAddress)
 			t.Log("Balances", balancePre, balancePost)
