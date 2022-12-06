@@ -464,11 +464,37 @@ func (s TxByNonce) Len() int           { return len(s) }
 func (s TxByNonce) Less(i, j int) bool { return s[i].Nonce() < s[j].Nonce() }
 func (s TxByNonce) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
+type _Order interface {
+	AsTx() *Transaction
+	AsBundle() *SimulatedBundle
+}
+
+type _TxOrder struct {
+	tx *Transaction
+}
+
+func (o _TxOrder) AsTx() *Transaction         { return o.tx }
+func (o _TxOrder) AsBundle() *SimulatedBundle { return nil }
+
+type _BundleOrder struct {
+	bundle *SimulatedBundle
+}
+
+func (o _BundleOrder) AsTx() *Transaction         { return nil }
+func (o _BundleOrder) AsBundle() *SimulatedBundle { return o.bundle }
+
 // TxWithMinerFee wraps a transaction with its gas price or effective miner gasTipCap
 type TxWithMinerFee struct {
-	Tx       *Transaction
-	Bundle   *SimulatedBundle
+	order    _Order
 	minerFee *big.Int
+}
+
+func (t *TxWithMinerFee) Tx() *Transaction {
+	return t.order.AsTx()
+}
+
+func (t *TxWithMinerFee) Bundle() *SimulatedBundle {
+	return t.order.AsBundle()
 }
 
 // NewTxWithMinerFee creates a wrapped transaction, calculating the effective
@@ -480,7 +506,7 @@ func NewTxWithMinerFee(tx *Transaction, baseFee *big.Int) (*TxWithMinerFee, erro
 		return nil, err
 	}
 	return &TxWithMinerFee{
-		Tx:       tx,
+		order:    _TxOrder{tx},
 		minerFee: minerFee,
 	}, nil
 }
@@ -489,7 +515,7 @@ func NewTxWithMinerFee(tx *Transaction, baseFee *big.Int) (*TxWithMinerFee, erro
 func NewBundleWithMinerFee(bundle *SimulatedBundle, baseFee *big.Int) (*TxWithMinerFee, error) {
 	minerFee := bundle.MevGasPrice
 	return &TxWithMinerFee{
-		Bundle:   bundle,
+		order:    _BundleOrder{bundle},
 		minerFee: minerFee,
 	}, nil
 }
@@ -504,13 +530,14 @@ func (s TxByPriceAndTime) Less(i, j int) bool {
 	// deterministic sorting
 	cmp := s[i].minerFee.Cmp(s[j].minerFee)
 	if cmp == 0 {
-		if s[i].Tx != nil && s[j].Tx != nil {
-			return s[i].Tx.time.Before(s[j].Tx.time)
-		} else if s[i].Bundle != nil && s[j].Bundle != nil {
-			return s[i].Bundle.TotalGasUsed <= s[j].Bundle.TotalGasUsed
-		} else if s[i].Bundle != nil {
+		if s[i].Tx() != nil && s[j].Tx() != nil {
+			return s[i].Tx().time.Before(s[j].Tx().time)
+		} else if s[i].Bundle() != nil && s[j].Bundle() != nil {
+			return s[i].Bundle().TotalGasUsed <= s[j].Bundle().TotalGasUsed
+		} else if s[i].Bundle() != nil {
 			return false
 		}
+
 		return true
 	}
 	return cmp > 0
@@ -555,6 +582,7 @@ func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transa
 		}
 		heads = append(heads, wrapped)
 	}
+
 	for from, accTxs := range txs {
 		acc, _ := Sender(signer, accTxs[0])
 		wrapped, err := NewTxWithMinerFee(accTxs[0], baseFee)
@@ -600,8 +628,8 @@ func (t *TransactionsByPriceAndNonce) Peek() *TxWithMinerFee {
 
 // Shift replaces the current best head with the next one from the same account.
 func (t *TransactionsByPriceAndNonce) Shift() {
-	if t.heads[0].Tx != nil {
-		acc, _ := Sender(t.signer, t.heads[0].Tx)
+	if tx := t.heads[0].Tx(); tx != nil {
+		acc, _ := Sender(t.signer, tx)
 		if txs, ok := t.txs[acc]; ok && len(txs) > 0 {
 			if wrapped, err := NewTxWithMinerFee(txs[0], t.baseFee); err == nil {
 				t.heads[0], t.txs[acc] = wrapped, txs[1:]

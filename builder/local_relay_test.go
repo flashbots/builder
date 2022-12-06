@@ -146,7 +146,7 @@ func TestGetHeader(t *testing.T) {
 	require.Equal(t, ``, rr.Body.String())
 	require.Equal(t, 204, rr.Code)
 
-	backend.OnPayloadAttribute(&BuilderPayloadAttributes{})
+	backend.OnPayloadAttribute(&types.BuilderPayloadAttributes{})
 	time.Sleep(2 * time.Second)
 
 	path = fmt.Sprintf("/eth/v1/builder/header/%d/%s/%s", 0, forkchoiceData.ParentHash.Hex(), validator.Pk.String())
@@ -194,7 +194,7 @@ func TestGetPayload(t *testing.T) {
 	backend, relay, validator := newTestBackend(t, forkchoiceData, forkchoiceBlock)
 
 	registerValidator(t, validator, relay)
-	backend.OnPayloadAttribute(&BuilderPayloadAttributes{})
+	backend.OnPayloadAttribute(&types.BuilderPayloadAttributes{})
 	time.Sleep(2 * time.Second)
 
 	path := fmt.Sprintf("/eth/v1/builder/header/%d/%s/%s", 0, forkchoiceData.ParentHash.Hex(), validator.Pk.String())
