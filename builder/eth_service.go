@@ -13,7 +13,7 @@ import (
 )
 
 type IEthereumService interface {
-	BuildBlock(attrs *BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error
+	BuildBlock(attrs *types.BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error
 	GetBlockByHash(hash common.Hash) *types.Block
 	Synced() bool
 }
@@ -26,7 +26,7 @@ type testEthereumService struct {
 	testAllBundles     []types.SimulatedBundle
 }
 
-func (t *testEthereumService) BuildBlock(attrs *BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error {
+func (t *testEthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error {
 	sealedBlockCallback(t.testBlock, time.Now(), t.testBundlesMerged, t.testAllBundles)
 	return nil
 }
@@ -43,9 +43,8 @@ func NewEthereumService(eth *eth.Ethereum) *EthereumService {
 	return &EthereumService{eth: eth}
 }
 
-func (s *EthereumService) BuildBlock(attrs *BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error {
-	// Send a request to generate a full block in the background.
-	// The result can be obtained via the returned channel.
+// TODO: multiservice
+func (s *EthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error {
 	resCh, err := s.eth.Miner().GetSealingBlockAsync(attrs.HeadHash, uint64(attrs.Timestamp), attrs.SuggestedFeeRecipient, attrs.GasLimit, attrs.Random, false, sealedBlockCallback)
 	if err != nil {
 		log.Error("Failed to create async sealing payload", "err", err)

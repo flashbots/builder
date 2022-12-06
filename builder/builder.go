@@ -41,7 +41,7 @@ type IRelay interface {
 }
 
 type IBuilder interface {
-	OnPayloadAttribute(attrs *BuilderPayloadAttributes) error
+	OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) error
 	Start() error
 	Stop() error
 }
@@ -60,7 +60,7 @@ type Builder struct {
 
 	slotMu        sync.Mutex
 	slot          uint64
-	slotAttrs     []BuilderPayloadAttributes
+	slotAttrs     []types.BuilderPayloadAttributes
 	slotCtx       context.Context
 	slotCtxCancel context.CancelFunc
 }
@@ -96,7 +96,7 @@ func (b *Builder) Stop() error {
 	return nil
 }
 
-func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *BuilderPayloadAttributes) error {
+func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
 	executableData := beacon.BlockToExecutableData(block)
 	payload, err := executableDataToExecutionPayload(executableData)
 	if err != nil {
@@ -154,7 +154,7 @@ func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, se
 	return nil
 }
 
-func (b *Builder) OnPayloadAttribute(attrs *BuilderPayloadAttributes) error {
+func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) error {
 	if attrs == nil {
 		return nil
 	}
@@ -219,7 +219,7 @@ type blockQueueEntry struct {
 	allBundles      []types.SimulatedBundle
 }
 
-func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *BuilderPayloadAttributes) {
+func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) {
 	ctx, cancel := context.WithTimeout(slotCtx, 12*time.Second)
 	defer cancel()
 

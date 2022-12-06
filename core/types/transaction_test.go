@@ -324,7 +324,7 @@ func testTransactionPriceNonceSort(t *testing.T, baseFee *big.Int) {
 
 	txs := Transactions{}
 	for tx := txset.Peek(); tx != nil; tx = txset.Peek() {
-		txs = append(txs, tx.Tx)
+		txs = append(txs, tx.Tx())
 		txset.Shift()
 	}
 	if len(txs) != expectedCount {
@@ -381,7 +381,7 @@ func TestTransactionTimeSort(t *testing.T) {
 
 	txs := Transactions{}
 	for tx := txset.Peek(); tx != nil; tx = txset.Peek() {
-		txs = append(txs, tx.Tx)
+		txs = append(txs, tx.Tx())
 		txset.Shift()
 	}
 	if len(txs) != len(keys) {

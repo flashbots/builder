@@ -128,16 +128,11 @@ type testWorkerBackend struct {
 	uncleBlock *types.Block
 }
 
-func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, alloc core.GenesisAlloc, n int) *testWorkerBackend {
-	var gspec = core.Genesis{
-		Config: chainConfig,
-		Alloc:  alloc,
-	}
-
+func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, genesis core.Genesis, n int) *testWorkerBackend {
 	switch e := engine.(type) {
 	case *clique.Clique:
-		gspec.ExtraData = make([]byte, 32+common.AddressLength+crypto.SignatureLength)
-		copy(gspec.ExtraData[32:32+common.AddressLength], testBankAddress.Bytes())
+		genesis.ExtraData = make([]byte, 32+common.AddressLength+crypto.SignatureLength)
+		copy(genesis.ExtraData[32:32+common.AddressLength], testBankAddress.Bytes())
 		e.Authorize(testBankAddress, func(account accounts.Account, s string, data []byte) ([]byte, error) {
 			return crypto.Sign(crypto.Keccak256(data), testBankKey)
 		})
@@ -145,21 +140,21 @@ func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine 
 	default:
 		t.Fatalf("unexpected consensus engine type: %T", engine)
 	}
-	genesis := gspec.MustCommit(db)
+	genesisBlock := genesis.MustCommit(db)
 
-	chain, _ := core.NewBlockChain(db, &core.CacheConfig{TrieDirtyDisabled: true}, gspec.Config, engine, vm.Config{}, nil, nil)
+	chain, _ := core.NewBlockChain(db, &core.CacheConfig{TrieDirtyDisabled: true}, genesis.Config, engine, vm.Config{}, nil, nil)
 	txpool := core.NewTxPool(testTxPoolConfig, chainConfig, chain)
 
 	// Generate a small n-block chain and an uncle block for it
 	if n > 0 {
-		blocks, _ := core.GenerateChain(chainConfig, genesis, engine, db, n, func(i int, gen *core.BlockGen) {
+		blocks, _ := core.GenerateChain(chainConfig, genesisBlock, engine, db, n, func(i int, gen *core.BlockGen) {
 			gen.SetCoinbase(testBankAddress)
 		})
 		if _, err := chain.InsertChain(blocks); err != nil {
 			t.Fatalf("failed to insert origin chain: %v", err)
 		}
 	}
-	parent := genesis
+	parent := genesisBlock
 	if n > 0 {
 		parent = chain.GetBlockByHash(chain.CurrentBlock().ParentHash())
 	}
@@ -171,7 +166,7 @@ func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine 
 		db:         db,
 		chain:      chain,
 		txPool:     txpool,
-		genesis:    &gspec,
+		genesis:    &genesis,
 		uncleBlock: blocks[0],
 	}
 }
@@ -208,8 +203,8 @@ func (b *testWorkerBackend) newRandomTx(creation bool, to common.Address, amt in
 	return tx
 }
 
-func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, alloc core.GenesisAlloc, blocks int) (*worker, *testWorkerBackend) {
-	backend := newTestWorkerBackend(t, chainConfig, engine, db, alloc, blocks)
+func newTestWorkerGenesis(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, genesis core.Genesis, blocks int) (*worker, *testWorkerBackend) {
+	backend := newTestWorkerBackend(t, chainConfig, engine, db, genesis, blocks)
 	backend.txPool.AddLocals(pendingTxs)
 	w := newWorker(testConfig, chainConfig, engine, backend, new(event.TypeMux), nil, false, &flashbotsData{
 		isFlashbots: testConfig.AlgoType != ALGO_MEV_GETH,
@@ -217,8 +212,19 @@ func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consens
 		bundleCache: NewBundleCache(),
 		algoType:    testConfig.AlgoType,
 	})
-	w.setEtherbase(testBankAddress)
+	if testConfig.BuilderTxSigningKey == nil {
+		w.setEtherbase(testBankAddress)
+	}
 	return w, backend
+}
+
+func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, alloc core.GenesisAlloc, blocks int) (*worker, *testWorkerBackend) {
+	var genesis = core.Genesis{
+		Config: chainConfig,
+		Alloc:  alloc,
+	}
+
+	return newTestWorkerGenesis(t, chainConfig, engine, db, genesis, blocks)
 }
 
 func TestGenerateBlockAndImportEthash(t *testing.T) {

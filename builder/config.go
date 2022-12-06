@@ -2,6 +2,7 @@ package builder
 
 type Config struct {
 	Enabled                       bool     `toml:",omitempty"`
+	BuildBlocks                   bool     `toml:",omitempty"`
 	EnableValidatorChecks         bool     `toml:",omitempty"`
 	EnableLocalRelay              bool     `toml:",omitempty"`
 	DisableBundleFetcher          bool     `toml:",omitempty"`
@@ -21,6 +22,7 @@ type Config struct {
 // DefaultConfig is the default config for the builder.
 var DefaultConfig = Config{
 	Enabled:                       false,
+	BuildBlocks:                   false,
 	EnableValidatorChecks:         false,
 	EnableLocalRelay:              false,
 	DisableBundleFetcher:          false,

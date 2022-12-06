@@ -273,6 +273,33 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	return nil
 }
 
+func verifyTx(header *types.Header, tx *types.Transaction) error {
+	if header.BaseFee != nil && tx.Type() == 2 {
+		// Sanity check for extremely large numbers
+		if tx.GasFeeCap().BitLen() > 256 {
+			return core.ErrFeeCapVeryHigh
+		}
+		if tx.GasTipCap().BitLen() > 256 {
+			return core.ErrTipVeryHigh
+		}
+		// Ensure gasFeeCap is greater than or equal to gasTipCap.
+		if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
+			return core.ErrTipAboveFeeCap
+		}
+	}
+
+	if tx.Value().Sign() == -1 {
+		return core.ErrNegativeValue
+	}
+
+	_, err := tx.EffectiveGasTip(header.BaseFee)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func estimatePayoutTxGas(env *environment, sender, receiver common.Address, prv *ecdsa.PrivateKey, chData chainData) (uint64, bool, error) {
 	if codeHash := env.state.GetCodeHash(receiver); codeHash == (common.Hash{}) || codeHash == emptyCodeHash {
 		return params.TxGas, true, nil
@@ -291,25 +318,25 @@ func estimatePayoutTxGas(env *environment, sender, receiver common.Address, prv 
 	return receipt.GasUsed, false, nil
 }
 
-func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint64, isEOA bool, availableFunds *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
-	applyTx := func(envDiff *environmentDiff, gas uint64) (*types.Receipt, error) {
-		fee := new(big.Int).Mul(env.header.BaseFee, new(big.Int).SetUint64(gas))
-		amount := new(big.Int).Sub(availableFunds, fee)
-		if amount.Sign() < 0 {
-			return nil, errors.New("not enough funds available")
-		}
-		rec, err := envDiff.commitPayoutTx(amount, sender, receiver, gas, prv, chData)
-		if err != nil {
-			return nil, fmt.Errorf("failed to commit payment tx: %w", err)
-		} else if rec.Status != types.ReceiptStatusSuccessful {
-			return nil, fmt.Errorf("payment tx failed")
-		}
-		return rec, nil
-	}
+func applyTx(envDiff *environmentDiff, sender, receiver common.Address, gas uint64, amountWithFees *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
+	amount := new(big.Int).Sub(amountWithFees, new(big.Int).Mul(envDiff.header.BaseFee, big.NewInt(int64(gas))))
 
+	if amount.Sign() < 0 {
+		return nil, errors.New("not enough funds available")
+	}
+	rec, err := envDiff.commitPayoutTx(amount, sender, receiver, gas, prv, chData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to commit payment tx: %w", err)
+	} else if rec.Status != types.ReceiptStatusSuccessful {
+		return nil, fmt.Errorf("payment tx failed")
+	}
+	return rec, nil
+}
+
+func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint64, isEOA bool, availableFunds *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
 	if isEOA {
 		diff := newEnvironmentDiff(env)
-		rec, err := applyTx(diff, gas)
+		rec, err := applyTx(diff, sender, receiver, gas, availableFunds, prv, chData)
 		if err != nil {
 			return nil, err
 		}
@@ -321,7 +348,7 @@ func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint6
 	for i := 0; i < 6; i++ {
 		diff := newEnvironmentDiff(env)
 		var rec *types.Receipt
-		rec, err = applyTx(diff, gas)
+		rec, err = applyTx(diff, sender, receiver, gas, availableFunds, prv, chData)
 		if err != nil {
 			gas += 1000
 			continue
@@ -333,7 +360,7 @@ func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint6
 		}
 
 		exactEnvDiff := newEnvironmentDiff(env)
-		exactRec, err := applyTx(exactEnvDiff, rec.GasUsed)
+		exactRec, err := applyTx(exactEnvDiff, sender, receiver, rec.GasUsed, availableFunds, prv, chData)
 		if err != nil {
 			diff.applyToBaseEnv()
 			return rec, nil

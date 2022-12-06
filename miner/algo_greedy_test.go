@@ -24,7 +24,7 @@ func TestBuildBlockGasLimit(t *testing.T) {
 		signers.signTx(2, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{}),
 	}
 
-	builder := newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil)
+	builder := newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
 
 	result, _ := builder.buildBlock([]types.SimulatedBundle{}, txs)
 	log.Info("block built", "txs", len(result.txs), "gasPool", result.gasPool.Gas())
@@ -58,11 +58,11 @@ func TestTxWithMinerFeeHeap(t *testing.T) {
 			return
 		}
 
-		if order.Tx != nil {
-			fmt.Println("tx", order.Tx.Hash())
+		if order.Tx() != nil {
+			fmt.Println("tx", order.Tx().Hash())
 			orders.Shift()
-		} else if order.Bundle != nil {
-			fmt.Println("bundle", order.Bundle.OriginalBundle.Hash)
+		} else if order.Bundle() != nil {
+			fmt.Println("bundle", order.Bundle().OriginalBundle.Hash)
 			orders.Pop()
 		}
 	}

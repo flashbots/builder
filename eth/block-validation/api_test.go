@@ -151,9 +151,9 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	require.NoError(t, err)
 	invalidPayload.GasUsed = execData.GasUsed
 	invalidPayload.LogsBloom = boostTypes.Bloom{}
-	copy(invalidPayload.ReceiptsRoot[:], hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")[:32])
+	copy(invalidPayload.ReceiptsRoot[:], hexutil.MustDecode("0x2ff468dee2e05f1f58744d5496f3ab22fdc23c8141f86f907b4b0f2c8e22afc4")[:32])
 	blockRequest.ExecutionPayload = invalidPayload
-	copy(blockRequest.Message.BlockHash[:], hexutil.MustDecode("0x595cba7ab70a18b7e11ae7541661cb6692909a0acd3eba3f1cf6ae694f85a8bd")[:32])
+	copy(blockRequest.Message.BlockHash[:], hexutil.MustDecode("0xb54167b95954997b54221360a8283f409618308c01e4a83b11ca63469683c8b0")[:32])
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "could not apply tx 4", "insufficient funds for gas * price + value")
 }
 

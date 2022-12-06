@@ -163,6 +163,7 @@ var (
 
 	builderApiFlags = []cli.Flag{
 		utils.BuilderEnabled,
+		utils.BuilderBuildBlocks,
 		utils.BuilderEnableValidatorChecks,
 		utils.BuilderBlockValidationBlacklistSourceFilePath,
 		utils.BuilderEnableLocalRelay,

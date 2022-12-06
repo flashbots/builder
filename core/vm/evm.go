@@ -138,6 +138,25 @@ func NewEVM(blockCtx BlockContext, txCtx TxContext, statedb StateDB, chainConfig
 	return evm
 }
 
+func (evm *EVM) Clone(txCtx TxContext, statedb StateDB) *EVM {
+	evmClone := &EVM{
+		Context:     evm.Context,
+		TxContext:   txCtx,
+		StateDB:     statedb,
+		Config:      evm.Config,
+		chainConfig: evm.chainConfig,
+		chainRules:  evm.chainRules,
+	}
+	evmClone.interpreter = NewEVMInterpreter(evmClone, evmClone.Config)
+	return evmClone
+}
+
+func (evm *EVM) SetTracer(tracer EVMLogger) {
+	evm.Config.Debug = true
+	evm.Config.Tracer = tracer
+	evm.interpreter.cfg.Tracer = tracer
+}
+
 // Reset resets the EVM with a new transaction context.Reset
 // This is not threadsafe and should only be done very cautiously.
 func (evm *EVM) Reset(txCtx TxContext, statedb StateDB) {

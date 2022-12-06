@@ -32,7 +32,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
-	builder "github.com/ethereum/go-ethereum/builder"
+	"github.com/ethereum/go-ethereum/builder"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/fdlimit"
 	"github.com/ethereum/go-ethereum/consensus"
@@ -691,6 +691,10 @@ var (
 		Name:     "builder",
 		Usage:    "Enable the builder",
 		Category: flags.BuilderCategory,
+	}
+	BuilderBuildBlocks = &cli.BoolFlag{
+		Name:  "builder.build_blocks",
+		Usage: "Enable block building by the builder",
 	}
 	BuilderEnableValidatorChecks = &cli.BoolFlag{
 		Name:     "builder.validator_checks",
@@ -1575,6 +1579,7 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 // SetBuilderConfig applies node-related command line flags to the config.
 func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.Enabled = ctx.IsSet(BuilderEnabled.Name)
+	cfg.BuildBlocks = ctx.IsSet(BuilderBuildBlocks.Name)
 	cfg.EnableValidatorChecks = ctx.IsSet(BuilderEnableValidatorChecks.Name)
 	cfg.EnableLocalRelay = ctx.IsSet(BuilderEnableLocalRelay.Name)
 	cfg.DisableBundleFetcher = ctx.IsSet(BuilderDisableBundleFetcher.Name)
