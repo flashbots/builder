@@ -158,13 +158,13 @@ var (
 		utils.GpoIgnoreGasPriceFlag,
 		utils.MinerNotifyFullFlag,
 		utils.IgnoreLegacyReceiptsFlag,
-		utils.BuilderBlockValidationBlacklistSourceFilePath,
 		configFileFlag,
 	}, utils.NetworkFlags, utils.DatabasePathFlags)
 
 	builderApiFlags = []cli.Flag{
 		utils.BuilderEnabled,
 		utils.BuilderEnableValidatorChecks,
+		utils.BuilderBlockValidationBlacklistSourceFilePath,
 		utils.BuilderEnableLocalRelay,
 		utils.BuilderDisableBundleFetcher,
 		utils.BuilderDryRun,
@@ -176,6 +176,7 @@ var (
 		utils.BuilderGenesisValidatorsRoot,
 		utils.BuilderBeaconEndpoint,
 		utils.BuilderRemoteRelayEndpoint,
+		utils.BuilderSecondaryRemoteRelayEndpoints,
 	}
 
 	rpcFlags = []cli.Flag{

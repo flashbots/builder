@@ -25,6 +25,11 @@ type ForkData struct {
 	GenesisValidatorsRoot string
 }
 
+type FullValidatorData struct {
+	ValidatorData
+	Timestamp uint64
+}
+
 type LocalRelay struct {
 	beaconClient IBeaconClient
 
@@ -36,7 +41,7 @@ type LocalRelay struct {
 	proposerSigningDomain boostTypes.Domain
 
 	validatorsLock sync.RWMutex
-	validators     map[PubkeyHex]ValidatorData
+	validators     map[PubkeyHex]FullValidatorData
 
 	enableBeaconChecks bool
 
@@ -70,7 +75,7 @@ func NewLocalRelay(sk *bls.SecretKey, beaconClient IBeaconClient, builderSigning
 		proposerSigningDomain: proposerSigningDomain,
 		serializedRelayPubkey: pkBytes,
 
-		validators: make(map[PubkeyHex]ValidatorData),
+		validators: make(map[PubkeyHex]FullValidatorData),
 
 		enableBeaconChecks: enableBeaconChecks,
 
@@ -79,7 +84,12 @@ func NewLocalRelay(sk *bls.SecretKey, beaconClient IBeaconClient, builderSigning
 	}
 }
 
-func (r *LocalRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest) error {
+func (r *LocalRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ ValidatorData) error {
+	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
+	return r.submitBlock(msg)
+}
+
+func (r *LocalRelay) submitBlock(msg *boostTypes.BuilderSubmitBlockRequest) error {
 	payloadHeader, err := boostTypes.PayloadToPayloadHeader(msg.ExecutionPayload)
 	if err != nil {
 		log.Error("could not convert payload to header", "err", err)
@@ -156,11 +166,13 @@ func (r *LocalRelay) handleRegisterValidator(w http.ResponseWriter, req *http.Re
 
 	for _, registerRequest := range payload {
 		pubkeyHex := PubkeyHex(strings.ToLower(registerRequest.Message.Pubkey.String()))
-		r.validators[pubkeyHex] = ValidatorData{
-			Pubkey:       pubkeyHex,
-			FeeRecipient: registerRequest.Message.FeeRecipient,
-			GasLimit:     registerRequest.Message.GasLimit,
-			Timestamp:    registerRequest.Message.Timestamp,
+		r.validators[pubkeyHex] = FullValidatorData{
+			ValidatorData: ValidatorData{
+				Pubkey:       pubkeyHex,
+				FeeRecipient: registerRequest.Message.FeeRecipient,
+				GasLimit:     registerRequest.Message.GasLimit,
+			},
+			Timestamp: registerRequest.Message.Timestamp,
 		}
 
 		log.Info("registered validator", "pubkey", pubkeyHex, "data", r.validators[pubkeyHex])
@@ -178,7 +190,7 @@ func (r *LocalRelay) GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
 	r.validatorsLock.RLock()
 	if vd, ok := r.validators[pubkeyHex]; ok {
 		r.validatorsLock.RUnlock()
-		return vd, nil
+		return vd.ValidatorData, nil
 	}
 	r.validatorsLock.RUnlock()
 	log.Info("no local entry for validator", "validator", pubkeyHex)

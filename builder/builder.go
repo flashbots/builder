@@ -25,9 +25,8 @@ type PubkeyHex string
 
 type ValidatorData struct {
 	Pubkey       PubkeyHex
-	FeeRecipient boostTypes.Address `json:"feeRecipient"`
-	GasLimit     uint64             `json:"gasLimit"`
-	Timestamp    uint64             `json:"timestamp"`
+	FeeRecipient boostTypes.Address
+	GasLimit     uint64
 }
 
 type IBeaconClient interface {
@@ -37,7 +36,7 @@ type IBeaconClient interface {
 }
 
 type IRelay interface {
-	SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest) error
+	SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, vd ValidatorData) error
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
 }
 
@@ -97,7 +96,7 @@ func (b *Builder) Stop() error {
 	return nil
 }
 
-func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, proposerFeeRecipient boostTypes.Address, proposerRegisteredGasLimit uint64, attrs *BuilderPayloadAttributes) error {
+func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *BuilderPayloadAttributes) error {
 	executableData := beacon.BlockToExecutableData(block)
 	payload, err := executableDataToExecutionPayload(executableData)
 	if err != nil {
@@ -118,7 +117,7 @@ func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, se
 		BlockHash:            payload.BlockHash,
 		BuilderPubkey:        b.builderPublicKey,
 		ProposerPubkey:       proposerPubkey,
-		ProposerFeeRecipient: proposerFeeRecipient,
+		ProposerFeeRecipient: vd.FeeRecipient,
 		GasLimit:             executableData.GasLimit,
 		GasUsed:              executableData.GasUsed,
 		Value:                *value,
@@ -137,13 +136,13 @@ func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, se
 	}
 
 	if b.dryRun {
-		err = b.validator.ValidateBuilderSubmissionV1(&blockvalidation.BuilderBlockValidationRequest{blockSubmitReq, proposerRegisteredGasLimit})
+		err = b.validator.ValidateBuilderSubmissionV1(&blockvalidation.BuilderBlockValidationRequest{BuilderSubmitBlockRequest: blockSubmitReq, RegisteredGasLimit: vd.GasLimit})
 		if err != nil {
 			log.Error("could not validate block", "err", err)
 		}
 	} else {
 		go b.ds.ConsumeBuiltBlock(block, ordersClosedAt, sealedAt, commitedBundles, allBundles, &blockBidMsg)
-		err = b.relay.SubmitBlock(&blockSubmitReq)
+		err = b.relay.SubmitBlock(&blockSubmitReq, vd)
 		if err != nil {
 			log.Error("could not submit block", "err", err, "#commitedBundles", len(commitedBundles))
 			return err
@@ -208,7 +207,7 @@ func (b *Builder) OnPayloadAttribute(attrs *BuilderPayloadAttributes) error {
 	}
 	b.slotAttrs = append(b.slotAttrs, *attrs)
 
-	go b.runBuildingJob(b.slotCtx, proposerPubkey, vd.FeeRecipient, vd.GasLimit, attrs)
+	go b.runBuildingJob(b.slotCtx, proposerPubkey, vd, attrs)
 	return nil
 }
 
@@ -220,7 +219,7 @@ type blockQueueEntry struct {
 	allBundles      []types.SimulatedBundle
 }
 
-func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTypes.PublicKey, feeRecipient boostTypes.Address, proposerRegisteredGasLimit uint64, attrs *BuilderPayloadAttributes) {
+func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *BuilderPayloadAttributes) {
 	ctx, cancel := context.WithTimeout(slotCtx, 12*time.Second)
 	defer cancel()
 
@@ -245,7 +244,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 	submitBestBlock := func() {
 		queueMu.Lock()
 		if queueLastSubmittedProfit.Cmp(queueBestProfit) < 0 {
-			err := b.onSealedBlock(queueBestEntry.block, queueBestEntry.ordersCloseTime, queueBestEntry.sealedAt, queueBestEntry.commitedBundles, queueBestEntry.allBundles, proposerPubkey, feeRecipient, proposerRegisteredGasLimit, attrs)
+			err := b.onSealedBlock(queueBestEntry.block, queueBestEntry.ordersCloseTime, queueBestEntry.sealedAt, queueBestEntry.commitedBundles, queueBestEntry.allBundles, proposerPubkey, vd, attrs)
 
 			if err != nil {
 				log.Error("could not run sealed block hook", "err", err)
