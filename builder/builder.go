@@ -287,7 +287,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 	}
 
 	// resubmits block builder requests every second
-	runRetryLoop(ctx, 500*time.Millisecond, func() {
+	runRetryLoop(ctx, 1*time.Second, func() {
 		log.Debug("retrying BuildBlock", "slot", attrs.Slot, "parent", attrs.HeadHash)
 		err := b.eth.BuildBlock(attrs, blockHook)
 		if err != nil {
