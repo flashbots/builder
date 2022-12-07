@@ -51,14 +51,36 @@ func (b *BeaconClient) isValidator(pubkey PubkeyHex) bool {
 }
 
 func (b *BeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error) {
-	/* Only returns proposer if requestedSlot is currentSlot + 1, would be a race otherwise */
+	b.updateValidatorsMap(requestedSlot)
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if b.currentSlot+1 != requestedSlot {
-		return PubkeyHex(""), errors.New("slot out of sync")
+	nextSlotProposer, found := b.slotProposerMap[requestedSlot]
+	if !found {
+		log.Error("inconsistent proposer mapping", "currentSlot", b.currentSlot, "slotProposerMap", b.slotProposerMap)
+		return PubkeyHex(""), errors.New("inconsistent proposer mapping")
 	}
-	return b.nextSlotProposer, nil
+	return nextSlotProposer, nil
+}
+
+func (b *BeaconClient) updateValidatorsMap(nextSlot uint64) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	b.currentSlot = nextSlot
+	nextSlotEpoch := nextSlot / 32
+	if nextSlotEpoch != b.currentEpoch {
+		slotProposerMap, err := fetchEpochProposersMap(b.endpoint, nextSlotEpoch)
+		if err != nil {
+			return err
+		}
+
+		b.currentEpoch = nextSlotEpoch
+		b.slotProposerMap = slotProposerMap
+	}
+
+	return nil
 }
 
 /* Returns next slot's proposer pubkey */

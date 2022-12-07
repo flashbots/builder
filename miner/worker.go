@@ -1396,8 +1396,8 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 	}
 	defer work.discard()
 
-	finalizeFn := func(env *environment, orderCloseTime time.Time, blockBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle) (*types.Block, error) {
-		block, err := w.finalizeBlock(env, validatorCoinbase)
+	finalizeFn := func(env *environment, orderCloseTime time.Time, blockBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, noTxs bool) (*types.Block, error) {
+		block, err := w.finalizeBlock(env, validatorCoinbase, noTxs)
 		if err != nil {
 			log.Error("could not finalize block", "err", err)
 			return nil, err
@@ -1412,7 +1412,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 	}
 
 	if params.noTxs {
-		return finalizeFn(work, time.Now(), nil, nil)
+		return finalizeFn(work, time.Now(), nil, nil, true)
 	}
 
 	paymentTxReserve, err := w.proposerTxPrepare(work, &validatorCoinbase)
@@ -1441,10 +1441,10 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 		return nil, err
 	}
 
-	return finalizeFn(work, orderCloseTime, blockBundles, allBundles)
+	return finalizeFn(work, orderCloseTime, blockBundles, allBundles, false)
 }
 
-func (w *worker) finalizeBlock(work *environment, validatorCoinbase common.Address) (*types.Block, error) {
+func (w *worker) finalizeBlock(work *environment, validatorCoinbase common.Address, noTxs bool) (*types.Block, error) {
 	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts)
 	if err != nil {
 		return nil, err
@@ -1453,6 +1453,10 @@ func (w *worker) finalizeBlock(work *environment, validatorCoinbase common.Addre
 	block.Profit = big.NewInt(0)
 
 	if w.config.BuilderTxSigningKey == nil {
+		return block, nil
+	}
+
+	if noTxs {
 		return block, nil
 	}
 
