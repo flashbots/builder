@@ -94,26 +94,23 @@ var (
 	claimInput, _ = lotteryABI.Methods["claim"].Inputs.Pack()
 )
 
-func TestGreedyBuilderBuildBlock(t *testing.T) {
+func TestGreedyBuilderBuildBlock_Lottery0(t *testing.T) {
+	// N lotteries played by M searchers each (NxM bundles).
+
 	tests := []struct {
-		NLotteries     int
-		NBundles       int
-		NTxs           int
+		NLotteries     int // Number of lotteries
+		NSearchers     int // Searchers per lottery
+		NAccs          int // Non-MEV lottery participants
 		BundleGasPrice *big.Int
 		TxGasPrice     *big.Int
 
 		WantTxCount int
 	}{
-		{NLotteries: 1, NBundles: 0, NTxs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 2},
-		{NLotteries: 1, NBundles: 1, NTxs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 3},
-
-		{NLotteries: 10, NBundles: 1, NTxs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 12},
-		{NLotteries: 10, NBundles: 10, NTxs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 12},
-		{NLotteries: 10, NBundles: 10, NTxs: 10, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 30},
-		{NLotteries: 10, NBundles: 1, NTxs: 10, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 30},
-
-		// Mempool txs with higher gas price than bundles
-		{NLotteries: 1, NBundles: 1, NTxs: 1, BundleGasPrice: big.NewInt(1), TxGasPrice: big.NewInt(10), WantTxCount: 2},
+		{NLotteries: 1, NSearchers: 0, NAccs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 2},
+		{NLotteries: 1, NSearchers: 1, NAccs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 3},
+		{NLotteries: 10, NSearchers: 1, NAccs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 12},
+		{NLotteries: 10, NSearchers: 10, NAccs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 12},
+		{NLotteries: 1, NSearchers: 10, NAccs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 3},
 	}
 
 	for i, test := range tests {
@@ -121,7 +118,120 @@ func TestGreedyBuilderBuildBlock(t *testing.T) {
 			var (
 				config                  = params.AllEthashProtocolChanges
 				signer                  = types.LatestSigner(config)
-				alloc, addrs, lotteries = genLotteryGenesisAlloc(test.NBundles+test.NTxs, test.NLotteries)
+				alloc, addrs, lotteries = genLotteryGenesisAlloc(test.NSearchers*test.NLotteries+test.NAccs, test.NLotteries)
+				statedb, chData         = genTestSetupWithAlloc(config, alloc)
+				coinbase                = randAddr()
+				blockGasLimit           = uint64(15_000_000)
+				env                     = newEnvironment(chData, statedb, coinbase, blockGasLimit, big.NewInt(0))
+				builder                 = newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
+
+				txPool  = make(map[common.Address]types.Transactions)
+				bundles = make([]types.SimulatedBundle, 0)
+			)
+
+			for i, addr := range addrs {
+				key, _ := crypto.ToECDSA(alloc[addr].PrivateKey)
+				lottery := lotteries[i%test.NLotteries]
+
+				if i < test.NSearchers*test.NLotteries {
+					// build MEV bundle
+					tx := types.MustSignNewTx(key, signer, &types.LegacyTx{
+						Nonce:    0,
+						Gas:      200_000,
+						Value:    big.NewInt(1),
+						GasPrice: test.BundleGasPrice,
+						Data:     append(atomicLotteryCode, mustPack(atomicLotteryABI, "", lottery)...),
+					})
+					txs := types.Transactions{tx}
+
+					bundle, err := simulateBundle(env, types.MevBundle{Txs: txs, BlockNumber: big.NewInt(0)}, chData, nil)
+					if err != nil {
+						t.Fatalf("Failed to simulate bundle: %v", err)
+					}
+					bundles = append(bundles, bundle)
+				} else {
+					// build regular tx
+					//
+					// tx0: lottery.bid()
+					// tx1: lottery.claim()
+					tx0 := types.MustSignNewTx(key, signer, &types.LegacyTx{
+						To:       &lottery,
+						Nonce:    0,
+						Gas:      100_000,
+						Value:    big.NewInt(1),
+						GasPrice: test.TxGasPrice,
+						Data:     bidInput,
+					})
+					tx1 := types.MustSignNewTx(key, signer, &types.LegacyTx{
+						To:       &lottery,
+						Nonce:    1,
+						Gas:      100_000,
+						Value:    big.NewInt(1),
+						GasPrice: test.TxGasPrice,
+						Data:     claimInput,
+					})
+					txPool[addr] = types.Transactions{tx0, tx1}
+				}
+			}
+
+			// build block
+			result, includedBundles := builder.buildBlock(bundles, txPool)
+			if test.WantTxCount != result.tcount {
+				t.Fatalf("TxCount: want %v, got %v", test.WantTxCount, result.tcount)
+			}
+
+			// wantProfit calculation:
+			//
+			// each tx has a gasPrice of "txGasPrice" wei
+			// each bundle has a gasPrice of "bundleGasPrice" wei
+			// thus, profit = (blockGasUsed - bundleGasUsed) * txGasPrice + bundleGasUsed * bundleGasPrice
+			blockGasUsed := blockGasLimit - uint64(*result.gasPool)
+			var bundleGasUsed uint64
+			for _, bundle := range includedBundles {
+				bundleGasUsed += bundle.TotalGasUsed
+			}
+
+			wantProfit := new(big.Int).Add(
+				new(big.Int).Mul(new(big.Int).SetUint64(blockGasUsed-bundleGasUsed), test.TxGasPrice),
+				new(big.Int).Mul(new(big.Int).SetUint64(bundleGasUsed), test.BundleGasPrice),
+			)
+			if wantProfit.Cmp(result.profit) != 0 {
+				t.Fatalf("Profit: want %v, got %v", wantProfit, result.profit)
+			}
+		})
+	}
+}
+
+func TestGreedyBuilderBuildBlock_Lottery1(t *testing.T) {
+	// N lotteries and M searchers playing every lottery (M bundles).
+
+	tests := []struct {
+		NLotteries     int // Number of lotteries
+		NSearchers     int // Searchers per lottery
+		NAccs          int // Non-MEV lottery participants
+		BundleGasPrice *big.Int
+		TxGasPrice     *big.Int
+
+		WantTxCount int
+	}{
+		{NLotteries: 1, NSearchers: 0, NAccs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 2},
+		{NLotteries: 1, NSearchers: 1, NAccs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 3},
+
+		{NLotteries: 10, NSearchers: 1, NAccs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 12},
+		{NLotteries: 10, NSearchers: 10, NAccs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 12},
+		{NLotteries: 10, NSearchers: 10, NAccs: 10, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 30},
+		{NLotteries: 10, NSearchers: 1, NAccs: 10, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 30},
+
+		// Mempool txs with higher gas price than bundles
+		{NLotteries: 1, NSearchers: 1, NAccs: 1, BundleGasPrice: big.NewInt(1), TxGasPrice: big.NewInt(10), WantTxCount: 2},
+	}
+
+	for i, test := range tests {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			var (
+				config                  = params.AllEthashProtocolChanges
+				signer                  = types.LatestSigner(config)
+				alloc, addrs, lotteries = genLotteryGenesisAlloc(test.NSearchers+test.NAccs, test.NLotteries)
 				statedb, chData         = genTestSetupWithAlloc(config, alloc)
 				coinbase                = randAddr()
 				blockGasLimit           = uint64(15_000_000)
@@ -135,7 +245,7 @@ func TestGreedyBuilderBuildBlock(t *testing.T) {
 			for i, addr := range addrs {
 				key, _ := crypto.ToECDSA(alloc[addr].PrivateKey)
 
-				if i < test.NBundles {
+				if i < test.NSearchers {
 					// build MEV bundle
 					//
 					// bundle contains NLotteries transactions, one to each lottery.
