@@ -31,6 +31,7 @@ func (b *testBeaconClient) onForkchoiceUpdate() (uint64, error) {
 
 type BeaconClient struct {
 	endpoint string
+	slotsInEpoch uint64
 
 	mu               sync.Mutex
 	currentEpoch     uint64
@@ -39,9 +40,10 @@ type BeaconClient struct {
 	slotProposerMap  map[uint64]PubkeyHex
 }
 
-func NewBeaconClient(endpoint string) *BeaconClient {
+func NewBeaconClient(endpoint string, slotsInEpoch uint64) *BeaconClient {
 	return &BeaconClient{
 		endpoint:        endpoint,
+		slotsInEpoch:    slotsInEpoch,
 		slotProposerMap: make(map[uint64]PubkeyHex),
 	}
 }
@@ -51,10 +53,10 @@ func (b *BeaconClient) isValidator(pubkey PubkeyHex) bool {
 }
 
 func (b *BeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error) {
-	b.updateValidatorsMap(requestedSlot)
-
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	go b.updateValidatorsMap(requestedSlot)
 
 	nextSlotProposer, found := b.slotProposerMap[requestedSlot]
 	if !found {
@@ -65,12 +67,10 @@ func (b *BeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, 
 }
 
 func (b *BeaconClient) updateValidatorsMap(nextSlot uint64) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
 	b.currentSlot = nextSlot
-	nextSlotEpoch := nextSlot / 32
-	if nextSlotEpoch != b.currentEpoch {
+	nextSlotEpoch := nextSlot / b.slotsInEpoch
+	// if slot at half epoch, fetch next epoch's proposers
+	if nextSlotEpoch != b.currentEpoch || nextSlot%b.slotsInEpoch == b.slotsInEpoch/2 {
 		slotProposerMap, err := fetchEpochProposersMap(b.endpoint, nextSlotEpoch)
 		if err != nil {
 			return err
@@ -97,7 +97,7 @@ func (b *BeaconClient) onForkchoiceUpdate() (uint64, error) {
 	nextSlot := currentSlot + 1
 
 	b.currentSlot = currentSlot
-	nextSlotEpoch := nextSlot / 32
+	nextSlotEpoch := nextSlot / b.slotsInEpoch
 
 	if nextSlotEpoch != b.currentEpoch {
 		// TODO: this should be prepared in advance, possibly just fetch for next epoch in advance

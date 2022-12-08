@@ -708,6 +708,11 @@ var (
 		Usage:    "Enable the local relay",
 		Category: flags.BuilderCategory,
 	}
+	BuilderSlotsInEpoch = &cli.Uint64Flag{
+		Name:  "builder.slots_in_epoch",
+		Usage: "Set the number of slots in an epoch in the local relay",
+		Value:   32,
+	}
 	BuilderDisableBundleFetcher = &cli.BoolFlag{
 		Name:     "builder.no_bundle_fetcher",
 		Usage:    "Disable the bundle fetcher",
@@ -1577,6 +1582,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.Enabled = ctx.IsSet(BuilderEnabled.Name)
 	cfg.EnableValidatorChecks = ctx.IsSet(BuilderEnableValidatorChecks.Name)
 	cfg.EnableLocalRelay = ctx.IsSet(BuilderEnableLocalRelay.Name)
+	cfg.SlotsInEpoch = ctx.Uint64(BuilderSlotsInEpoch.Name)
 	cfg.DisableBundleFetcher = ctx.IsSet(BuilderDisableBundleFetcher.Name)
 	cfg.DryRun = ctx.IsSet(BuilderDryRun.Name)
 	cfg.BuilderSecretKey = ctx.String(BuilderSecretKey.Name)
