@@ -111,6 +111,11 @@ func TestGreedyBuilderBuildBlock_Lottery0(t *testing.T) {
 		{NLotteries: 10, NSearchers: 1, NAccs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 12},
 		{NLotteries: 10, NSearchers: 10, NAccs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 12},
 		{NLotteries: 1, NSearchers: 10, NAccs: 1, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 3},
+
+		{NLotteries: 1, NSearchers: 1, NAccs: 100, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 201},
+		{NLotteries: 1, NSearchers: 100, NAccs: 100, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 201},
+		{NLotteries: 100, NSearchers: 100, NAccs: 100, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 300},
+		{NLotteries: 100, NSearchers: 1, NAccs: 100, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 300},
 	}
 
 	for i, test := range tests {
@@ -121,7 +126,7 @@ func TestGreedyBuilderBuildBlock_Lottery0(t *testing.T) {
 				alloc, addrs, lotteries = genLotteryGenesisAlloc(test.NSearchers*test.NLotteries+test.NAccs, test.NLotteries)
 				statedb, chData         = genTestSetupWithAlloc(config, alloc)
 				coinbase                = randAddr()
-				blockGasLimit           = uint64(15_000_000)
+				blockGasLimit           = uint64(30_000_000)
 				env                     = newEnvironment(chData, statedb, coinbase, blockGasLimit, big.NewInt(0))
 				builder                 = newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
 
@@ -222,6 +227,11 @@ func TestGreedyBuilderBuildBlock_Lottery1(t *testing.T) {
 		{NLotteries: 10, NSearchers: 10, NAccs: 10, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 30},
 		{NLotteries: 10, NSearchers: 1, NAccs: 10, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 30},
 
+		{NLotteries: 1, NSearchers: 1, NAccs: 100, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 201},
+		{NLotteries: 1, NSearchers: 100, NAccs: 100, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 201},
+		{NLotteries: 100, NSearchers: 100, NAccs: 100, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 300},
+		{NLotteries: 100, NSearchers: 1, NAccs: 100, BundleGasPrice: big.NewInt(10), TxGasPrice: big.NewInt(1), WantTxCount: 300},
+
 		// Mempool txs with higher gas price than bundles
 		{NLotteries: 1, NSearchers: 1, NAccs: 1, BundleGasPrice: big.NewInt(1), TxGasPrice: big.NewInt(10), WantTxCount: 2},
 	}
@@ -234,7 +244,7 @@ func TestGreedyBuilderBuildBlock_Lottery1(t *testing.T) {
 				alloc, addrs, lotteries = genLotteryGenesisAlloc(test.NSearchers+test.NAccs, test.NLotteries)
 				statedb, chData         = genTestSetupWithAlloc(config, alloc)
 				coinbase                = randAddr()
-				blockGasLimit           = uint64(15_000_000)
+				blockGasLimit           = uint64(30_000_000)
 				env                     = newEnvironment(chData, statedb, coinbase, blockGasLimit, big.NewInt(0))
 				builder                 = newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
 
