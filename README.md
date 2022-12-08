@@ -4,9 +4,9 @@ Official Golang execution layer implementation of the Ethereum protocol.
 
 Builder API implementing [builder spec](https://github.com/ethereum/builder-specs), making geth into a standalone block builder. 
 
-Run on your favorite network, including Mainnet, Goerli, Sepolia and local devnet.
+Run on your favorite network, including Mainnet, Goerli, Sepolia and local devnet. Instructions for running a pos local devnet can be found [here](https://github.com/avalonche/eth-pos-devnet).
 
-Requires forkchoice update to be sent for block building, on public testnets run beacon node modified to send forkchoice update on every slot [example modified beacon client (lighthouse)](https://github.com/flashbots/lighthouse)
+You will need to run a modified beacon node that sends a custom rpc call to trigger block building. You can use the modified [prysm fork](https://github.com/flashbots/prysm) for this.
 
 For prerequisites and detailed build instructions please read the [Installation Instructions](https://geth.ethereum.org/docs/getting-started/installing-geth).
 
@@ -133,17 +133,11 @@ Ropsten test network is based on the Ethash proof-of-work consensus algorithm. A
 it has certain extra overhead and is more susceptible to reorganization attacks due to the
 network's low difficulty/security.
 
-* Builder polls relay for the proposer registrations for the next epoch
-
-Builder has two hooks into geth:
-* On forkchoice update, changing the payload attributes feeRecipient to the one registered for next slot's validator
-* On new sealed block, consuming the block as the next slot's proposed payload and submits it to the relay
-
-Local relay is enabled by default and overwrites remote relay data. This is only meant for the testnets!
+* Builder polls relay for the proposer registrations for the next epoch when block building is triggered
+* If both local relay and remote relay are enabled, local relay will overwrite remote relay data. This is only meant for the testnets!
 
 ## Limitations
 
-* Blocks are only built on forkchoice update call from beacon node
 * Does not accept external blocks
 * Does not have payload cache, only the latest block is available
 
