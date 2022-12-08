@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -1360,7 +1361,11 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 	}
 
 	builder := newGreedyBuilder(w.chain, w.chainConfig, w.blockList, env, interrupt)
+	start := time.Now()
 	newEnv, blockBundles := builder.buildBlock(bundlesToConsider, pending)
+	if metrics.EnabledBuilder {
+		mergeAlgoTimer.Update(time.Since(start))
+	}
 	*env = *newEnv
 
 	return nil, blockBundles, bundlesToConsider
@@ -1404,6 +1409,14 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 		}
 
 		log.Info("Block finalized and assembled", "blockProfit", ethIntToFloat(block.Profit), "txs", len(env.txs), "bundles", len(blockBundles), "gasUsed", block.GasUsed(), "time", time.Since(start))
+		if metrics.EnabledBuilder {
+			buildBlockTimer.Update(time.Since(start))
+			blockProfitHistogram.Update(block.Profit.Int64())
+			blockProfitGauge.Update(block.Profit.Int64())
+			culmulativeProfitGauge.Inc(block.Profit.Int64())
+			gasUsedGauge.Update(int64(block.GasUsed()))
+			transactionNumGauge.Update(int64(len(env.txs)))
+		}
 		if params.onBlock != nil {
 			go params.onBlock(block, orderCloseTime, blockBundles, allBundles)
 		}
@@ -1709,11 +1722,24 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pe
 			gasPool := new(core.GasPool).AddGas(env.header.GasLimit)
 			simmed, err := w.computeBundleGas(env, bundle, state, gasPool, pendingTxs, 0)
 
+			if metrics.EnabledBuilder {
+				simulationMeter.Mark(1)
+			}
+
 			if err != nil {
+
+				if metrics.EnabledBuilder {
+					simulationRevertedMeter.Mark(1)
+				}
+
 				log.Trace("Error computing gas for a bundle", "error", err)
 				return
 			}
 			simResult[idx] = &simmed
+
+			if metrics.EnabledBuilder {
+				simulationCommittedMeter.Mark(1)
+			}
 		}(i, bundle, env.state.Copy())
 	}
 
@@ -1729,6 +1755,9 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pe
 	}
 
 	log.Debug("Simulated bundles", "block", env.header.Number, "allBundles", len(bundles), "okBundles", len(simulatedBundles), "time", time.Since(start))
+	if metrics.EnabledBuilder {
+		simulatedBundlesTimer.Update(time.Since(start))
+	}
 	return simulatedBundles, nil
 }
 
