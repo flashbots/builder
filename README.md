@@ -4,9 +4,9 @@
 
 Builder API implementing [builder spec](https://github.com/ethereum/builder-specs), making geth into a standalone block builder. 
 
-Run on your favorite network, including Mainnet, Goerli, Sepolia and local devnet.
+Run on your favorite network, including Mainnet, Goerli, Sepolia and local devnet. Instructions for running a pos local devnet can be found [here](https://github.com/avalonche/eth-pos-devnet).
 
-Requires forkchoice update to be sent for block building, on public testnets run beacon node modified to send forkchoice update on every slot [example modified beacon client (lighthouse)](https://github.com/flashbots/lighthouse)
+You will need to run a modified beacon node that sends a custom rpc call to trigger block building. You can use the modified [prysm fork](https://github.com/flashbots/prysm) for this.
 
 Test with [mev-boost](https://github.com/flashbots/mev-boost) and [mev-boost test cli](https://github.com/flashbots/mev-boost/tree/main/cmd/test-cli).
 
@@ -14,17 +14,11 @@ Provides summary page at the listening address' root (http://localhost:28545 by 
 
 ## How it works
 
-* Builder polls relay for the proposer registrations for the next epoch
-
-Builder has two hooks into geth:
-* On forkchoice update, changing the payload attributes feeRecipient to the one registered for next slot's validator
-* On new sealed block, consuming the block as the next slot's proposed payload and submits it to the relay
-
-Local relay is enabled by default and overwrites remote relay data. This is only meant for the testnets!
+* Builder polls relay for the proposer registrations for the next epoch when block building is triggered
+* If both local relay and remote relay are enabled, local relay will overwrite remote relay data. This is only meant for the testnets!
 
 ## Limitations
 
-* Blocks are only built on forkchoice update call from beacon node
 * Does not accept external blocks
 * Does not have payload cache, only the latest block is available
 
@@ -102,7 +96,7 @@ $ geth --help
 
 Environment variables:
 ```
-BUILDER_TX_SIGNING_KEY - private key of the builder used to sign payment transaction
+BUILDER_TX_SIGNING_KEY - private key of the builder used to sign payment transaction, must be the same as the coinbase address
 ```
 
 ## Details of the implementation
@@ -158,7 +152,7 @@ Miner is responsible for block creation. Request from the `builder` is routed to
 There are two ways bundles are moved to builders 
 
 1. via API -`sendBundle` 
-2. via Data Base - `flashbotsextra.IDatabaseService`
+2. via Database - `flashbotsextra.IDatabaseService`
 
 ### `fetcher` service 
 * Fetcher service is part of `flashbotsextra.IDatabaseService` which is responsible for fetching the bundles from db and pushing into mev bundles queue which will be processed by builder. 
