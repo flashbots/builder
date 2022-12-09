@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -29,21 +30,28 @@ func (b *testBeaconClient) onForkchoiceUpdate() (uint64, error) {
 	return b.slot, nil
 }
 
+func (b *testBeaconClient) updateValidatorsMap() error {
+	return nil
+}
+
 type BeaconClient struct {
 	endpoint string
 	slotsInEpoch uint64
+	secondsInSlot uint64
 
 	mu               sync.Mutex
 	currentEpoch     uint64
 	currentSlot      uint64
 	nextSlotProposer PubkeyHex
 	slotProposerMap  map[uint64]PubkeyHex
+	slotRequestedCh  chan uint64
 }
 
-func NewBeaconClient(endpoint string, slotsInEpoch uint64) *BeaconClient {
+func NewBeaconClient(endpoint string, slotsInEpoch uint64, secondsInSlot uint64) *BeaconClient {
 	return &BeaconClient{
 		endpoint:        endpoint,
 		slotsInEpoch:    slotsInEpoch,
+		secondsInSlot:   secondsInSlot,
 		slotProposerMap: make(map[uint64]PubkeyHex),
 	}
 }
@@ -56,8 +64,6 @@ func (b *BeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	go b.updateValidatorsMap(requestedSlot)
-
 	nextSlotProposer, found := b.slotProposerMap[requestedSlot]
 	if !found {
 		log.Error("inconsistent proposer mapping", "currentSlot", b.currentSlot, "slotProposerMap", b.slotProposerMap)
@@ -66,20 +72,42 @@ func (b *BeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, 
 	return nextSlotProposer, nil
 }
 
-func (b *BeaconClient) updateValidatorsMap(nextSlot uint64) error {
-	b.currentSlot = nextSlot
-	nextSlotEpoch := nextSlot / b.slotsInEpoch
-	// if slot at half epoch, fetch next epoch's proposers
-	if nextSlotEpoch != b.currentEpoch || nextSlot%b.slotsInEpoch == b.slotsInEpoch/2 {
-		slotProposerMap, err := fetchEpochProposersMap(b.endpoint, nextSlotEpoch)
-		if err != nil {
-			return err
+func (b *BeaconClient) updateValidatorsMap() error {
+	// Start regular slot updates
+	slotsPerEpoch := b.slotsInEpoch
+	durationPerSlot := time.Duration(b.secondsInSlot) * time.Second
+	durationPerEpoch := durationPerSlot * time.Duration(slotsPerEpoch)
+	b.slotRequestedCh = make(chan uint64)
+	// Every half epoch request validators map
+	timer := time.NewTicker(durationPerEpoch/2)
+	for {
+		select {
+		case slot := <-b.slotRequestedCh:
+			b.currentSlot = slot
+			nextSlotEpoch := slot / b.slotsInEpoch
+			// if slot at half epoch, fetch next epoch's proposers
+			if nextSlotEpoch > b.currentEpoch {
+				slotProposerMap, err := fetchEpochProposersMap(b.endpoint, nextSlotEpoch)
+				if err != nil {
+					log.Error("could not fetch validators map", "err", err)
+					continue
+				}
+				
+				b.slotProposerMap = slotProposerMap
+				b.currentEpoch = nextSlotEpoch
+				b.slotProposerMap = slotProposerMap
+				timer.Reset(durationPerEpoch/2)
+			}
+		case <-timer.C:
+			slotProposerMap, err := fetchEpochProposersMap(b.endpoint, b.currentEpoch+1)
+			if err != nil {
+				log.Error("could not fetch validators map", "err", err)
+				continue
+			}
+			b.slotProposerMap = slotProposerMap
+			timer.Reset(durationPerEpoch/2)
 		}
-
-		b.currentEpoch = nextSlotEpoch
-		b.slotProposerMap = slotProposerMap
 	}
-
 	return nil
 }
 

@@ -84,6 +84,11 @@ func NewLocalRelay(sk *bls.SecretKey, beaconClient IBeaconClient, builderSigning
 	}
 }
 
+func (r *LocalRelay) Start() error {
+	go r.beaconClient.updateValidatorsMap()
+	return nil
+}
+
 func (r *LocalRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
 	return r.submitBlock(msg)

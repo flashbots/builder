@@ -203,7 +203,7 @@ func TestOnForkchoiceUpdate(t *testing.T) {
   ]
 }`)
 
-	bc := NewBeaconClient(mbn.srv.URL)
+	bc := NewBeaconClient(mbn.srv.URL, 32, 12)
 	slot, err := bc.onForkchoiceUpdate()
 	require.NoError(t, err)
 	require.Equal(t, slot, uint64(32))
@@ -221,7 +221,7 @@ func TestOnForkchoiceUpdate(t *testing.T) {
 	mbn.headersCode = 404
 	mbn.headersResp = []byte(`{ "code": 404, "message": "State not found" }`)
 
-	slot, err = NewBeaconClient(mbn.srv.URL).onForkchoiceUpdate()
+	slot, err = NewBeaconClient(mbn.srv.URL, 32, 12).onForkchoiceUpdate()
 	require.EqualError(t, err, "State not found")
 	require.Equal(t, slot, uint64(0))
 

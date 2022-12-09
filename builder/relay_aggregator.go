@@ -24,6 +24,16 @@ func NewRemoteRelayAggregator(primary IRelay, secondary []IRelay) *RemoteRelayAg
 	}
 }
 
+func (r *RemoteRelayAggregator) Start() error {
+	for _, relay := range r.relays {
+		err := relay.Start()
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (r *RemoteRelayAggregator) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, registration ValidatorData) error {
 	r.registrationsCacheLock.RLock()
 	defer r.registrationsCacheLock.RUnlock()
