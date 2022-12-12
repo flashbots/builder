@@ -17,6 +17,10 @@ import (
 
 var algoTests = []*algoTest{
 	{
+		// "simple": Trivial tx pool with 2 txs by two accounts and a block gas limit that only
+		// allows one tx to be included.
+		//
+		// The tx paying the highest gas price should be included.
 		Name: "simple",
 		Header: &types.Header{
 			GasLimit: 21_000,
@@ -38,6 +42,11 @@ var algoTests = []*algoTest{
 		WantProfit: big.NewInt(2 * 21_000),
 	},
 	{
+		// "lookahead": Trivial tx pool with 3 txs by two accounts and a block gas limit that only
+		// allows two tx to be included. Account 1 has two pending txs of which the second one has a
+		// higher gas price than the first one.
+		//
+		// Both txs by account 1 should be included, as they maximize the miners profit.
 		Name: "lookahead",
 		Header: &types.Header{
 			GasLimit: 42_000,
@@ -151,14 +160,25 @@ func runAlgoTest(config *params.ChainConfig, alloc core.GenesisAlloc, txPool map
 type algoTest struct {
 	once sync.Once
 
-	Name   string
-	Header *types.Header
-	Alloc  []core.GenesisAccount
+	Name   string        // Name of the test
+	Header *types.Header // Header of the block to build
+
+	// Genesis accounts as slice.
+	Alloc []core.GenesisAccount
+
+	// TxPool creation function. The returned tx pool maps from accounts (by
+	// index, referencing the Alloc slice index) to a slice of transactions.
+	//
+	// The function takes an accByIndex function that returns the address
+	// of the GenesisAccount in the Alloc slice at the given index.
 	TxPool func(accByIndex) map[int][]types.TxData
 
-	WantProfit *big.Int
+	WantProfit *big.Int // Expected block profit
 }
 
+type accByIndex func(int) *common.Address
+
+// setDefaults sets default values for the algoTest.
 func (test *algoTest) setDefaults() {
 	// set header defaults
 	if test.Header.Coinbase == (common.Address{}) {
@@ -172,6 +192,10 @@ func (test *algoTest) setDefaults() {
 	}
 }
 
+// build builds the genesis alloc and tx pool from the given algoTest.
+//
+// The scale parameter can be used to scale up the number of the provided scenario
+// of the algoTest inside the returned genesis alloc and tx pool.
 func (test *algoTest) build(signer types.Signer, scale int) (alloc core.GenesisAlloc, txPool map[common.Address]types.Transactions, err error) {
 	test.once.Do(test.setDefaults)
 
@@ -234,5 +258,3 @@ func genRandAccs(n int) ([]common.Address, []*ecdsa.PrivateKey) {
 	}
 	return addrs, prvs
 }
-
-type accByIndex func(int) *common.Address
