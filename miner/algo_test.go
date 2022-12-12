@@ -17,14 +17,12 @@ import (
 
 var algoTests = []*algoTest{
 	{
-		// "simple": Trivial tx pool with 2 txs by two accounts and a block gas limit that only
-		// allows one tx to be included.
+		// Trivial tx pool with 2 txs by two accounts and a block gas limit that only allows one tx
+		// to be included.
 		//
 		// The tx paying the highest gas price should be included.
-		Name: "simple",
-		Header: &types.Header{
-			GasLimit: 21_000,
-		},
+		Name:   "simple",
+		Header: &types.Header{GasLimit: 21_000},
 		Alloc: []core.GenesisAccount{
 			{Balance: big.NewInt(21_000)},
 			{Balance: big.NewInt(2 * 21_000)},
@@ -42,15 +40,13 @@ var algoTests = []*algoTest{
 		WantProfit: big.NewInt(2 * 21_000),
 	},
 	{
-		// "lookahead": Trivial tx pool with 3 txs by two accounts and a block gas limit that only
-		// allows two tx to be included. Account 1 has two pending txs of which the second one has a
-		// higher gas price than the first one.
+		// Trivial tx pool with 3 txs by two accounts and a block gas limit that only allows two txs
+		// to be included. Account 1 has two pending txs of which the second one has a higher gas
+		// price than the first one.
 		//
 		// Both txs by account 1 should be included, as they maximize the miners profit.
-		Name: "lookahead",
-		Header: &types.Header{
-			GasLimit: 42_000,
-		},
+		Name:   "lookahead",
+		Header: &types.Header{GasLimit: 42_000},
 		Alloc: []core.GenesisAccount{
 			{Balance: big.NewInt(21_000)},
 			{Balance: big.NewInt(3 * 21_000)},
@@ -68,6 +64,43 @@ var algoTests = []*algoTest{
 		},
 		WantProfit: big.NewInt(3 * 21_000),
 	},
+	{
+		// Trivial bundle with one tx that reverts but is not allowed to revert.
+		//
+		// Bundle should not be included.
+		Name:   "atomic-bundle-no-revert",
+		Header: &types.Header{GasLimit: 50_000},
+		Alloc: []core.GenesisAccount{
+			{Balance: big.NewInt(50_000)},
+			{Code: contractRevert},
+		},
+		Bundles: func(acc accByIndex, sign signByIndex, txs txByAccIndexAndNonce) []*bundle {
+			return []*bundle{
+				{Txs: types.Transactions{sign(0, &types.LegacyTx{Nonce: 0, Gas: 50_000, To: acc(1), GasPrice: big.NewInt(1)})}},
+			}
+		},
+		WantProfit: big.NewInt(0),
+	},
+	{
+		// Trivial bundle with one tx that reverts and is allowed to revert.
+		//
+		// Bundle should be included.
+		Name:   "atomic-bundle-revert",
+		Header: &types.Header{GasLimit: 50_000},
+		Alloc: []core.GenesisAccount{
+			{Balance: big.NewInt(50_000)},
+			{Code: contractRevert},
+		},
+		Bundles: func(acc accByIndex, sign signByIndex, txs txByAccIndexAndNonce) []*bundle {
+			return []*bundle{
+				{
+					Txs:                types.Transactions{sign(0, &types.LegacyTx{Nonce: 0, Gas: 50_000, To: acc(1), GasPrice: big.NewInt(1)})},
+					RevertingTxIndices: []int{0},
+				},
+			}
+		},
+		WantProfit: big.NewInt(50_000),
+	},
 }
 
 func TestAlgo(t *testing.T) {
@@ -78,12 +111,16 @@ func TestAlgo(t *testing.T) {
 
 	for _, test := range algoTests {
 		t.Run(test.Name, func(t *testing.T) {
-			alloc, txPool, err := test.build(signer, 1)
+			alloc, txPool, bundles, err := test.build(signer, 1)
 			if err != nil {
 				t.Fatalf("Build: %v", err)
 			}
+			simBundles, err := simulateBundles(config, test.Header, alloc, bundles)
+			if err != nil {
+				t.Fatalf("Simulate Bundles: %v", err)
+			}
 
-			gotProfit, err := runAlgoTest(config, alloc, txPool, test.Header, 1)
+			gotProfit, err := runAlgoTest(config, alloc, txPool, simBundles, test.Header, 1)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -109,9 +146,13 @@ func BenchmarkAlgo(b *testing.B) {
 			)
 
 			b.Run(fmt.Sprintf("%s_%d", test.Name, scale), func(b *testing.B) {
-				alloc, txPool, err := test.build(signer, scale)
+				alloc, txPool, bundles, err := test.build(signer, scale)
 				if err != nil {
 					b.Fatalf("Build: %v", err)
+				}
+				simBundles, err := simulateBundles(config, test.Header, alloc, bundles)
+				if err != nil {
+					b.Fatalf("Simulate Bundles: %v", err)
 				}
 
 				b.ResetTimer()
@@ -128,7 +169,7 @@ func BenchmarkAlgo(b *testing.B) {
 						}
 					}()
 
-					gotProfit, err := runAlgoTest(config, alloc, txPoolCopy, test.Header, scale)
+					gotProfit, err := runAlgoTest(config, alloc, txPoolCopy, simBundles, test.Header, scale)
 					if err != nil {
 						b.Fatal(err)
 					}
@@ -142,18 +183,35 @@ func BenchmarkAlgo(b *testing.B) {
 }
 
 // runAlgo executes a single algoTest case and returns the profit.
-func runAlgoTest(config *params.ChainConfig, alloc core.GenesisAlloc, txPool map[common.Address]types.Transactions, header *types.Header, scale int) (gotProfit *big.Int, err error) {
+func runAlgoTest(config *params.ChainConfig, alloc core.GenesisAlloc, txPool map[common.Address]types.Transactions, bundles []types.SimulatedBundle, header *types.Header, scale int) (gotProfit *big.Int, err error) {
 	var (
 		statedb, chData = genTestSetupWithAlloc(config, alloc)
 		env             = newEnvironment(chData, statedb, header.Coinbase, header.GasLimit*uint64(scale), header.BaseFee)
 		builder         = newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
-
-		bundles = make([]types.SimulatedBundle, 0)
 	)
 
 	// build block
 	resultEnv, _ := builder.buildBlock(bundles, txPool)
 	return resultEnv.profit, nil
+}
+
+// simulateBundles simulates bundles and returns the simulated bundles.
+func simulateBundles(config *params.ChainConfig, header *types.Header, alloc core.GenesisAlloc, bundles []types.MevBundle) ([]types.SimulatedBundle, error) {
+	var (
+		statedb, chData = genTestSetupWithAlloc(config, alloc)
+		env             = newEnvironment(chData, statedb, header.Coinbase, header.GasLimit, header.BaseFee)
+
+		simBundles = make([]types.SimulatedBundle, 0)
+	)
+
+	for _, bundle := range bundles {
+		simBundle, err := simulateBundle(env, bundle, chData, nil)
+		if err != nil {
+			continue
+		}
+		simBundles = append(simBundles, simBundle)
+	}
+	return simBundles, nil
 }
 
 // algoTest represents a block builder algorithm test case.
@@ -173,14 +231,18 @@ type algoTest struct {
 	// of the GenesisAccount in the Alloc slice at the given index.
 	TxPool func(accByIndex) map[int][]types.TxData
 
+	// Bundles creation function.
+	Bundles func(accByIndex, signByIndex, txByAccIndexAndNonce) []*bundle
+
 	WantProfit *big.Int // Expected block profit
 }
-
-type accByIndex func(int) *common.Address
 
 // setDefaults sets default values for the algoTest.
 func (test *algoTest) setDefaults() {
 	// set header defaults
+	if test.Header == nil {
+		test.Header = &types.Header{}
+	}
 	if test.Header.Coinbase == (common.Address{}) {
 		test.Header.Coinbase = randAddr()
 	}
@@ -196,7 +258,7 @@ func (test *algoTest) setDefaults() {
 //
 // The scale parameter can be used to scale up the number of the provided scenario
 // of the algoTest inside the returned genesis alloc and tx pool.
-func (test *algoTest) build(signer types.Signer, scale int) (alloc core.GenesisAlloc, txPool map[common.Address]types.Transactions, err error) {
+func (test *algoTest) build(signer types.Signer, scale int) (alloc core.GenesisAlloc, txPool map[common.Address]types.Transactions, bundles []types.MevBundle, err error) {
 	test.once.Do(test.setDefaults)
 
 	// generate accounts
@@ -206,35 +268,109 @@ func (test *algoTest) build(signer types.Signer, scale int) (alloc core.GenesisA
 	// build alloc
 	alloc = make(core.GenesisAlloc, n*scale)
 	txPool = make(map[common.Address]types.Transactions)
+	bundles = make([]types.MevBundle, 0)
 
 	for s := 0; s < scale; s++ {
 		for i, acc := range test.Alloc {
+			if acc.Balance == nil {
+				acc.Balance = new(big.Int) // balance must be non-nil
+			}
 			alloc[addrs[s*n+i]] = acc
 		}
 
-		// define account by index function
-		accByIndexFn := func(i int) *common.Address {
-			if i < 0 || i >= n {
-				panic(fmt.Sprintf("invalid account %d, should be in [0, %d]", i, n-1))
+		// build tx pool
+		accByIndexFn := accByIndexFunc(addrs[s*n : (s+1)*n])
+		if test.TxPool != nil {
+			preTxPool := test.TxPool(accByIndexFn)
+			for i, txs := range preTxPool {
+				if i < 0 || i >= n {
+					panic(fmt.Sprintf("invalid account %d, should be in [0, %d]", i, n-1))
+				}
+
+				signedTxs := make(types.Transactions, len(txs))
+				for j, tx := range txs {
+					signedTxs[j] = types.MustSignNewTx(prvs[s*n+i], signer, tx)
+				}
+				txPool[addrs[s*n+i]] = signedTxs
 			}
-			return &addrs[s*n+i]
 		}
 
-		// build tx pool
-		preTxPool := test.TxPool(accByIndexFn)
-		for i, txs := range preTxPool {
-			if i < 0 || i >= n {
-				panic(fmt.Sprintf("invalid account %d, should be in [0, %d]", i, n-1))
-			}
+		// build bundles
+		if test.Bundles != nil {
+			signByIndexFn := signByIndexFunc(prvs[s*n:(s+1)*n], signer)
+			txByAccIndexAndNonceFn := txByAccIndexAndNonceFunc(addrs[s*n:(s+1)*n], txPool)
+			preBundles := test.Bundles(accByIndexFn, signByIndexFn, txByAccIndexAndNonceFn)
 
-			signedTxs := make(types.Transactions, len(txs))
-			for j, tx := range txs {
-				signedTxs[j] = types.MustSignNewTx(prvs[s*n+i], signer, tx)
+			for _, bundle := range preBundles {
+				b := bundle.toMevBundle()
+				bundles = append(bundles, b)
 			}
-			txPool[addrs[s*n+i]] = signedTxs
 		}
 	}
 	return
+}
+
+// accByIndex returns the address of the genesis account with the given index.
+type accByIndex func(int) *common.Address
+
+func accByIndexFunc(accs []common.Address) accByIndex {
+	return func(i int) *common.Address {
+		if 0 > i || i >= len(accs) {
+			panic(fmt.Sprintf("invalid account %d, should be in [0, %d]", i, len(accs)-1))
+		}
+		return &accs[i]
+	}
+}
+
+// signByIndex signs the given transaction with the private key of the genesis
+// account with the given index.
+type signByIndex func(int, types.TxData) *types.Transaction
+
+func signByIndexFunc(prvs []*ecdsa.PrivateKey, signer types.Signer) signByIndex {
+	return func(i int, tx types.TxData) *types.Transaction {
+		if 0 > i || i >= len(prvs) {
+			panic(fmt.Sprintf("invalid private key %d, should be in [0, %d]", i, len(prvs)-1))
+		}
+		return types.MustSignNewTx(prvs[i], signer, tx)
+	}
+}
+
+// txByAccIndexAndNonce returns the transaction with the given nonce of the
+// genesis account with the given index.
+type txByAccIndexAndNonce func(int, uint64) *types.Transaction
+
+func txByAccIndexAndNonceFunc(accs []common.Address, txPool map[common.Address]types.Transactions) txByAccIndexAndNonce {
+	return func(i int, nonce uint64) *types.Transaction {
+		if 0 > i || i >= len(accs) {
+			panic(fmt.Sprintf("invalid account %d, should be in [0, %d]", i, len(accs)-1))
+		}
+		addr := accs[i]
+		txs := txPool[addr]
+
+		// q&d: iterate to find nonce
+		for _, tx := range txs {
+			if tx.Nonce() == nonce {
+				return tx
+			}
+		}
+		panic(fmt.Sprintf("tx for account %d with nonce %d does not exist", i, nonce))
+	}
+}
+
+type bundle struct {
+	Txs                types.Transactions
+	RevertingTxIndices []int
+}
+
+func (b *bundle) toMevBundle() types.MevBundle {
+	revertingHashes := make([]common.Hash, len(b.RevertingTxIndices))
+	for i, idx := range b.RevertingTxIndices {
+		if 0 > idx || idx >= len(b.Txs) {
+			panic(fmt.Sprintf("invalid tx index %d, should be in [0, %d]", idx, len(b.Txs)-1))
+		}
+		revertingHashes[i] = b.Txs[idx].Hash()
+	}
+	return types.MevBundle{Txs: b.Txs, RevertingTxHashes: revertingHashes}
 }
 
 // randAddr returns a random address.
