@@ -186,14 +186,19 @@ func genGenesisAlloc(sign signerList, contractAddr []common.Address, contractCod
 
 func genTestSetup() (*state.StateDB, chainData, signerList) {
 	config := params.AllEthashProtocolChanges
-	db := rawdb.NewMemoryDatabase()
-	signerList := genSignerList(10, config)
-
+	signerList := genSignerList(10, params.AllEthashProtocolChanges)
 	genesisAlloc := genGenesisAlloc(signerList, []common.Address{payProxyAddress, logContractAddress}, [][]byte{payProxyCode, logContractCode})
+
+	stateDB, chainData := genTestSetupWithAlloc(config, genesisAlloc)
+	return stateDB, chainData, signerList
+}
+
+func genTestSetupWithAlloc(config *params.ChainConfig, alloc core.GenesisAlloc) (*state.StateDB, chainData) {
+	db := rawdb.NewMemoryDatabase()
 
 	gspec := &core.Genesis{
 		Config: config,
-		Alloc:  genesisAlloc,
+		Alloc:  alloc,
 	}
 	_ = gspec.MustCommit(db)
 
@@ -201,7 +206,7 @@ func genTestSetup() (*state.StateDB, chainData, signerList) {
 
 	stateDB, _ := state.New(chain.CurrentHeader().Root, state.NewDatabase(db), nil)
 
-	return stateDB, chainData{config, chain, nil}, signerList
+	return stateDB, chainData{config, chain, nil}
 }
 
 func newEnvironment(data chainData, state *state.StateDB, coinbase common.Address, gasLimit uint64, baseFee *big.Int) *environment {
