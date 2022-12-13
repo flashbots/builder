@@ -83,7 +83,7 @@ func (b *BeaconClient) updateValidatorsMap() error {
 	durationPerSlot := time.Duration(b.secondsInSlot) * time.Second
 	durationPerEpoch := durationPerSlot * time.Duration(slotsPerEpoch)
 	// Every half epoch request validators map
-	timer := time.NewTicker(durationPerEpoch / 2)
+	timer := time.NewTicker(0)
 	for {
 		select {
 		case <-timer.C:
@@ -92,7 +92,7 @@ func (b *BeaconClient) updateValidatorsMap() error {
 				log.Error("could not get current slot", "err", err)
 				continue
 			}
-			b.mu.Lock()
+
 			currentEpoch := currentSlot / b.slotsInEpoch
 			if currentEpoch > b.currentEpoch {
 				slotProposerMap, err := fetchEpochProposersMap(b.endpoint, b.currentEpoch+1)
@@ -100,10 +100,12 @@ func (b *BeaconClient) updateValidatorsMap() error {
 					log.Error("could not fetch validators map", "err", err)
 					continue
 				}
+				b.mu.Lock()
 				b.currentEpoch = currentEpoch
 				b.nextEpochProposerMap = slotProposerMap
+				b.mu.Unlock()
 			}
-			b.mu.Unlock()
+
 			timer.Reset(durationPerEpoch / 2)
 		}
 	}
