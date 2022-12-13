@@ -101,6 +101,31 @@ var algoTests = []*algoTest{
 		},
 		WantProfit: big.NewInt(50_000),
 	},
+	{
+		// Single failing tx that is included in the tx pool and in a bundle that is not allowed to
+		// revert.
+		//
+		// Tx should be included.
+		Name:   "simple-contradiction",
+		Header: &types.Header{GasLimit: 50_000},
+		Alloc: []core.GenesisAccount{
+			{Balance: big.NewInt(50_000)},
+			{Code: contractRevert},
+		},
+		TxPool: func(acc accByIndex) map[int][]types.TxData {
+			return map[int][]types.TxData{
+				0: {
+					&types.LegacyTx{Nonce: 0, Gas: 50_000, To: acc(1), GasPrice: big.NewInt(1)},
+				},
+			}
+		},
+		Bundles: func(acc accByIndex, sign signByIndex, txs txByAccIndexAndNonce) []*bundle {
+			return []*bundle{
+				{Txs: types.Transactions{txs(0, 0)}},
+			}
+		},
+		WantProfit: big.NewInt(50_000),
+	},
 }
 
 func TestAlgo(t *testing.T) {
