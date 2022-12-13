@@ -91,7 +91,7 @@ func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRe
 }
 
 func (b *Builder) Start() error {
-	return b.relay.Start()	
+	return b.relay.Start()
 }
 
 func (b *Builder) Stop() error {

@@ -1436,6 +1436,11 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 		return nil, err
 	}
 
+	// no bundles or tx from mempool
+	if len(work.txs) == 0 {
+		return finalizeFn(work, orderCloseTime, blockBundles, allBundles, true)
+	}
+
 	err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve)
 	if err != nil {
 		return nil, err

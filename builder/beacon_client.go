@@ -35,24 +35,25 @@ func (b *testBeaconClient) updateValidatorsMap() error {
 }
 
 type BeaconClient struct {
-	endpoint string
-	slotsInEpoch uint64
+	endpoint      string
+	slotsInEpoch  uint64
 	secondsInSlot uint64
 
-	mu               sync.Mutex
-	currentEpoch     uint64
-	currentSlot      uint64
-	nextSlotProposer PubkeyHex
-	slotProposerMap  map[uint64]PubkeyHex
-	slotRequestedCh  chan uint64
+	mu                   sync.Mutex
+	currentEpoch         uint64
+	currentSlot          uint64
+	nextSlotProposer     PubkeyHex
+	currEpochProposerMap map[uint64]PubkeyHex
+	nextEpochProposerMap map[uint64]PubkeyHex
 }
 
 func NewBeaconClient(endpoint string, slotsInEpoch uint64, secondsInSlot uint64) *BeaconClient {
 	return &BeaconClient{
-		endpoint:        endpoint,
-		slotsInEpoch:    slotsInEpoch,
-		secondsInSlot:   secondsInSlot,
-		slotProposerMap: make(map[uint64]PubkeyHex),
+		endpoint:             endpoint,
+		slotsInEpoch:         slotsInEpoch,
+		secondsInSlot:        secondsInSlot,
+		currEpochProposerMap: make(map[uint64]PubkeyHex),
+		nextEpochProposerMap: make(map[uint64]PubkeyHex),
 	}
 }
 
@@ -64,9 +65,13 @@ func (b *BeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, 
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	nextSlotProposer, found := b.slotProposerMap[requestedSlot]
+	if (requestedSlot / b.slotsInEpoch) > b.currentEpoch {
+		b.currEpochProposerMap = b.nextEpochProposerMap
+	}
+
+	nextSlotProposer, found := b.currEpochProposerMap[requestedSlot]
 	if !found {
-		log.Error("inconsistent proposer mapping", "currentSlot", b.currentSlot, "slotProposerMap", b.slotProposerMap)
+		log.Error("inconsistent proposer mapping", "requestSlot", requestedSlot, "slotProposerMap", b.currEpochProposerMap)
 		return PubkeyHex(""), errors.New("inconsistent proposer mapping")
 	}
 	return nextSlotProposer, nil
@@ -77,36 +82,34 @@ func (b *BeaconClient) updateValidatorsMap() error {
 	slotsPerEpoch := b.slotsInEpoch
 	durationPerSlot := time.Duration(b.secondsInSlot) * time.Second
 	durationPerEpoch := durationPerSlot * time.Duration(slotsPerEpoch)
-	b.slotRequestedCh = make(chan uint64)
+	currentSlot, err := fetchCurrentSlot(b.endpoint)
+	if err != nil {
+		log.Error("could not get current slot", "err", err)
+	}
+	b.currentEpoch = currentSlot / b.slotsInEpoch
+	slotProposerMap, err := fetchEpochProposersMap(b.endpoint, b.currentEpoch)
+	if err != nil {
+		log.Error("could not fetch validators map", "err", err)
+	}
+	b.currEpochProposerMap = slotProposerMap
 	// Every half epoch request validators map
-	timer := time.NewTicker(durationPerEpoch/2)
-	for {
-		select {
-		case slot := <-b.slotRequestedCh:
-			b.currentSlot = slot
-			nextSlotEpoch := slot / b.slotsInEpoch
-			// if slot at half epoch, fetch next epoch's proposers
-			if nextSlotEpoch > b.currentEpoch {
-				slotProposerMap, err := fetchEpochProposersMap(b.endpoint, nextSlotEpoch)
-				if err != nil {
-					log.Error("could not fetch validators map", "err", err)
-					continue
-				}
-				
-				b.slotProposerMap = slotProposerMap
-				b.currentEpoch = nextSlotEpoch
-				b.slotProposerMap = slotProposerMap
-				timer.Reset(durationPerEpoch/2)
-			}
-		case <-timer.C:
+	timer := time.NewTicker(durationPerEpoch / 2)
+	for range timer.C {
+		currentSlot, err := fetchCurrentSlot(b.endpoint)
+		if err != nil {
+			log.Error("could not get current slot", "err", err)
+		}
+		currentEpoch := currentSlot / b.slotsInEpoch
+		if currentEpoch > b.currentEpoch {
+			b.currentEpoch = currentEpoch
 			slotProposerMap, err := fetchEpochProposersMap(b.endpoint, b.currentEpoch+1)
 			if err != nil {
 				log.Error("could not fetch validators map", "err", err)
 				continue
 			}
-			b.slotProposerMap = slotProposerMap
-			timer.Reset(durationPerEpoch/2)
+			b.nextEpochProposerMap = slotProposerMap
 		}
+		timer.Reset(durationPerEpoch / 2)
 	}
 	return nil
 }
@@ -135,12 +138,12 @@ func (b *BeaconClient) onForkchoiceUpdate() (uint64, error) {
 		}
 
 		b.currentEpoch = nextSlotEpoch
-		b.slotProposerMap = slotProposerMap
+		b.currEpochProposerMap = slotProposerMap
 	}
 
-	nextSlotProposer, found := b.slotProposerMap[nextSlot]
+	nextSlotProposer, found := b.currEpochProposerMap[nextSlot]
 	if !found {
-		log.Error("inconsistent proposer mapping", "currentSlot", currentSlot, "slotProposerMap", b.slotProposerMap)
+		log.Error("inconsistent proposer mapping", "currentSlot", currentSlot, "slotProposerMap", b.currEpochProposerMap)
 		return 0, errors.New("inconsistent proposer mapping")
 	}
 	b.nextSlotProposer = nextSlotProposer

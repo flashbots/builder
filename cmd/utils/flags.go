@@ -709,14 +709,16 @@ var (
 		Category: flags.BuilderCategory,
 	}
 	BuilderSlotsInEpoch = &cli.Uint64Flag{
-		Name:  "builder.slots_in_epoch",
-		Usage: "Set the number of slots in an epoch in the local relay",
-		Value:   32,
+		Name:     "builder.slots_in_epoch",
+		Usage:    "Set the number of slots in an epoch in the local relay",
+		Value:    32,
+		Category: flags.BuilderCategory,
 	}
 	BuilderSecondsInSlot = &cli.Uint64Flag{
-		Name:  "builder.seconds_in_slot",
-		Usage: "Set the number of seconds in a slot in the local relay",
-		Value:   12,
+		Name:     "builder.seconds_in_slot",
+		Usage:    "Set the number of seconds in a slot in the local relay",
+		Value:    12,
+		Category: flags.BuilderCategory,
 	}
 	BuilderDisableBundleFetcher = &cli.BoolFlag{
 		Name:     "builder.no_bundle_fetcher",
