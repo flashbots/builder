@@ -26,9 +26,6 @@ func (b *testBeaconClient) isValidator(pubkey PubkeyHex) bool {
 func (b *testBeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error) {
 	return PubkeyHex(hexutil.Encode(b.validator.Pk)), nil
 }
-func (b *testBeaconClient) onForkchoiceUpdate() (uint64, error) {
-	return b.slot, nil
-}
 
 func (b *testBeaconClient) updateValidatorsMap() error {
 	return nil
@@ -39,11 +36,9 @@ type BeaconClient struct {
 	slotsInEpoch  uint64
 	secondsInSlot uint64
 
-	mu               sync.Mutex
-	currentEpoch     uint64
-	currentSlot      uint64
-	nextSlotProposer PubkeyHex
-	slotProposerMap  map[uint64]PubkeyHex
+	mu              sync.Mutex
+	currentEpoch    uint64
+	slotProposerMap map[uint64]PubkeyHex
 }
 
 func NewBeaconClient(endpoint string, slotsInEpoch uint64, secondsInSlot uint64) *BeaconClient {
@@ -125,42 +120,6 @@ func (b *BeaconClient) updateValidatorsMap() error {
 		timer.Reset(durationPerEpoch / 2)
 	}
 	return nil
-}
-
-/* Returns next slot's proposer pubkey */
-// TODO: what happens if no block for previous slot - should still get next slot
-func (b *BeaconClient) onForkchoiceUpdate() (uint64, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	currentSlot, err := fetchCurrentSlot(b.endpoint)
-	if err != nil {
-		return 0, err
-	}
-
-	nextSlot := currentSlot + 1
-
-	b.currentSlot = currentSlot
-	nextSlotEpoch := nextSlot / b.slotsInEpoch
-
-	if nextSlotEpoch != b.currentEpoch {
-		// TODO: this should be prepared in advance, possibly just fetch for next epoch in advance
-		slotProposerMap, err := fetchEpochProposersMap(b.endpoint, nextSlotEpoch)
-		if err != nil {
-			return 0, err
-		}
-
-		b.currentEpoch = nextSlotEpoch
-		b.slotProposerMap = slotProposerMap
-	}
-
-	nextSlotProposer, found := b.slotProposerMap[nextSlot]
-	if !found {
-		log.Error("inconsistent proposer mapping", "currentSlot", currentSlot, "slotProposerMap", b.slotProposerMap)
-		return 0, errors.New("inconsistent proposer mapping")
-	}
-	b.nextSlotProposer = nextSlotProposer
-	return nextSlot, nil
 }
 
 func fetchCurrentSlot(endpoint string) (uint64, error) {
