@@ -85,7 +85,7 @@ func NewLocalRelay(sk *bls.SecretKey, beaconClient IBeaconClient, builderSigning
 }
 
 func (r *LocalRelay) Start() error {
-	go r.beaconClient.updateValidatorsMap()
+	r.beaconClient.Start()
 	return nil
 }
 

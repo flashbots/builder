@@ -30,8 +30,7 @@ func (b *testBeaconClient) isValidator(pubkey PubkeyHex) bool {
 func (b *testBeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error) {
 	return PubkeyHex(hexutil.Encode(b.validator.Pk)), nil
 }
-
-func (b *testBeaconClient) updateValidatorsMap() error {
+func (b *testBeaconClient) Start() error {
 	return nil
 }
 
@@ -41,7 +40,6 @@ type BeaconClient struct {
 	secondsInSlot uint64
 
 	mu              sync.Mutex
-	currentEpoch    uint64
 	slotProposerMap map[uint64]PubkeyHex
 
 	closeCh chan struct{}
@@ -77,65 +75,83 @@ func (b *BeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, 
 	return nextSlotProposer, nil
 }
 
-func (b *BeaconClient) updateValidatorsMap() error {
-	// Start regular slot updates
-	slotsPerEpoch := b.slotsInEpoch
+func (b *BeaconClient) Start() error {
+	go b.UpdateValidatorMapForever()
+	return nil
+}
+
+func (b *BeaconClient) UpdateValidatorMapForever() {
 	durationPerSlot := time.Duration(b.secondsInSlot) * time.Second
-	durationPerEpoch := durationPerSlot * time.Duration(slotsPerEpoch)
-	// Every half epoch request validators map
-	timer := time.NewTicker(durationPerEpoch / 2)
-	defer timer.Stop()
-	for {
-		select {
-		case <-timer.C:
-			currentSlot, err := fetchCurrentSlot(b.endpoint)
-			if err != nil {
-				log.Error("could not get current slot", "err", err)
-				continue
-			}
 
-			currentEpoch := currentSlot / b.slotsInEpoch
-			if len(b.slotProposerMap) == 0 {
-				slotProposerMap, err := fetchEpochProposersMap(b.endpoint, currentEpoch)
-				if err != nil {
-					log.Error("could not fetch validators map", "epoch", currentEpoch, "err", err)
-					continue
-				}
+	prevFetchSlot := uint64(0)
 
-				b.mu.Lock()
-				b.slotProposerMap = slotProposerMap
-				b.mu.Unlock()
-			}
-
-			if currentEpoch > b.currentEpoch {
-				slotProposerMap, err := fetchEpochProposersMap(b.endpoint, currentEpoch+1)
-				if err != nil {
-					log.Error("could not fetch validators map", "epoch", currentEpoch+1, "err", err)
-					continue
-				}
-
-				prevEpoch := currentEpoch - 1
-				b.mu.Lock()
-				b.currentEpoch = currentEpoch
-				// remove previous epoch slots
-				for k := range b.slotProposerMap {
-					if k/b.slotsInEpoch == prevEpoch {
-						delete(b.slotProposerMap, k)
-					}
-				}
-				// update the slot proposer map for next epoch
-				for k, v := range slotProposerMap {
-					b.slotProposerMap[k] = v
-				}
-				b.mu.Unlock()
-			}
-
-			timer.Reset(durationPerEpoch / 2)
-		case <-b.closeCh:
-			return nil
+	// fetch current epoch if beacon is online
+	currentSlot, err := fetchCurrentSlot(b.endpoint)
+	if err != nil {
+		log.Error("could not get current slot", "err", err)
+	} else {
+		currentEpoch := currentSlot / b.slotsInEpoch
+		slotProposerMap, err := fetchEpochProposersMap(b.endpoint, currentEpoch)
+		if err != nil {
+			log.Error("could not fetch validators map", "epoch", currentEpoch, "err", err)
+		} else {
+			b.mu.Lock()
+			b.slotProposerMap = slotProposerMap
+			b.mu.Unlock()
 		}
 	}
-	return nil
+
+	retryDelay := time.Second
+
+	// Every half epoch request validators map, polling for the slot
+	// more frequently to avoid missing updates on errors
+	timer := time.NewTimer(retryDelay)
+	defer timer.Stop()
+	for true {
+		select {
+		case <-b.closeCh:
+			return
+		case <-timer.C:
+		}
+
+		currentSlot, err := fetchCurrentSlot(b.endpoint)
+		if err != nil {
+			log.Error("could not get current slot", "err", err)
+			timer.Reset(retryDelay)
+			continue
+		}
+
+		// TODO: should poll after consistent slot within the epoch (slot % slotsInEpoch/2 == 0)
+		nextFetchSlot := prevFetchSlot + b.slotsInEpoch/2
+		if currentSlot < nextFetchSlot {
+			timer.Reset(time.Duration(nextFetchSlot-currentSlot) * durationPerSlot)
+			continue
+		}
+
+		currentEpoch := currentSlot / b.slotsInEpoch
+		slotProposerMap, err := fetchEpochProposersMap(b.endpoint, currentEpoch+1)
+		if err != nil {
+			log.Error("could not fetch validators map", "epoch", currentEpoch+1, "err", err)
+			timer.Reset(retryDelay)
+			continue
+		}
+
+		prevFetchSlot = currentSlot
+		b.mu.Lock()
+		// remove previous epoch slots
+		for k := range b.slotProposerMap {
+			if k < currentEpoch*b.slotsInEpoch {
+				delete(b.slotProposerMap, k)
+			}
+		}
+		// update the slot proposer map for next epoch
+		for k, v := range slotProposerMap {
+			b.slotProposerMap[k] = v
+		}
+		b.mu.Unlock()
+
+		timer.Reset(time.Duration(nextFetchSlot-currentSlot) * durationPerSlot)
+	}
 }
 
 func fetchCurrentSlot(endpoint string) (uint64, error) {
