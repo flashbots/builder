@@ -106,6 +106,9 @@ func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, se
 
 	value := new(boostTypes.U256Str)
 	err = value.FromBig(block.Profit)
+
+	log.Info("Block profit for block", value)
+
 	if err != nil {
 		log.Error("could not set block value", "err", err)
 		return err
