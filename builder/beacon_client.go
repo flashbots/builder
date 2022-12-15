@@ -20,6 +20,10 @@ type testBeaconClient struct {
 	slot      uint64
 }
 
+func (b *testBeaconClient) Stop() {
+	return
+}
+
 func (b *testBeaconClient) isValidator(pubkey PubkeyHex) bool {
 	return true
 }
@@ -39,6 +43,8 @@ type BeaconClient struct {
 	mu              sync.Mutex
 	currentEpoch    uint64
 	slotProposerMap map[uint64]PubkeyHex
+
+	closeCh chan struct{}
 }
 
 func NewBeaconClient(endpoint string, slotsInEpoch uint64, secondsInSlot uint64) *BeaconClient {
@@ -47,7 +53,12 @@ func NewBeaconClient(endpoint string, slotsInEpoch uint64, secondsInSlot uint64)
 		slotsInEpoch:    slotsInEpoch,
 		secondsInSlot:   secondsInSlot,
 		slotProposerMap: make(map[uint64]PubkeyHex),
+		closeCh:         make(chan struct{}),
 	}
+}
+
+func (b *BeaconClient) Stop() {
+	close(b.closeCh)
 }
 
 func (b *BeaconClient) isValidator(pubkey PubkeyHex) bool {
@@ -74,50 +85,55 @@ func (b *BeaconClient) updateValidatorsMap() error {
 	// Every half epoch request validators map
 	timer := time.NewTicker(durationPerEpoch / 2)
 	defer timer.Stop()
-	for ; true; <-timer.C {
-		currentSlot, err := fetchCurrentSlot(b.endpoint)
-		if err != nil {
-			log.Error("could not get current slot", "err", err)
-			continue
-		}
-
-		currentEpoch := currentSlot / b.slotsInEpoch
-		if len(b.slotProposerMap) == 0 {
-			slotProposerMap, err := fetchEpochProposersMap(b.endpoint, currentEpoch)
+	for {
+		select {
+		case <-timer.C:
+			currentSlot, err := fetchCurrentSlot(b.endpoint)
 			if err != nil {
-				log.Error("could not fetch validators map", "epoch", currentEpoch, "err", err)
+				log.Error("could not get current slot", "err", err)
 				continue
 			}
 
-			b.mu.Lock()
-			b.slotProposerMap = slotProposerMap
-			b.mu.Unlock()
-		}
-
-		if currentEpoch > b.currentEpoch {
-			slotProposerMap, err := fetchEpochProposersMap(b.endpoint, currentEpoch+1)
-			if err != nil {
-				log.Error("could not fetch validators map", "epoch", currentEpoch+1, "err", err)
-				continue
-			}
-
-			prevEpoch := currentEpoch - 1
-			b.mu.Lock()
-			b.currentEpoch = currentEpoch
-			// remove previous epoch slots
-			for k := range b.slotProposerMap {
-				if k/b.slotsInEpoch == prevEpoch {
-					delete(b.slotProposerMap, k)
+			currentEpoch := currentSlot / b.slotsInEpoch
+			if len(b.slotProposerMap) == 0 {
+				slotProposerMap, err := fetchEpochProposersMap(b.endpoint, currentEpoch)
+				if err != nil {
+					log.Error("could not fetch validators map", "epoch", currentEpoch, "err", err)
+					continue
 				}
-			}
-			// update the slot proposer map for next epoch
-			for k, v := range slotProposerMap {
-				b.slotProposerMap[k] = v
-			}
-			b.mu.Unlock()
-		}
 
-		timer.Reset(durationPerEpoch / 2)
+				b.mu.Lock()
+				b.slotProposerMap = slotProposerMap
+				b.mu.Unlock()
+			}
+
+			if currentEpoch > b.currentEpoch {
+				slotProposerMap, err := fetchEpochProposersMap(b.endpoint, currentEpoch+1)
+				if err != nil {
+					log.Error("could not fetch validators map", "epoch", currentEpoch+1, "err", err)
+					continue
+				}
+
+				prevEpoch := currentEpoch - 1
+				b.mu.Lock()
+				b.currentEpoch = currentEpoch
+				// remove previous epoch slots
+				for k := range b.slotProposerMap {
+					if k/b.slotsInEpoch == prevEpoch {
+						delete(b.slotProposerMap, k)
+					}
+				}
+				// update the slot proposer map for next epoch
+				for k, v := range slotProposerMap {
+					b.slotProposerMap[k] = v
+				}
+				b.mu.Unlock()
+			}
+
+			timer.Reset(durationPerEpoch / 2)
+		case <-b.closeCh:
+			return nil
+		}
 	}
 	return nil
 }

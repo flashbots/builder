@@ -33,12 +33,14 @@ type IBeaconClient interface {
 	isValidator(pubkey PubkeyHex) bool
 	getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error)
 	updateValidatorsMap() error
+	Stop()
 }
 
 type IRelay interface {
 	SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, vd ValidatorData) error
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
 	Start() error
+	Stop()
 }
 
 type IBuilder interface {

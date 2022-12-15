@@ -129,6 +129,8 @@ func (r *RemoteRelay) Start() error {
 	return nil
 }
 
+func (r *RemoteRelay) Stop() {}
+
 func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to remote relay", "endpoint", r.endpoint)
 	code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, r.endpoint+"/relay/v1/builder/blocks", msg, nil)

@@ -62,6 +62,8 @@ func (r *testRelay) Start() error {
 	return nil
 }
 
+func (r *testRelay) Stop() {}
+
 func TestRemoteRelayAggregator(t *testing.T) {
 	t.Run("should return error if no relays return validator data", func(t *testing.T) {
 		backend := newTestRelayAggBackend(3)

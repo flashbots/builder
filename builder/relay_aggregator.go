@@ -34,6 +34,12 @@ func (r *RemoteRelayAggregator) Start() error {
 	return nil
 }
 
+func (r *RemoteRelayAggregator) Stop() {
+	for _, relay := range r.relays {
+		relay.Stop()
+	}
+}
+
 func (r *RemoteRelayAggregator) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, registration ValidatorData) error {
 	r.registrationsCacheLock.RLock()
 	defer r.registrationsCacheLock.RUnlock()
