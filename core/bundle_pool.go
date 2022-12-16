@@ -12,7 +12,7 @@ import (
 type BundlePool struct {
 	mevBundles []types.MevBundle
 
-	mu sync.RWMutex
+	mu sync.Mutex
 }
 
 // NewBundlePool creates a new bundle pool to gather and filter inbound
