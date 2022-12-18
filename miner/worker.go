@@ -1290,6 +1290,23 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	return env, nil
 }
 
+func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) (error, []types.SimulatedBundle, []types.SimulatedBundle) {
+	var (
+		blockBundles []types.SimulatedBundle
+		allBundles   []types.SimulatedBundle
+		err          error
+	)
+	switch w.flashbots.algoType {
+	case ALGO_GREEDY:
+		err, blockBundles, allBundles = w.fillTransactionsAlgoWorker(interrupt, env)
+	case ALGO_MEV_GETH:
+		err, blockBundles, allBundles = w.fillTransactions(interrupt, env)
+	default:
+		err, blockBundles, allBundles = w.fillTransactions(interrupt, env)
+	}
+	return err, blockBundles, allBundles
+}
+
 // fillTransactions retrieves the pending transactions from the txpool and fills them
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
@@ -1421,17 +1438,8 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, error) {
 		return nil, err
 	}
 
-	var blockBundles []types.SimulatedBundle
-	var allBundles []types.SimulatedBundle
 	orderCloseTime := time.Now()
-	switch w.flashbots.algoType {
-	case ALGO_GREEDY:
-		err, blockBundles, allBundles = w.fillTransactionsAlgoWorker(nil, work)
-	case ALGO_MEV_GETH:
-		err, blockBundles, allBundles = w.fillTransactions(nil, work)
-	default:
-		err, blockBundles, allBundles = w.fillTransactions(nil, work)
-	}
+	err, blockBundles, allBundles := w.fillTransactionsSelectAlgo(nil, work)
 
 	if err != nil {
 		return nil, err
@@ -1525,7 +1533,7 @@ func (w *worker) commitWork(interrupt *int32, noempty bool, timestamp int64) {
 	}
 
 	// Fill pending transactions from the txpool
-	err, _, _ = w.fillTransactions(interrupt, work)
+	err, _, _ = w.fillTransactionsSelectAlgo(interrupt, work)
 	if err != nil && !errors.Is(err, errBlockInterruptedByRecommit) {
 		work.discard()
 		return
