@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -19,31 +20,43 @@ type testBeaconClient struct {
 	slot      uint64
 }
 
+func (b *testBeaconClient) Stop() {
+	return
+}
+
 func (b *testBeaconClient) isValidator(pubkey PubkeyHex) bool {
 	return true
 }
 func (b *testBeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error) {
 	return PubkeyHex(hexutil.Encode(b.validator.Pk)), nil
 }
-func (b *testBeaconClient) onForkchoiceUpdate() (uint64, error) {
-	return b.slot, nil
+func (b *testBeaconClient) Start() error {
+	return nil
 }
 
 type BeaconClient struct {
-	endpoint string
+	endpoint      string
+	slotsInEpoch  uint64
+	secondsInSlot uint64
 
-	mu               sync.Mutex
-	currentEpoch     uint64
-	currentSlot      uint64
-	nextSlotProposer PubkeyHex
-	slotProposerMap  map[uint64]PubkeyHex
+	mu              sync.Mutex
+	slotProposerMap map[uint64]PubkeyHex
+
+	closeCh chan struct{}
 }
 
-func NewBeaconClient(endpoint string) *BeaconClient {
+func NewBeaconClient(endpoint string, slotsInEpoch uint64, secondsInSlot uint64) *BeaconClient {
 	return &BeaconClient{
 		endpoint:        endpoint,
+		slotsInEpoch:    slotsInEpoch,
+		secondsInSlot:   secondsInSlot,
 		slotProposerMap: make(map[uint64]PubkeyHex),
+		closeCh:         make(chan struct{}),
 	}
+}
+
+func (b *BeaconClient) Stop() {
+	close(b.closeCh)
 }
 
 func (b *BeaconClient) isValidator(pubkey PubkeyHex) bool {
@@ -51,50 +64,94 @@ func (b *BeaconClient) isValidator(pubkey PubkeyHex) bool {
 }
 
 func (b *BeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error) {
-	/* Only returns proposer if requestedSlot is currentSlot + 1, would be a race otherwise */
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	if b.currentSlot+1 != requestedSlot {
-		return PubkeyHex(""), errors.New("slot out of sync")
+	nextSlotProposer, found := b.slotProposerMap[requestedSlot]
+	if !found {
+		log.Error("inconsistent proposer mapping", "requestSlot", requestedSlot, "slotProposerMap", b.slotProposerMap)
+		return PubkeyHex(""), errors.New("inconsistent proposer mapping")
 	}
-	return b.nextSlotProposer, nil
+	return nextSlotProposer, nil
 }
 
-/* Returns next slot's proposer pubkey */
-// TODO: what happens if no block for previous slot - should still get next slot
-func (b *BeaconClient) onForkchoiceUpdate() (uint64, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
+func (b *BeaconClient) Start() error {
+	go b.UpdateValidatorMapForever()
+	return nil
+}
 
+func (b *BeaconClient) UpdateValidatorMapForever() {
+	durationPerSlot := time.Duration(b.secondsInSlot) * time.Second
+
+	prevFetchSlot := uint64(0)
+
+	// fetch current epoch if beacon is online
 	currentSlot, err := fetchCurrentSlot(b.endpoint)
 	if err != nil {
-		return 0, err
+		log.Error("could not get current slot", "err", err)
+	} else {
+		currentEpoch := currentSlot / b.slotsInEpoch
+		slotProposerMap, err := fetchEpochProposersMap(b.endpoint, currentEpoch)
+		if err != nil {
+			log.Error("could not fetch validators map", "epoch", currentEpoch, "err", err)
+		} else {
+			b.mu.Lock()
+			b.slotProposerMap = slotProposerMap
+			b.mu.Unlock()
+		}
 	}
 
-	nextSlot := currentSlot + 1
+	retryDelay := time.Second
 
-	b.currentSlot = currentSlot
-	nextSlotEpoch := nextSlot / 32
-
-	if nextSlotEpoch != b.currentEpoch {
-		// TODO: this should be prepared in advance, possibly just fetch for next epoch in advance
-		slotProposerMap, err := fetchEpochProposersMap(b.endpoint, nextSlotEpoch)
-		if err != nil {
-			return 0, err
+	// Every half epoch request validators map, polling for the slot
+	// more frequently to avoid missing updates on errors
+	timer := time.NewTimer(retryDelay)
+	defer timer.Stop()
+	for true {
+		select {
+		case <-b.closeCh:
+			return
+		case <-timer.C:
 		}
 
-		b.currentEpoch = nextSlotEpoch
-		b.slotProposerMap = slotProposerMap
-	}
+		currentSlot, err := fetchCurrentSlot(b.endpoint)
+		if err != nil {
+			log.Error("could not get current slot", "err", err)
+			timer.Reset(retryDelay)
+			continue
+		}
 
-	nextSlotProposer, found := b.slotProposerMap[nextSlot]
-	if !found {
-		log.Error("inconsistent proposer mapping", "currentSlot", currentSlot, "slotProposerMap", b.slotProposerMap)
-		return 0, errors.New("inconsistent proposer mapping")
+		// TODO: should poll after consistent slot within the epoch (slot % slotsInEpoch/2 == 0)
+		nextFetchSlot := prevFetchSlot + b.slotsInEpoch/2
+		if currentSlot < nextFetchSlot {
+			timer.Reset(time.Duration(nextFetchSlot-currentSlot) * durationPerSlot)
+			continue
+		}
+
+		currentEpoch := currentSlot / b.slotsInEpoch
+		slotProposerMap, err := fetchEpochProposersMap(b.endpoint, currentEpoch+1)
+		if err != nil {
+			log.Error("could not fetch validators map", "epoch", currentEpoch+1, "err", err)
+			timer.Reset(retryDelay)
+			continue
+		}
+
+		prevFetchSlot = currentSlot
+		b.mu.Lock()
+		// remove previous epoch slots
+		for k := range b.slotProposerMap {
+			if k < currentEpoch*b.slotsInEpoch {
+				delete(b.slotProposerMap, k)
+			}
+		}
+		// update the slot proposer map for next epoch
+		for k, v := range slotProposerMap {
+			b.slotProposerMap[k] = v
+		}
+		b.mu.Unlock()
+
+		timer.Reset(time.Duration(nextFetchSlot-currentSlot) * durationPerSlot)
 	}
-	b.nextSlotProposer = nextSlotProposer
-	return nextSlot, nil
 }
 
 func fetchCurrentSlot(endpoint string) (uint64, error) {
