@@ -144,7 +144,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	copy(bellatrixForkVersion[:], bellatrixForkVersionBytes[:4])
 	proposerSigningDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeBeaconProposer, bellatrixForkVersion, genesisValidatorsRoot)
 
-	beaconClient := NewBeaconClient(cfg.BeaconEndpoint)
+	beaconClient := NewBeaconClient(cfg.BeaconEndpoint, cfg.SlotsInEpoch, cfg.SecondsInSlot)
 
 	var localRelay *LocalRelay
 	if cfg.EnableLocalRelay {

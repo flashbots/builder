@@ -32,12 +32,15 @@ type ValidatorData struct {
 type IBeaconClient interface {
 	isValidator(pubkey PubkeyHex) bool
 	getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error)
-	onForkchoiceUpdate() (uint64, error)
+	Start() error
+	Stop()
 }
 
 type IRelay interface {
 	SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, vd ValidatorData) error
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
+	Start() error
+	Stop()
 }
 
 type IBuilder interface {
@@ -89,7 +92,7 @@ func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRe
 }
 
 func (b *Builder) Start() error {
-	return nil
+	return b.relay.Start()
 }
 
 func (b *Builder) Stop() error {
