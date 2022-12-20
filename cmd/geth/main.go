@@ -166,6 +166,8 @@ var (
 		utils.BuilderEnableValidatorChecks,
 		utils.BuilderBlockValidationBlacklistSourceFilePath,
 		utils.BuilderEnableLocalRelay,
+		utils.BuilderSecondsInSlot,
+		utils.BuilderSlotsInEpoch,
 		utils.BuilderDisableBundleFetcher,
 		utils.BuilderDryRun,
 		utils.BuilderSecretKey,

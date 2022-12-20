@@ -4,6 +4,8 @@ type Config struct {
 	Enabled                       bool     `toml:",omitempty"`
 	EnableValidatorChecks         bool     `toml:",omitempty"`
 	EnableLocalRelay              bool     `toml:",omitempty"`
+	SlotsInEpoch                  uint64   `toml:",omitempty"`
+	SecondsInSlot                 uint64   `toml:",omitempty"`
 	DisableBundleFetcher          bool     `toml:",omitempty"`
 	DryRun                        bool     `toml:",omitempty"`
 	BuilderSecretKey              string   `toml:",omitempty"`
@@ -23,6 +25,8 @@ var DefaultConfig = Config{
 	Enabled:                       false,
 	EnableValidatorChecks:         false,
 	EnableLocalRelay:              false,
+	SlotsInEpoch:                  32,
+	SecondsInSlot:                 12,
 	DisableBundleFetcher:          false,
 	DryRun:                        false,
 	BuilderSecretKey:              "0x2fc12ae741f29701f8e30f5de6350766c020cb80768a0ff01e6838ffd2431e11",
