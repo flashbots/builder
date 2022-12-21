@@ -62,6 +62,7 @@ func init() {
 			if !EnabledBuilder && flag == enabler {
 				log.Info("Enabling builder metrics collection")
 				EnabledBuilder = true
+				break
 			}
 		}
 	}

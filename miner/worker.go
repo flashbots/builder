@@ -1716,6 +1716,12 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pe
 		wg.Add(1)
 		go func(idx int, bundle types.MevBundle, state *state.StateDB) {
 			defer wg.Done()
+
+			start := time.Now()
+			if metrics.EnabledBuilder {
+				bundleTxNumHistogram.Update(int64(len(bundle.Txs)))
+			}
+
 			if len(bundle.Txs) == 0 {
 				return
 			}
@@ -1727,9 +1733,9 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pe
 			}
 
 			if err != nil {
-
 				if metrics.EnabledBuilder {
 					simulationRevertedMeter.Mark(1)
+					failedBundleSimulationTimer.UpdateSince(start)
 				}
 
 				log.Trace("Error computing gas for a bundle", "error", err)
@@ -1739,6 +1745,7 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pe
 
 			if metrics.EnabledBuilder {
 				simulationCommittedMeter.Mark(1)
+				successfulBundleSimulationTimer.UpdateSince(start)
 			}
 		}(i, bundle, env.state.Copy())
 	}
@@ -1756,7 +1763,7 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, pe
 
 	log.Debug("Simulated bundles", "block", env.header.Number, "allBundles", len(bundles), "okBundles", len(simulatedBundles), "time", time.Since(start))
 	if metrics.EnabledBuilder {
-		simulatedBundlesTimer.Update(time.Since(start))
+		blockBundleSimulationTimer.Update(time.Since(start))
 	}
 	return simulatedBundles, nil
 }
