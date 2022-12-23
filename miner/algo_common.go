@@ -95,7 +95,7 @@ func applyTransactionWithBlacklist(signer types.Signer, config *params.ChainConf
 		return receipt, statedb, err
 	}
 
-	sender, err := signer.Sender(tx)
+	sender, err := types.Sender(signer, tx)
 	if err != nil {
 		return nil, statedb, err
 	}
@@ -376,7 +376,7 @@ func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver
 		return nil, err
 	}
 
-	txSender, err := signer.Sender(tx)
+	txSender, err := types.Sender(signer, tx)
 	if err != nil {
 		return nil, err
 	}
