@@ -92,12 +92,25 @@ $ geth --help
 
     --miner.extradata value       
           Block extra data set by the miner (default = client version)
+   
+   METRICS
+
+   --metrics.builder value          (default: false)
+            Enable builder metrics collection and reporting
 ```
 
 Environment variables:
 ```
 BUILDER_TX_SIGNING_KEY - private key of the builder used to sign payment transaction, must be the same as the coinbase address
 ```
+
+## Metrics
+
+To enable metrics on the builder you will need to enable metrics with the flags `--metrics --metrics.addr 127.0.0.1 --metrics.builder` which will run
+a metrics server serving at `127.0.0.1:6060/debug/metrics`. This will record performance metrics such as block profit and block building times.
+The full list of metrics can be found in `miner/metrics.go`. 
+
+See the [metrics docs](https://geth.ethereum.org/docs/monitoring/metrics) for geth for more documentation.
 
 ## Details of the implementation
 
