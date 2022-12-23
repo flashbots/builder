@@ -579,11 +579,12 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 			// If sealing is running resubmit a new work cycle periodically to pull in
 			// higher priced transactions. Disable this overhead for pending blocks.
 			if w.isRunning() && (w.chainConfig.Clique == nil || w.chainConfig.Clique.Period > 0) {
+				// flashbots: disable this because there can be new bundles
 				// Short circuit if no new transaction arrives.
-				if atomic.LoadInt32(&w.newTxs) == 0 {
-					timer.Reset(recommit)
-					continue
-				}
+				//if atomic.LoadInt32(&w.newTxs) == 0 {
+				//	timer.Reset(recommit)
+				//	continue
+				//}
 				commit(true, commitInterruptResubmit)
 			}
 
@@ -1296,6 +1297,23 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		commitUncles(w.remoteUncles)
 	}
 	return env, nil
+}
+
+func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) (error, []types.SimulatedBundle, []types.SimulatedBundle) {
+	var (
+		blockBundles []types.SimulatedBundle
+		allBundles   []types.SimulatedBundle
+		err          error
+	)
+	switch w.flashbots.algoType {
+	case ALGO_GREEDY:
+		err, blockBundles, allBundles = w.fillTransactionsAlgoWorker(interrupt, env)
+	case ALGO_MEV_GETH:
+		err, blockBundles, allBundles = w.fillTransactions(interrupt, env)
+	default:
+		err, blockBundles, allBundles = w.fillTransactions(interrupt, env)
+	}
+	return err, blockBundles, allBundles
 }
 
 // fillTransactions retrieves the pending transactions from the txpool and fills them
