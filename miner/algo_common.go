@@ -71,6 +71,7 @@ func (e *environmentDiff) applyToBaseEnv() {
 	env := e.baseEnvironment
 	env.gasPool = new(core.GasPool).AddGas(e.gasPool.Gas())
 	env.header = e.header
+	env.state.StopPrefetcher()
 	env.state = e.state
 	env.profit.Add(env.profit, e.newProfit)
 	env.tcount += len(e.newTxs)
