@@ -212,6 +212,11 @@ $ geth --help
 
     --miner.extradata value       
           Block extra data set by the miner (default = client version)
+   
+   METRICS
+
+   --metrics.builder value          (default: false)
+            Enable builder metrics collection and reporting
 ```
 
 This will start `geth` in snap-sync mode with a DB memory allowance of 1GB, as the

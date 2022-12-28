@@ -797,6 +797,11 @@ func (s *StateDB) Copy() *StateDB {
 			state.snapStorage[k] = temp
 		}
 	}
+
+	if metrics.EnabledBuilder {
+		stateCopyMeter.Mark(1)
+	}
+
 	return state
 }
 
@@ -805,6 +810,11 @@ func (s *StateDB) Snapshot() int {
 	id := s.nextRevisionId
 	s.nextRevisionId++
 	s.validRevisions = append(s.validRevisions, revision{id, s.journal.length()})
+
+	if metrics.EnabledBuilder {
+		stateSnapshotMeter.Mark(1)
+	}
+	
 	return id
 }
 
