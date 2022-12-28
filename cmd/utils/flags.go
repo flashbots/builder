@@ -1026,6 +1026,12 @@ var (
 		Usage:    "Enable expensive metrics collection and reporting",
 		Category: flags.MetricsCategory,
 	}
+	// Builder metrics flag
+	MetricsEnabledBuilderFlag = &cli.BoolFlag{
+		Name:     "metrics.builder",
+		Usage:    "Enable builder metrics collection and reporting",
+		Category: flags.MetricsCategory,
+	}
 
 	// MetricsHTTPFlag defines the endpoint for a stand-alone metrics HTTP endpoint.
 	// Since the pprof service enables sensitive/vulnerable behavior, this allows a user

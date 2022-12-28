@@ -214,6 +214,7 @@ var (
 	metricsFlags = []cli.Flag{
 		utils.MetricsEnabledFlag,
 		utils.MetricsEnabledExpensiveFlag,
+		utils.MetricsEnabledBuilderFlag,
 		utils.MetricsHTTPFlag,
 		utils.MetricsPortFlag,
 		utils.MetricsEnableInfluxDBFlag,
