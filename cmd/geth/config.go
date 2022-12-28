@@ -30,7 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/accounts/scwallet"
 	"github.com/ethereum/go-ethereum/accounts/usbwallet"
-	builder "github.com/ethereum/go-ethereum/builder"
+	"github.com/ethereum/go-ethereum/builder"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	blockvalidationapi "github.com/ethereum/go-ethereum/eth/block-validation"
@@ -171,7 +171,6 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		override := ctx.Bool(utils.OverrideTerminalTotalDifficultyPassed.Name)
 		cfg.Eth.OverrideTerminalTotalDifficultyPassed = &override
 	}
-
 	// Construct the backend service.
 	backend, eth := utils.RegisterEthService(stack, &cfg.Eth, &cfg.Builder)
 

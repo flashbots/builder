@@ -292,25 +292,25 @@ func estimatePayoutTxGas(env *environment, sender, receiver common.Address, prv 
 	return receipt.GasUsed, false, nil
 }
 
-func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint64, isEOA bool, availableFunds *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
-	applyTx := func(envDiff *environmentDiff, gas uint64) (*types.Receipt, error) {
-		fee := new(big.Int).Mul(env.header.BaseFee, new(big.Int).SetUint64(gas))
-		amount := new(big.Int).Sub(availableFunds, fee)
-		if amount.Sign() < 0 {
-			return nil, errors.New("not enough funds available")
-		}
-		rec, err := envDiff.commitPayoutTx(amount, sender, receiver, gas, prv, chData)
-		if err != nil {
-			return nil, fmt.Errorf("failed to commit payment tx: %w", err)
-		} else if rec.Status != types.ReceiptStatusSuccessful {
-			return nil, fmt.Errorf("payment tx failed")
-		}
-		return rec, nil
-	}
+func applyPayoutTx(envDiff *environmentDiff, sender, receiver common.Address, gas uint64, amountWithFees *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
+	amount := new(big.Int).Sub(amountWithFees, new(big.Int).Mul(envDiff.header.BaseFee, big.NewInt(int64(gas))))
 
+	if amount.Sign() < 0 {
+		return nil, errors.New("not enough funds available")
+	}
+	rec, err := envDiff.commitPayoutTx(amount, sender, receiver, gas, prv, chData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to commit payment tx: %w", err)
+	} else if rec.Status != types.ReceiptStatusSuccessful {
+		return nil, fmt.Errorf("payment tx failed")
+	}
+	return rec, nil
+}
+
+func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint64, isEOA bool, availableFunds *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
 	if isEOA {
 		diff := newEnvironmentDiff(env)
-		rec, err := applyTx(diff, gas)
+		rec, err := applyPayoutTx(diff, sender, receiver, gas, availableFunds, prv, chData)
 		if err != nil {
 			return nil, err
 		}
@@ -322,7 +322,7 @@ func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint6
 	for i := 0; i < 6; i++ {
 		diff := newEnvironmentDiff(env)
 		var rec *types.Receipt
-		rec, err = applyTx(diff, gas)
+		rec, err = applyPayoutTx(diff, sender, receiver, gas, availableFunds, prv, chData)
 		if err != nil {
 			gas += 1000
 			continue
@@ -334,7 +334,7 @@ func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint6
 		}
 
 		exactEnvDiff := newEnvironmentDiff(env)
-		exactRec, err := applyTx(exactEnvDiff, rec.GasUsed)
+		exactRec, err := applyPayoutTx(exactEnvDiff, sender, receiver, rec.GasUsed, availableFunds, prv, chData)
 		if err != nil {
 			diff.applyToBaseEnv()
 			return rec, nil

@@ -31,15 +31,6 @@ const (
 	_PathGetPayload        = "/eth/v1/builder/blinded_blocks"
 )
 
-type BuilderPayloadAttributes struct {
-	Timestamp             hexutil.Uint64 `json:"timestamp"`
-	Random                common.Hash    `json:"prevRandao"`
-	SuggestedFeeRecipient common.Address `json:"suggestedFeeRecipient,omitempty"`
-	Slot                  uint64         `json:"slot"`
-	HeadHash              common.Hash    `json:"blockHash"`
-	GasLimit              uint64
-}
-
 type Service struct {
 	srv     *http.Server
 	builder IBuilder
@@ -64,7 +55,7 @@ func (s *Service) Stop() error {
 	return nil
 }
 
-func (s *Service) PayloadAttributes(payloadAttributes *BuilderPayloadAttributes) error {
+func (s *Service) PayloadAttributes(payloadAttributes *types.BuilderPayloadAttributes) error {
 	return s.builder.OnPayloadAttribute(payloadAttributes)
 }
 
@@ -83,7 +74,7 @@ func getRouter(localRelay *LocalRelay) http.Handler {
 	return loggedRouter
 }
 
-func NewService(listenAddr string, localRelay *LocalRelay, builder *Builder) *Service {
+func NewService(listenAddr string, localRelay *LocalRelay, builder IBuilder) *Service {
 	var srv *http.Server
 	if localRelay != nil {
 		srv = &http.Server{
@@ -105,22 +96,7 @@ func NewService(listenAddr string, localRelay *LocalRelay, builder *Builder) *Se
 }
 
 func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
-	envRelaySkBytes, err := hexutil.Decode(cfg.RelaySecretKey)
-	if err != nil {
-		return errors.New("incorrect builder API secret key provided")
-	}
-
-	relaySk, err := bls.SecretKeyFromBytes(envRelaySkBytes[:])
-	if err != nil {
-		return errors.New("incorrect builder API secret key provided")
-	}
-
 	envBuilderSkBytes, err := hexutil.Decode(cfg.BuilderSecretKey)
-	if err != nil {
-		return errors.New("incorrect builder API secret key provided")
-	}
-
-	builderSk, err := bls.SecretKeyFromBytes(envBuilderSkBytes[:])
 	if err != nil {
 		return errors.New("incorrect builder API secret key provided")
 	}
@@ -148,6 +124,16 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 
 	var localRelay *LocalRelay
 	if cfg.EnableLocalRelay {
+		envRelaySkBytes, err := hexutil.Decode(cfg.RelaySecretKey)
+		if err != nil {
+			return errors.New("incorrect builder API secret key provided")
+		}
+
+		relaySk, err := bls.SecretKeyFromBytes(envRelaySkBytes[:])
+		if err != nil {
+			return errors.New("incorrect builder API secret key provided")
+		}
+
 		localRelay = NewLocalRelay(relaySk, beaconClient, builderSigningDomain, proposerSigningDomain, ForkData{cfg.GenesisForkVersion, cfg.BellatrixForkVersion, cfg.GenesisValidatorsRoot}, cfg.EnableValidatorChecks)
 	}
 
@@ -203,6 +189,12 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	}
 
 	ethereumService := NewEthereumService(backend)
+
+	builderSk, err := bls.SecretKeyFromBytes(envBuilderSkBytes[:])
+	if err != nil {
+		return errors.New("incorrect builder API secret key provided")
+	}
+
 	builderBackend := NewBuilder(builderSk, ds, relay, builderSigningDomain, ethereumService, cfg.DryRun, validator)
 	builderService := NewService(cfg.ListenAddr, localRelay, builderBackend)
 
