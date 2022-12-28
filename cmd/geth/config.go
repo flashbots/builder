@@ -235,6 +235,9 @@ func applyMetricConfig(ctx *cli.Context, cfg *gethConfig) {
 	if ctx.IsSet(utils.MetricsEnabledExpensiveFlag.Name) {
 		cfg.Metrics.EnabledExpensive = ctx.Bool(utils.MetricsEnabledExpensiveFlag.Name)
 	}
+	if ctx.IsSet(utils.MetricsEnabledBuilderFlag.Name) {
+		cfg.Metrics.EnabledBuilder = ctx.Bool(utils.MetricsEnabledBuilderFlag.Name)
+	}
 	if ctx.IsSet(utils.MetricsHTTPFlag.Name) {
 		cfg.Metrics.HTTP = ctx.String(utils.MetricsHTTPFlag.Name)
 	}
