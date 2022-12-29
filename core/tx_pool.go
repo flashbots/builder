@@ -34,7 +34,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
-	"golang.org/x/crypto/sha3"
 )
 
 const (
@@ -169,7 +168,6 @@ type TxPoolConfig struct {
 	Lifetime          time.Duration // Maximum amount of time non-executable transaction are queued
 	PrivateTxLifetime time.Duration // Maximum amount of time to keep private transactions private
 
-	TrustedRelays []common.Address // Trusted relay addresses. Duplicated from the miner config.
 }
 
 // DefaultTxPoolConfig contains the default configurations for the transaction
@@ -264,9 +262,8 @@ type TxPool struct {
 	pending    map[common.Address]*txList   // All currently processable transactions
 	queue      map[common.Address]*txList   // Queued but non-processable transactions
 	beats      map[common.Address]time.Time // Last heartbeat from each known account
-	mevBundles []types.MevBundle
-	all        *txLookup     // All transactions to allow lookups
-	priced     *txPricedList // All transactions sorted by price
+	all        *txLookup                    // All transactions to allow lookups
+	priced     *txPricedList                // All transactions sorted by price
 	privateTxs *timestampedTxHashSet
 
 	chainHeadCh     chan ChainHeadEvent
@@ -280,6 +277,8 @@ type TxPool struct {
 	initDoneCh      chan struct{}  // is closed once the pool is initialized (for tests)
 
 	changesSinceReorg int // A counter for how many drops we've performed in-between reorg.
+
+	bundlePool *BundlePool
 }
 
 type txpoolResetRequest struct {
@@ -579,75 +578,6 @@ func (pool *TxPool) Pending(enforceTips bool) map[common.Address]types.Transacti
 		}
 	}
 	return pending
-}
-
-/// AllMevBundles returns all the MEV Bundles currently in the pool
-func (pool *TxPool) AllMevBundles() []types.MevBundle {
-	return pool.mevBundles
-}
-
-// MevBundles returns a list of bundles valid for the given blockNumber/blockTimestamp
-// also prunes bundles that are outdated
-func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) []types.MevBundle {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-
-	// returned values
-	var ret []types.MevBundle
-	// rolled over values
-	var bundles []types.MevBundle
-
-	for _, bundle := range pool.mevBundles {
-		// Prune outdated bundles
-		if (bundle.MaxTimestamp != 0 && blockTimestamp > bundle.MaxTimestamp) || blockNumber.Cmp(bundle.BlockNumber) > 0 {
-			continue
-		}
-
-		// Roll over future bundles
-		if (bundle.MinTimestamp != 0 && blockTimestamp < bundle.MinTimestamp) || blockNumber.Cmp(bundle.BlockNumber) < 0 {
-			bundles = append(bundles, bundle)
-			continue
-		}
-
-		// return the ones which are in time
-		ret = append(ret, bundle)
-		// keep the bundles around internally until they need to be pruned
-		bundles = append(bundles, bundle)
-	}
-
-	pool.mevBundles = bundles
-	return ret
-}
-
-// AddMevBundles adds a mev bundles to the pool
-func (pool *TxPool) AddMevBundles(mevBundles []types.MevBundle) error {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-
-	pool.mevBundles = append(pool.mevBundles, mevBundles...)
-	return nil
-}
-
-// AddMevBundle adds a mev bundle to the pool
-func (pool *TxPool) AddMevBundle(txs types.Transactions, blockNumber *big.Int, minTimestamp, maxTimestamp uint64, revertingTxHashes []common.Hash) error {
-	bundleHasher := sha3.NewLegacyKeccak256()
-	for _, tx := range txs {
-		bundleHasher.Write(tx.Hash().Bytes())
-	}
-	bundleHash := common.BytesToHash(bundleHasher.Sum(nil))
-
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-
-	pool.mevBundles = append(pool.mevBundles, types.MevBundle{
-		Txs:               txs,
-		BlockNumber:       blockNumber,
-		MinTimestamp:      minTimestamp,
-		MaxTimestamp:      maxTimestamp,
-		RevertingTxHashes: revertingTxHashes,
-		Hash:              bundleHash,
-	})
-	return nil
 }
 
 // Locals retrieves the accounts currently considered local by the pool.
