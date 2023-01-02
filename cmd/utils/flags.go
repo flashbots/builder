@@ -1818,7 +1818,9 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 		}
 		cfg.AlgoType = algoType
 	}
-	cfg.OnlyBlocksWithBundles = ctx.IsSet(MinerOnlyBlocksWithBundlesFlag.Name)
+	if ctx.IsSet(MinerOnlyBlocksWithBundlesFlag.Name) {
+		cfg.OnlyBlocksWithBundles = ctx.Bool(MinerOnlyBlocksWithBundlesFlag.Name)
+	}
 	if ctx.IsSet(MinerRecommitIntervalFlag.Name) {
 		cfg.Recommit = ctx.Duration(MinerRecommitIntervalFlag.Name)
 	}

@@ -1408,6 +1408,9 @@ func (w *worker) getSimulatedBundles(env *environment) ([]types.SimulatedBundle,
 	}
 
 	bundles := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
+	if w.config.OnlyBlocksWithBundles && len(bundles) == 0 {
+		return nil, errors.New("no bundles included, skipping block building")
+	}
 
 	// TODO: consider interrupt
 	simBundles, err := w.simulateBundles(env, bundles, nil) /* do not consider gas impact of mempool txs as bundles are treated as transactions wrt ordering */
