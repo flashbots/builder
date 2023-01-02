@@ -126,13 +126,20 @@ func TestOnPayloadAttributes(t *testing.T) {
 
 	require.Equal(t, uint64(25), testRelay.requestedSlot)
 
-	// Clear the submitted message and check that the job will be ran again and but a new message will not be submitted since the profit is the same
+	// Clear the submitted message and check that the job will be ran again and but a new message will not be submitted since the hash is the same
+	testBlock.Profit = big.NewInt(10)
 	testRelay.submittedMsg = nil
 	time.Sleep(2200 * time.Millisecond)
 	require.Nil(t, testRelay.submittedMsg)
 
-	// Up the profit, expect to get the block
-	testEthService.testBlock.Profit.SetInt64(11)
+	// Change the hash, expect to get the block
+	testExecutableData.ExtraData = hexutil.MustDecode("0x0042fafd")
+	testExecutableData.BlockHash = common.HexToHash("0x0579b1aaca5c079c91e5774bac72c7f9bc2ddf2b126e9c632be68a1cb8f3fc71")
+	testBlock, err = beacon.ExecutableDataToBlock(*testExecutableData)
+	testBlock.Profit = big.NewInt(10)
+	require.NoError(t, err)
+	testEthService.testBlock = testBlock
+
 	time.Sleep(2200 * time.Millisecond)
 	require.NotNil(t, testRelay.submittedMsg)
 }

@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
@@ -21,6 +22,7 @@ const (
 type IDatabaseService interface {
 	ConsumeBuiltBlock(block *types.Block, OrdersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, bidTrace *boostTypes.BidTrace)
 	GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error)
+	GetLatestUuidBundles(ctx context.Context, blockNum int64) ([]types.LatestUuidBundle, error)
 }
 
 type NilDbService struct{}
@@ -32,12 +34,17 @@ func (NilDbService) GetPriorityBundles(ctx context.Context, blockNum int64, isHi
 	return []DbBundle{}, nil
 }
 
+func (NilDbService) GetLatestUuidBundles(ctx context.Context, blockNum int64) ([]types.LatestUuidBundle, error) {
+	return []types.LatestUuidBundle{}, nil
+}
+
 type DatabaseService struct {
 	db *sqlx.DB
 
-	insertBuiltBlockStmt    *sqlx.NamedStmt
-	insertMissingBundleStmt *sqlx.NamedStmt
-	fetchPrioBundlesStmt    *sqlx.NamedStmt
+	insertBuiltBlockStmt      *sqlx.NamedStmt
+	insertMissingBundleStmt   *sqlx.NamedStmt
+	fetchPrioBundlesStmt      *sqlx.NamedStmt
+	fetchGetLatestUuidBundles *sqlx.NamedStmt
 }
 
 func NewDatabaseService(postgresDSN string) (*DatabaseService, error) {
@@ -60,11 +67,18 @@ func NewDatabaseService(postgresDSN string) (*DatabaseService, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	fetchGetLatestUuidBundles, err := db.PrepareNamed("select replacement_uuid, signing_address, bundle_hash from latest_uuid_bundle where target_block_number = :target_block_number")
+	if err != nil {
+		return nil, err
+	}
+
 	return &DatabaseService{
-		db:                      db,
-		insertBuiltBlockStmt:    insertBuiltBlockStmt,
-		insertMissingBundleStmt: insertMissingBundleStmt,
-		fetchPrioBundlesStmt:    fetchPrioBundlesStmt,
+		db:                        db,
+		insertBuiltBlockStmt:      insertBuiltBlockStmt,
+		insertMissingBundleStmt:   insertMissingBundleStmt,
+		fetchPrioBundlesStmt:      fetchPrioBundlesStmt,
+		fetchGetLatestUuidBundles: fetchGetLatestUuidBundles,
 	}, nil
 }
 
@@ -260,21 +274,29 @@ func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, ordersClosedAt 
 }
 func (ds *DatabaseService) GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error) {
 	var bundles []DbBundle
-	tx, err := ds.db.Beginx()
-	if err != nil {
-		log.Error("failed to begin db tx for get priority bundles", "err", err)
-		return nil, err
-	}
 	arg := map[string]interface{}{"param_block_number": uint64(blockNum), "is_high_prio": isHighPrio, "limit": lowPrioLimitSize}
 	if isHighPrio {
 		arg["limit"] = highPrioLimitSize
 	}
-	if err = tx.NamedStmtContext(ctx, ds.fetchPrioBundlesStmt).SelectContext(ctx, &bundles, arg); err != nil {
+	if err := ds.fetchPrioBundlesStmt.SelectContext(ctx, &bundles, arg); err != nil {
 		return nil, err
 	}
-	err = tx.Commit()
-	if err != nil {
-		log.Error("could not commit GetPriorityBundles transaction", "err", err)
-	}
 	return bundles, nil
+}
+
+func (ds *DatabaseService) GetLatestUuidBundles(ctx context.Context, blockNum int64) ([]types.LatestUuidBundle, error) {
+	var dstLatestBundles []DbLatestUuidBundle
+	kwArg := map[string]interface{}{"target_block_number": blockNum}
+	if err := ds.fetchGetLatestUuidBundles.SelectContext(ctx, &dstLatestBundles, kwArg); err != nil {
+		return nil, err
+	}
+	latestBundles := make([]types.LatestUuidBundle, 0, len(dstLatestBundles))
+	for _, dbLub := range dstLatestBundles {
+		latestBundles = append(latestBundles, types.LatestUuidBundle{
+			Uuid:           dbLub.Uuid,
+			SigningAddress: common.HexToAddress(dbLub.SigningAddress),
+			BundleHash:     common.HexToHash(dbLub.BundleHash),
+		})
+	}
+	return latestBundles, nil
 }
