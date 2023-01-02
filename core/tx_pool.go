@@ -596,6 +596,63 @@ func (pool *TxPool) Pending(enforceTips bool) map[common.Address]types.Transacti
 	return pending
 }
 
+type uuidBundleKey struct {
+	Uuid           uuid.UUID
+	SigningAddress common.Address
+}
+
+func (pool *TxPool) fetchLatestCancellableBundles(ctx context.Context, blockNumber *big.Int) (chan []types.LatestUuidBundle, chan error) {
+	if pool.bundleFetcher == nil {
+		return nil, nil
+	}
+	errCh := make(chan error, 1)
+	lubCh := make(chan []types.LatestUuidBundle, 1)
+	go func(blockNum int64) {
+		lub, err := pool.bundleFetcher.GetLatestUuidBundles(ctx, blockNum)
+		errCh <- err
+		lubCh <- lub
+	}(blockNumber.Int64())
+	return lubCh, errCh
+}
+
+func resolveCancellableBundles(lubCh chan []types.LatestUuidBundle, errCh chan error, uuidBundles map[uuidBundleKey][]types.MevBundle) []types.MevBundle {
+	if lubCh == nil || errCh == nil {
+		return nil
+	}
+
+	if len(uuidBundles) == 0 {
+		return nil
+	}
+
+	err := <-errCh
+	if err != nil {
+		log.Error("could not fetch latest bundles uuid map", "err", err)
+		return nil
+	}
+
+	currentCancellableBundles := []types.MevBundle{}
+
+	log.Trace("Processing uuid bundles", "uuidBundles", uuidBundles)
+
+	lubs := <-lubCh
+	for _, lub := range lubs {
+		ubk := uuidBundleKey{lub.Uuid, lub.SigningAddress}
+		bundles, found := uuidBundles[ubk]
+		if !found {
+			log.Trace("missing uuid bundle", "ubk", ubk)
+			continue
+		}
+		for _, bundle := range bundles {
+			if bundle.Hash == lub.BundleHash {
+				log.Trace("adding uuid bundle", "bundle hash", bundle.Hash.String(), "lub", lub)
+				currentCancellableBundles = append(currentCancellableBundles, bundle)
+				break
+			}
+		}
+	}
+	return currentCancellableBundles
+}
+
 // MevBundles returns a list of bundles valid for the given blockNumber/blockTimestamp
 // also prunes bundles that are outdated
 // Returns regular bundles and a function resolving to current cancellable bundles
@@ -604,30 +661,12 @@ func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]t
 	defer pool.mu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-
-	currentCancellableBundlesCh := make(chan []types.MevBundle, 1)
-	var errCh chan error
-	var lubCh chan []types.LatestUuidBundle
-	if pool.bundleFetcher == nil {
-		currentCancellableBundlesCh <- nil
-	} else {
-		errCh = make(chan error, 1)
-		lubCh = make(chan []types.LatestUuidBundle, 1)
-		go func(blockNum int64) {
-			lub, err := pool.bundleFetcher.GetLatestUuidBundles(ctx, blockNum)
-			errCh <- err
-			lubCh <- lub
-		}(blockNumber.Int64())
-	}
+	lubCh, errCh := pool.fetchLatestCancellableBundles(ctx, blockNumber)
 
 	// returned values
 	var ret []types.MevBundle
 	// rolled over values
 	var bundles []types.MevBundle
-	type uuidBundleKey struct {
-		Uuid           uuid.UUID
-		SigningAddress common.Address
-	}
 	// (uuid, signingAddress) -> list of bundles
 	var uuidBundles = make(map[uuidBundleKey][]types.MevBundle)
 
@@ -661,59 +700,13 @@ func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]t
 
 	pool.mevBundles = bundles
 
-	if pool.bundleFetcher == nil {
+	cancellableBundlesCh := make(chan []types.MevBundle, 1)
+	go func() {
+		cancellableBundlesCh <- resolveCancellableBundles(lubCh, errCh, uuidBundles)
 		cancel()
-		return ret, currentCancellableBundlesCh
-	}
+	}()
 
-	if len(uuidBundles) == 0 {
-		cancel()
-		currentCancellableBundlesCh <- nil
-		return ret, currentCancellableBundlesCh
-	}
-
-	go func(map[uuidBundleKey][]types.MevBundle) {
-		defer cancel()
-		err := <-errCh
-		if err != nil {
-			log.Error("could not fetch latest bundles uuid map", "err", err)
-			currentCancellableBundlesCh <- nil
-			return
-		}
-		currentCancellableBundles := []types.MevBundle{}
-
-		log.Trace("Processing uuid bundles", "uuidBundles", uuidBundles)
-
-		lubs := <-lubCh
-		for _, lub := range lubs {
-			ubk := uuidBundleKey{lub.Uuid, lub.SigningAddress}
-			bundles, found := uuidBundles[ubk]
-			if !found {
-				log.Trace("missing uuid bundle", "ubk", ubk)
-				continue
-			}
-			for _, bundle := range bundles {
-				if bundle.Hash == lub.BundleHash {
-					log.Trace("Adding uuid bundle", "bundle hash", bundle.Hash.String(), "lub", lub)
-					currentCancellableBundles = append(currentCancellableBundles, bundle)
-					break
-				}
-			}
-		}
-		currentCancellableBundlesCh <- currentCancellableBundles
-	}(uuidBundles)
-
-	// TODO: wat do with the rest of the uuidBundles? Wat do if the db did not return?
-	// For now assuming all are cancelled for safety
-	/*
-		for ubk, pmbIs := range uuidBundles {
-			for _, pmbI := range pmbIs {
-				bundles = append(bundles, pool.mevBundles[pmbI])
-			}
-			ret = append(ret, bundles[len(bundles)-1])
-		}
-	*/
-	return ret, currentCancellableBundlesCh
+	return ret, cancellableBundlesCh
 }
 
 // AddMevBundles adds a mev bundles to the pool
