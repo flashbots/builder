@@ -553,6 +553,11 @@ var (
 		Value:    "mev-geth",
 		Category: flags.MinerCategory,
 	}
+	MinerOnlyBlocksWithBundlesFlag = &cli.BoolFlag{
+		Name:     "miner.only_bundle_blocks",
+		Usage:    "Build only blocks with bundles",
+		Category: flags.MinerCategory,
+	}
 	MinerEtherbaseFlag = &cli.StringFlag{
 		Name:     "miner.etherbase",
 		Usage:    "Public address for block mining rewards (default = first account)",
@@ -1812,6 +1817,9 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 			Fatalf("Invalid algo in --miner.algotype: %s", ctx.String(MinerAlgoTypeFlag.Name))
 		}
 		cfg.AlgoType = algoType
+	}
+	if ctx.IsSet(MinerOnlyBlocksWithBundlesFlag.Name) {
+		cfg.OnlyBlocksWithBundles = ctx.Bool(MinerOnlyBlocksWithBundlesFlag.Name)
 	}
 	if ctx.IsSet(MinerRecommitIntervalFlag.Name) {
 		cfg.Recommit = ctx.Duration(MinerRecommitIntervalFlag.Name)

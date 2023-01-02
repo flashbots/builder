@@ -85,6 +85,9 @@ $ geth --help
 
     --miner.algotype value         (default: "mev-geth")
           Block building algorithm to use [=mev-geth] (mev-geth, greedy)
+
+    --miner.only_bundle_blocks     (default: false)
+          Build only blocks with bundles
    
     --miner.blocklist value       
           flashbots - Path to JSON file with list of blocked addresses. Miner will ignore
