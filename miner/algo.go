@@ -1,7 +1,14 @@
 package miner
 
 type BundleAlgo interface {
-	BuildBlock(order []Order) (*environment, []Order) // returns the bundles used in the block to save to db
+	MergeOrders(orders []Order) (*environment, []Order) // returns the bundles used in the block to save to db
+}
+
+func BuildBlock(orders []Order, algo BundleAlgo) (*environment, []Order) {
+	// metrics
+	newEnv, committedOrders := algo.MergeOrders(orders)
+	// metrics
+	return newEnv, committedOrders
 }
 
 type GreedyAlgo struct {
