@@ -41,10 +41,10 @@ func (NilDbService) GetLatestUuidBundles(ctx context.Context, blockNum int64) ([
 type DatabaseService struct {
 	db *sqlx.DB
 
-	insertBuiltBlockStmt      *sqlx.NamedStmt
-	insertMissingBundleStmt   *sqlx.NamedStmt
-	fetchPrioBundlesStmt      *sqlx.NamedStmt
-	fetchGetLatestUuidBundles *sqlx.NamedStmt
+	insertBuiltBlockStmt          *sqlx.NamedStmt
+	insertMissingBundleStmt       *sqlx.NamedStmt
+	fetchPrioBundlesStmt          *sqlx.NamedStmt
+	fetchGetLatestUuidBundlesStmt *sqlx.NamedStmt
 }
 
 func NewDatabaseService(postgresDSN string) (*DatabaseService, error) {
@@ -68,17 +68,17 @@ func NewDatabaseService(postgresDSN string) (*DatabaseService, error) {
 		return nil, err
 	}
 
-	fetchGetLatestUuidBundles, err := db.PrepareNamed("select replacement_uuid, signing_address, bundle_hash from latest_uuid_bundle where target_block_number = :target_block_number")
+	fetchGetLatestUuidBundlesStmt, err := db.PrepareNamed("select replacement_uuid, signing_address, bundle_hash from latest_uuid_bundle where target_block_number = :target_block_number")
 	if err != nil {
 		return nil, err
 	}
 
 	return &DatabaseService{
-		db:                        db,
-		insertBuiltBlockStmt:      insertBuiltBlockStmt,
-		insertMissingBundleStmt:   insertMissingBundleStmt,
-		fetchPrioBundlesStmt:      fetchPrioBundlesStmt,
-		fetchGetLatestUuidBundles: fetchGetLatestUuidBundles,
+		db:                            db,
+		insertBuiltBlockStmt:          insertBuiltBlockStmt,
+		insertMissingBundleStmt:       insertMissingBundleStmt,
+		fetchPrioBundlesStmt:          fetchPrioBundlesStmt,
+		fetchGetLatestUuidBundlesStmt: fetchGetLatestUuidBundlesStmt,
 	}, nil
 }
 
@@ -287,7 +287,7 @@ func (ds *DatabaseService) GetPriorityBundles(ctx context.Context, blockNum int6
 func (ds *DatabaseService) GetLatestUuidBundles(ctx context.Context, blockNum int64) ([]types.LatestUuidBundle, error) {
 	var dstLatestBundles []DbLatestUuidBundle
 	kwArg := map[string]interface{}{"target_block_number": blockNum}
-	if err := ds.fetchGetLatestUuidBundles.SelectContext(ctx, &dstLatestBundles, kwArg); err != nil {
+	if err := ds.fetchGetLatestUuidBundlesStmt.SelectContext(ctx, &dstLatestBundles, kwArg); err != nil {
 		return nil, err
 	}
 	latestBundles := make([]types.LatestUuidBundle, 0, len(dstLatestBundles))
