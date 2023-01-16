@@ -74,6 +74,10 @@ func (b *bundleFetcher) Run() {
 	go b.fetchAndPush(context.Background(), pushMevBundles)
 }
 
+func (b *bundleFetcher) GetLatestUuidBundles(ctx context.Context, blockNum int64) ([]types.LatestUuidBundle, error) {
+	return b.db.GetLatestUuidBundles(ctx, blockNum)
+}
+
 func (b *bundleFetcher) fetchAndPush(ctx context.Context, pushMevBundles func(bundles []DbBundle)) {
 	var currentBlockNum int64
 	lowPrioBundleTicker := time.NewTicker(time.Second * 2)
