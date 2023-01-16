@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	tu "github.com/ethereum/go-ethereum/test_utils"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -266,8 +267,7 @@ func TestSimulatorState(t *testing.T) {
 
 	targetBlockNumber := new(big.Int).Set(b.chain.CurrentHeader().Number)
 	targetBlockNumber.Add(targetBlockNumber, big.NewInt(1))
-	b.txPool.AddMevBundle(types.Transactions{userSwapTx, backrunTx}, targetBlockNumber, 0, 0, nil)
-
+	b.txPool.AddMevBundle(types.Transactions{userSwapTx, backrunTx}, targetBlockNumber, uuid.UUID{}, common.Address{}, 0, 0, nil)
 	buildBlock([]*types.Transaction{}, 3)
 }
 

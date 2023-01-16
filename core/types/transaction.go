@@ -29,6 +29,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/google/uuid"
 )
 
 var (
@@ -665,9 +666,19 @@ func copyAddressPtr(a *common.Address) *common.Address {
 	return &cpy
 }
 
+var EmptyUUID uuid.UUID
+
+type LatestUuidBundle struct {
+	Uuid           uuid.UUID
+	SigningAddress common.Address
+	BundleHash     common.Hash
+}
+
 type MevBundle struct {
 	Txs               Transactions
 	BlockNumber       *big.Int
+	Uuid              uuid.UUID
+	SigningAddress    common.Address
 	MinTimestamp      uint64
 	MaxTimestamp      uint64
 	RevertingTxHashes []common.Hash

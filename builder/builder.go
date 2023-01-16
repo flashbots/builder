@@ -3,11 +3,11 @@ package builder
 import (
 	"context"
 	"errors"
-	"math/big"
 	_ "os"
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
 	"golang.org/x/time/rate"
 
@@ -236,23 +236,22 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 	var (
 		queueSignal = make(chan struct{}, 1)
 
-		queueMu                  sync.Mutex
-		queueLastSubmittedProfit = new(big.Int)
-		queueBestProfit          = new(big.Int)
-		queueBestEntry           blockQueueEntry
+		queueMu                sync.Mutex
+		queueLastSubmittedHash common.Hash
+		queueBestEntry         blockQueueEntry
 	)
 
 	log.Debug("runBuildingJob", "slot", attrs.Slot, "parent", attrs.HeadHash)
 
 	submitBestBlock := func() {
 		queueMu.Lock()
-		if queueLastSubmittedProfit.Cmp(queueBestProfit) < 0 {
+		if queueBestEntry.block.Hash() != queueLastSubmittedHash {
 			err := b.onSealedBlock(queueBestEntry.block, queueBestEntry.ordersCloseTime, queueBestEntry.sealedAt, queueBestEntry.commitedBundles, queueBestEntry.allBundles, proposerPubkey, vd, attrs)
 
 			if err != nil {
 				log.Error("could not run sealed block hook", "err", err)
 			} else {
-				queueLastSubmittedProfit.Set(queueBestProfit)
+				queueLastSubmittedHash = queueBestEntry.block.Hash()
 			}
 		}
 		queueMu.Unlock()
@@ -271,7 +270,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 
 		queueMu.Lock()
 		defer queueMu.Unlock()
-		if block.Profit.Cmp(queueBestProfit) > 0 {
+		if block.Hash() != queueLastSubmittedHash {
 			queueBestEntry = blockQueueEntry{
 				block:           block,
 				ordersCloseTime: ordersCloseTime,
@@ -279,7 +278,6 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 				commitedBundles: commitedBundles,
 				allBundles:      allBundles,
 			}
-			queueBestProfit.Set(block.Profit)
 
 			select {
 			case queueSignal <- struct{}{}:
