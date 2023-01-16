@@ -741,6 +741,7 @@ func TestSimulateBundles(t *testing.T) {
 }
 
 func testBundles(t *testing.T) {
+	// TODO: test cancellations
 	db := rawdb.NewMemoryDatabase()
 	chainConfig := params.AllEthashProtocolChanges
 	engine := ethash.NewFaker()
@@ -819,7 +820,7 @@ func testBundles(t *testing.T) {
 
 		blockNumber := big.NewInt(0).Add(w.chain.CurrentBlock().Number(), big.NewInt(1))
 		for _, bundle := range bundles {
-			err := b.txPool.AddMevBundle(bundle.Txs, blockNumber, 0, 0, nil)
+			err := b.txPool.AddMevBundle(bundle.Txs, blockNumber, types.EmptyUUID, common.Address{}, 0, 0, nil)
 			require.NoError(t, err)
 		}
 

@@ -185,6 +185,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		mevBundleCh := make(chan []types.MevBundle)
 		blockNumCh := make(chan int64)
 		bundleFetcher := flashbotsextra.NewBundleFetcher(backend, ds, blockNumCh, mevBundleCh, true)
+		backend.RegisterBundleFetcher(bundleFetcher)
 		go bundleFetcher.Run()
 	}
 
