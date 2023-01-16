@@ -5,7 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/google/uuid"
 )
 
 type BuiltBlock struct {
@@ -51,6 +54,12 @@ type DbBundle struct {
 	EthSentToCoinbase string `db:"eth_sent_to_coinbase"`
 }
 
+type DbLatestUuidBundle struct {
+	Uuid           uuid.UUID `db:"replacement_uuid"`
+	SigningAddress string    `db:"signing_address"`
+	BundleHash     string    `db:"bundle_hash"`
+}
+
 type blockAndBundleId struct {
 	BlockId  uint64 `db:"block_id"`
 	BundleId uint64 `db:"bundle_id"`
@@ -64,7 +73,12 @@ func SimulatedBundleToDbBundle(bundle *types.SimulatedBundle) DbBundle {
 	paramRevertingTxHashes := strings.Join(revertingTxHashes, ",")
 	signedTxsStrings := make([]string, len(bundle.OriginalBundle.Txs))
 	for i, tx := range bundle.OriginalBundle.Txs {
-		signedTxsStrings[i] = tx.Hash().String()
+		txBytes, err := tx.MarshalBinary()
+		if err != nil {
+			log.Error("could not marshal tx bytes", "err", err)
+			continue
+		}
+		signedTxsStrings[i] = hexutil.Encode(txBytes)
 	}
 
 	return DbBundle{

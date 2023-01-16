@@ -46,6 +46,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/google/uuid"
 	"github.com/tyler-smith/go-bip39"
 	"golang.org/x/crypto/sha3"
 )
@@ -2135,6 +2136,8 @@ func NewPrivateTxBundleAPI(b Backend) *PrivateTxBundleAPI {
 type SendBundleArgs struct {
 	Txs               []hexutil.Bytes `json:"txs"`
 	BlockNumber       rpc.BlockNumber `json:"blockNumber"`
+	ReplacementUuid   *uuid.UUID      `json:"replacementUuid"`
+	SigningAddress    *common.Address `json:"signingAddress"`
 	MinTimestamp      *uint64         `json:"minTimestamp"`
 	MaxTimestamp      *uint64         `json:"maxTimestamp"`
 	RevertingTxHashes []common.Hash   `json:"revertingTxHashes"`
@@ -2159,6 +2162,16 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args SendBundleArgs
 		txs = append(txs, tx)
 	}
 
+	var replacementUuid uuid.UUID
+	if args.ReplacementUuid != nil {
+		replacementUuid = *args.ReplacementUuid
+	}
+
+	var signingAddress common.Address
+	if args.SigningAddress != nil {
+		signingAddress = *args.SigningAddress
+	}
+
 	var minTimestamp, maxTimestamp uint64
 	if args.MinTimestamp != nil {
 		minTimestamp = *args.MinTimestamp
@@ -2167,7 +2180,7 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args SendBundleArgs
 		maxTimestamp = *args.MaxTimestamp
 	}
 
-	return s.b.SendBundle(ctx, txs, args.BlockNumber, minTimestamp, maxTimestamp, args.RevertingTxHashes)
+	return s.b.SendBundle(ctx, txs, args.BlockNumber, replacementUuid, signingAddress, minTimestamp, maxTimestamp, args.RevertingTxHashes)
 }
 
 // BundleAPI offers an API for accepting bundled transactions
