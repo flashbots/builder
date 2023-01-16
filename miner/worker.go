@@ -1337,13 +1337,15 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) (error, []
 	var blockBundles []types.SimulatedBundle
 	var allBundles []types.SimulatedBundle
 	if w.flashbots.isFlashbots {
-		bundles := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
+		bundles, ccBundleCh := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
+		bundles = append(bundles, <-ccBundleCh...)
 
 		var bundleTxs types.Transactions
 		var resultingBundle simulatedBundle
 		var mergedBundles []types.SimulatedBundle
 		var numBundles int
 		var err error
+		// Sets allBundles in outer scope
 		bundleTxs, resultingBundle, mergedBundles, numBundles, allBundles, err = w.generateFlashbotsBundle(env, bundles, pending)
 		if err != nil {
 			log.Error("Failed to generate flashbots bundle", "err", err)
@@ -1404,16 +1406,27 @@ func (w *worker) getSimulatedBundles(env *environment) ([]types.SimulatedBundle,
 		return nil, nil
 	}
 
-	bundles := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
+	bundles, ccBundlesCh := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
 
 	// TODO: consider interrupt
 	simBundles, err := w.simulateBundles(env, bundles, nil) /* do not consider gas impact of mempool txs as bundles are treated as transactions wrt ordering */
 	if err != nil {
-		log.Error("Failed to simulate flashbots bundles", "err", err)
+		log.Error("Failed to simulate bundles", "err", err)
 		return nil, err
 	}
 
-	return simBundles, nil
+	ccBundles := <-ccBundlesCh
+	if ccBundles == nil {
+		return simBundles, nil
+	}
+
+	simCcBundles, err := w.simulateBundles(env, ccBundles, nil) /* do not consider gas impact of mempool txs as bundles are treated as transactions wrt ordering */
+	if err != nil {
+		log.Error("Failed to simulate cc bundles", "err", err)
+		return simBundles, nil
+	}
+
+	return append(simBundles, simCcBundles...), nil
 }
 
 // generateWork generates a sealing block based on the given parameters.
