@@ -17,6 +17,7 @@
 package txpool
 
 import (
+	"context"
 	"crypto/ecdsa"
 	crand "crypto/rand"
 	"errors"
@@ -36,7 +37,10 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/test_utils"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -2431,6 +2435,117 @@ func TestSlotCount(t *testing.T) {
 	if slots := numSlots(bigTx); slots != 11 {
 		t.Fatalf("big transactions slot count mismatch: have %d want %d", slots, 11)
 	}
+}
+
+// TODO: test bundle cancellations
+func TestBundleCancellations(t *testing.T) {
+	// Create the pool to test the status retrievals with
+	statedb, _ := state.New(common.Hash{}, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
+	blockchain := &testBlockChain{100, statedb, new(event.Feed)}
+
+	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
+	fetcher := &mockFetcher{make(map[int64]error), make(map[int64][]types.LatestUuidBundle)}
+	pool.RegisterBundleFetcher(fetcher)
+
+	fetcher.resps[1] = nil
+	bundles, ccBundles := pool.MevBundles(big.NewInt(1), 20)
+	require.Equal(t, []types.MevBundle(nil), bundles)
+	require.Equal(t, []types.MevBundle(nil), <-ccBundles)
+
+	bundle01_uuid1_signer1 := types.MevBundle{
+		BlockNumber:    big.NewInt(1),
+		Uuid:           uuid.New(),
+		SigningAddress: common.Address{0x01},
+		Hash:           common.Hash{0xf0},
+	}
+	bundle02_no_uuid_signer2 := types.MevBundle{
+		BlockNumber:    big.NewInt(1),
+		Uuid:           types.EmptyUUID,
+		SigningAddress: common.Address{0x02},
+		Hash:           common.Hash{0xf1},
+	}
+	bundle03_uuid1_signer1 := types.MevBundle{
+		BlockNumber:    big.NewInt(1),
+		Uuid:           bundle01_uuid1_signer1.Uuid,
+		SigningAddress: common.Address{0x01},
+		Hash:           common.Hash{0xf3},
+	}
+	bundle03_uuid1_signer2 := types.MevBundle{
+		BlockNumber:    big.NewInt(1),
+		Uuid:           bundle01_uuid1_signer1.Uuid,
+		SigningAddress: common.Address{0x02},
+		Hash:           common.Hash{0xf3},
+	}
+
+	err := pool.AddMevBundles([]types.MevBundle{
+		bundle01_uuid1_signer1, bundle02_no_uuid_signer2, bundle03_uuid1_signer1, bundle03_uuid1_signer2,
+	})
+	require.NoError(t, err)
+
+	// Ignores uuid bundle since fetcher does not return it, passes non-uuid bundle
+	bundles, ccBundles = pool.MevBundles(big.NewInt(1), 20)
+	require.Equal(t, []types.MevBundle{bundle02_no_uuid_signer2}, bundles)
+	cr := test_utils.RequireChan[[]types.MevBundle](ccBundles, time.Millisecond)
+	require.False(t, cr.Timeout)
+	require.Equal(t, []types.MevBundle{}, cr.Value)
+
+	fetcher.resps[1] = append(fetcher.resps[1], types.LatestUuidBundle{
+		Uuid:           bundle01_uuid1_signer1.Uuid,
+		SigningAddress: bundle01_uuid1_signer1.SigningAddress,
+		BundleHash:     bundle01_uuid1_signer1.Hash,
+	})
+
+	// Passes non-uuid bundle and only the bundle exactly matching the fetcher resp
+	bundles, ccBundles = pool.MevBundles(big.NewInt(1), 20)
+	require.Equal(t, []types.MevBundle{bundle02_no_uuid_signer2}, bundles)
+	cr = test_utils.RequireChan[[]types.MevBundle](ccBundles, time.Millisecond)
+	require.False(t, cr.Timeout)
+	require.Equal(t, []types.MevBundle{bundle01_uuid1_signer1}, cr.Value)
+
+	fetcher.resps[1] = []types.LatestUuidBundle{
+		types.LatestUuidBundle{
+			Uuid:           bundle03_uuid1_signer1.Uuid,
+			SigningAddress: bundle03_uuid1_signer1.SigningAddress,
+			BundleHash:     bundle03_uuid1_signer1.Hash,
+		},
+	}
+
+	// Passes non-uuid bundle and only the bundle exactly matching the fetcher resp
+	bundles, ccBundles = pool.MevBundles(big.NewInt(1), 20)
+	require.Equal(t, []types.MevBundle{bundle02_no_uuid_signer2}, bundles)
+	cr = test_utils.RequireChan[[]types.MevBundle](ccBundles, time.Millisecond)
+	require.False(t, cr.Timeout)
+	require.Equal(t, []types.MevBundle{bundle03_uuid1_signer1}, cr.Value)
+
+	fetcher.resps[1] = append(fetcher.resps[1], types.LatestUuidBundle{
+		Uuid:           bundle03_uuid1_signer2.Uuid,
+		SigningAddress: bundle03_uuid1_signer2.SigningAddress,
+		BundleHash:     bundle03_uuid1_signer2.Hash,
+	})
+
+	// Passes non-uuid bundle and both bundles exactly matching the fetcher resp for the same hash
+	bundles, ccBundles = pool.MevBundles(big.NewInt(1), 20)
+	require.Equal(t, []types.MevBundle{bundle02_no_uuid_signer2}, bundles)
+	cr = test_utils.RequireChan[[]types.MevBundle](ccBundles, time.Millisecond)
+	require.False(t, cr.Timeout)
+	require.Equal(t, []types.MevBundle{bundle03_uuid1_signer1, bundle03_uuid1_signer2}, cr.Value)
+}
+
+type mockFetcher struct {
+	errorResps map[int64]error
+	resps      map[int64][]types.LatestUuidBundle
+}
+
+func (f *mockFetcher) GetLatestUuidBundles(_ context.Context, blockNum int64) ([]types.LatestUuidBundle, error) {
+	if err, found := f.errorResps[blockNum]; found {
+		return nil, err
+	}
+
+	if resp, found := f.resps[blockNum]; found {
+		return resp, nil
+	}
+
+	return nil, errors.New("unexpected block number")
 }
 
 // Benchmarks the speed of validating the contents of the pending queue of the
