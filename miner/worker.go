@@ -1313,9 +1313,27 @@ func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) 
 	case ALGO_MEV_GETH:
 		err, blockBundles, allBundles = w.fillTransactions(interrupt, env)
 	default:
-		err, blockBundles, allBundles = w.fillTransactions(interrupt, env)
+		w.runDefaultAlgo(interrupt, env)
 	}
 	return err, blockBundles, allBundles
+}
+
+func (w *worker) runDefaultAlgo(interrupt *int32, env *environment) (*environment, []types.BuilderOrder) {
+	blockBuilder := NewGreedyBuilder(w.chain, w.chainConfig, w.blockList, interrupt, w.flashbots.bundleCache)
+	pending := w.eth.TxPool().Pending(true)
+	allBundles := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
+	orders := make([]types.BuilderOrder, 0, len(pending)+len(allBundles))
+	for _, txs := range pending {
+		for _, tx := range txs {
+			orders = append(orders, types.TxOrder{Tx: tx})
+		}
+	}
+
+	for _, bundle := range allBundles {
+		orders = append(orders, types.BundleOrder{Bundle: &bundle})
+	}
+
+	return BuildBlock[types.BuilderOrder](blockBuilder, orders, env)
 }
 
 // fillTransactions retrieves the pending transactions from the txpool and fills them
