@@ -461,7 +461,14 @@ func (s TxByNonce) Len() int           { return len(s) }
 func (s TxByNonce) Less(i, j int) bool { return s[i].Nonce() < s[j].Nonce() }
 func (s TxByNonce) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
-type BuilderOrder interface {
+type OrderType int
+
+const (
+	Tx OrderType = iota
+	Bundle
+)
+
+type Order interface {
 	AsTx() *Transaction
 	AsBundle() *MevBundle
 	AsSimulatedBundle() *SimulatedBundle
@@ -491,6 +498,7 @@ func (o BundleOrder) TxNum() int                          { return o.Bundle.TxNu
 
 type SimulatedBundleOrder struct {
 	Bundle *SimulatedBundle
+	Error  error
 }
 
 func (o SimulatedBundleOrder) AsTx() *Transaction                  { return nil }
@@ -498,10 +506,11 @@ func (o SimulatedBundleOrder) AsBundle() *MevBundle                { return &o.B
 func (o SimulatedBundleOrder) AsSimulatedBundle() *SimulatedBundle { return o.Bundle }
 func (o SimulatedBundleOrder) TxType() OrderType                   { return Bundle }
 func (o SimulatedBundleOrder) TxNum() int                          { return o.Bundle.OriginalBundle.TxNum() }
+func (o SimulatedBundleOrder) Err() error                          { return o.Error }
 
 // TxWithMinerFee wraps a transaction with its gas price or effective miner gasTipCap
 type TxWithMinerFee struct {
-	order    BuilderOrder
+	order    Order
 	minerFee *big.Int
 }
 
@@ -531,12 +540,12 @@ func NewTxWithMinerFee(tx *Transaction, baseFee *big.Int) (*TxWithMinerFee, erro
 func NewBundleWithMinerFee(bundle *SimulatedBundle, baseFee *big.Int) (*TxWithMinerFee, error) {
 	minerFee := bundle.MevGasPrice
 	return &TxWithMinerFee{
-		order:    SimulatedBundleOrder{bundle},
+		order:    SimulatedBundleOrder{Bundle: bundle},
 		minerFee: minerFee,
 	}, nil
 }
 
-func NewOrderWithTxFee(order BuilderOrder, baseFee *big.Int) (*TxWithMinerFee, error) {
+func NewOrderWithTxFee(order Order, baseFee *big.Int) (*TxWithMinerFee, error) {
 	if order.TxType() == Tx {
 		return NewTxWithMinerFee(order.AsTx(), baseFee)
 	} else {
@@ -633,7 +642,7 @@ func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transa
 //
 // Note, the input map is reowned so the caller should not interact any more with
 // if after providing it to the constructor.
-func NewOrdersByPriceAndNonce(signer Signer, orders []BuilderOrder, baseFee *big.Int) *TransactionsByPriceAndNonce {
+func NewOrdersByPriceAndNonce(signer Signer, orders []Order, baseFee *big.Int) *TransactionsByPriceAndNonce {
 	// Initialize a price and received time based heap with the head transactions
 	heads := make(TxByPriceAndTime, 0, len(orders))
 	for i := range orders {
@@ -772,18 +781,6 @@ func copyAddressPtr(a *common.Address) *common.Address {
 	}
 	cpy := *a
 	return &cpy
-}
-
-type OrderType int
-
-const (
-	Tx OrderType = iota
-	Bundle
-)
-
-type Order interface {
-	TxType() OrderType
-	TxNum() int
 }
 
 type SimulatedOrder interface {

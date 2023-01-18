@@ -6,7 +6,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -26,7 +25,7 @@ func NewGreedyBuilder(chain *core.BlockChain, chainConfig *params.ChainConfig, b
 	}
 }
 
-func (g *GreedyBuilder) doBuildBlock(inputEnv *environment, orders []types.BuilderOrder) (*environment, []types.BuilderOrder) {
+func (g *GreedyBuilder) doBuildBlock(inputEnv *environment, orders []types.Order) (*environment, []types.Order) {
 	simulator := NewDefaultSimulator(inputEnv, g.chainData.chain, g.chainData.blacklist)
 	simulatedOrders, err := g.simulateOrders(inputEnv, orders, simulator)
 	if err != nil {
@@ -35,7 +34,7 @@ func (g *GreedyBuilder) doBuildBlock(inputEnv *environment, orders []types.Build
 	return g.buildBlock(inputEnv, simulatedOrders)
 }
 
-func (g *GreedyBuilder) buildBlock(env *environment, orders []types.BuilderOrder) (*environment, []types.BuilderOrder) {
+func (g *GreedyBuilder) buildBlock(env *environment, orders []types.Order) (*environment, []types.Order) {
 	sortedOrders := types.NewOrdersByPriceAndNonce(env.signer, orders, env.header.BaseFee)
 	envDiff := newEnvironmentDiff(env)
 	usedBundles := g.mergeOrdersIntoEnvDiff(envDiff, sortedOrders)
@@ -43,8 +42,8 @@ func (g *GreedyBuilder) buildBlock(env *environment, orders []types.BuilderOrder
 	return envDiff.baseEnvironment, usedBundles
 }
 
-func (b *GreedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) []types.BuilderOrder {
-	usedBundles := []types.BuilderOrder{}
+func (b *GreedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) []types.Order {
+	usedBundles := []types.Order{}
 
 	for {
 		order := orders.Peek()
@@ -85,7 +84,7 @@ func (b *GreedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders 
 	return usedBundles
 }
 
-func (g *GreedyBuilder) simulateOrders(env *environment, orders []types.BuilderOrder, simulator *DefaultSimulator) ([]types.BuilderOrder, error) {
+func (g *GreedyBuilder) simulateOrders(env *environment, orders []types.Order, simulator *DefaultSimulator) ([]types.Order, error) {
 	start := time.Now()
 	headerHash := env.header.Hash()
 	simCache := g.bundleCache.GetBundleCache(headerHash)
@@ -99,12 +98,12 @@ func (g *GreedyBuilder) simulateOrders(env *environment, orders []types.BuilderO
 			txs = append(txs, i)
 			continue
 		}
-			
+
 		bundle := order.AsBundle()
 		if bundle == nil {
 			continue
 		}
-		
+
 		bundles = append(bundles, *bundle)
 
 		if simmed, ok := simCache.GetSimulatedBundle(bundle.Hash); ok {
@@ -113,31 +112,31 @@ func (g *GreedyBuilder) simulateOrders(env *environment, orders []types.BuilderO
 		}
 
 		wg.Add(1)
-		go func(idx int, bundle *types.MevBundle, state *state.StateDB) {
+		go func(idx int, bundle *types.MevBundle) {
 			defer wg.Done()
-			
+
 			if len(bundle.Txs) == 0 {
 				return
 			}
 
-			simmed := Simulate[*types.MevBundle, *types.SimulatedBundle](simulator, bundle)
+			simmed := Simulate[*types.BundleOrder, *types.SimulatedBundleOrder](simulator, &types.BundleOrder{Bundle: bundle})
 
 			if simmed.Err() != nil {
 				log.Trace("Error computing gas for a bundle", "error", simmed.Err())
 				return
 			}
-			simResult[idx] = simmed
-		}(i, bundle, env.state.Copy())
+			simResult[idx] = simmed.AsSimulatedBundle()
+		}(i, bundle)
 	}
 
 	wg.Wait()
 
 	simCache.UpdateSimulatedBundles(simResult, bundles)
 
-	simulatedOrders := make([]types.BuilderOrder, 0, len(orders))
+	simulatedOrders := make([]types.Order, 0, len(orders))
 	for _, bundle := range simResult {
 		if bundle != nil {
-			simulatedOrders = append(simulatedOrders, types.SimulatedBundleOrder{bundle})
+			simulatedOrders = append(simulatedOrders, types.SimulatedBundleOrder{Bundle: bundle})
 		}
 	}
 

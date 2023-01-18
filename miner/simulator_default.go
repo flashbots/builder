@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 )
 
-
 type DefaultSimulator struct {
 	baseEnvironment *environment
 	header          *types.Header
@@ -27,9 +26,9 @@ func NewDefaultSimulator(env *environment, chain *core.BlockChain, blockList map
 	}
 }
 
-func (s *DefaultSimulator) doSimulate(bundle *types.MevBundle) *types.SimulatedBundle {
-	if len(bundle.Txs) == 0 {
-		return &simulatedBundle{}
+func (s *DefaultSimulator) doSimulate(bundle *types.BundleOrder) *types.SimulatedBundleOrder {
+	if len(bundle.Bundle.Txs) == 0 {
+		return &types.SimulatedBundleOrder{}
 	}
 
 	env := s.baseEnvironment
@@ -42,18 +41,18 @@ func (s *DefaultSimulator) doSimulate(bundle *types.MevBundle) *types.SimulatedB
 
 	ethSentToCoinbase := new(big.Int)
 
-	for i, tx := range bundle.Txs {
+	for i, tx := range bundle.Bundle.Txs {
 		if s.header.BaseFee != nil && tx.Type() == 2 {
 			// Sanity check for extremely large numbers
 			if tx.GasFeeCap().BitLen() > 256 {
-				return &simulatedBundle{Error: core.ErrFeeCapVeryHigh}
+				return &types.SimulatedBundleOrder{Error: core.ErrFeeCapVeryHigh}
 			}
 			if tx.GasTipCap().BitLen() > 256 {
-				return &simulatedBundle{Error: core.ErrTipVeryHigh}
+				return &types.SimulatedBundleOrder{Error: core.ErrTipVeryHigh}
 			}
 			// Ensure gasFeeCap is greater than or equal to gasTipCap.
 			if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
-				return &simulatedBundle{Error: core.ErrTipAboveFeeCap}
+				return &types.SimulatedBundleOrder{Error: core.ErrTipAboveFeeCap}
 			}
 		}
 
@@ -69,15 +68,15 @@ func (s *DefaultSimulator) doSimulate(bundle *types.MevBundle) *types.SimulatedB
 		}
 		receipt, err := core.ApplyTransaction(s.chain.Config(), s.chain, &env.coinbase, gasPool, state, env.header, tx, &tempGasUsed, config, nil)
 		if err != nil {
-			return &simulatedBundle{Error: err}
+			return &types.SimulatedBundleOrder{Error: err}
 		}
-		if receipt.Status == types.ReceiptStatusFailed && !containsHash(bundle.RevertingTxHashes, receipt.TxHash) {
-			return &simulatedBundle{Error: errors.New("failed tx")}
+		if receipt.Status == types.ReceiptStatusFailed && !containsHash(bundle.Bundle.RevertingTxHashes, receipt.TxHash) {
+			return &types.SimulatedBundleOrder{Error: errors.New("failed tx")}
 		}
 		if len(s.blockList) != 0 {
 			for _, address := range tracer.TouchedAddresses() {
 				if _, in := s.blockList[address]; in {
-					return &simulatedBundle{Error: errBlocklistViolation}
+					return &types.SimulatedBundleOrder{Error: errBlocklistViolation}
 				}
 			}
 		}
@@ -86,13 +85,13 @@ func (s *DefaultSimulator) doSimulate(bundle *types.MevBundle) *types.SimulatedB
 
 		_, err = types.Sender(env.signer, tx)
 		if err != nil {
-			return &simulatedBundle{Error: err}
+			return &types.SimulatedBundleOrder{Error: err}
 		}
 
 		gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
 		gasPrice, err := tx.EffectiveGasTip(env.header.BaseFee)
 		if err != nil {
-			return &simulatedBundle{Error: err}
+			return &types.SimulatedBundleOrder{Error: err}
 		}
 		gasFeesTx := gasUsed.Mul(gasUsed, gasPrice)
 		coinbaseBalanceAfter := state.GetBalance(env.coinbase)
@@ -103,13 +102,14 @@ func (s *DefaultSimulator) doSimulate(bundle *types.MevBundle) *types.SimulatedB
 
 	totalEth := new(big.Int).Add(ethSentToCoinbase, gasFees)
 
-	return &simulatedBundle{
-		MevGasPrice:       new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)),
-		TotalEth:          totalEth,
-		EthSentToCoinbase: ethSentToCoinbase,
-		TotalGasUsed:      totalGasUsed,
-		OriginalBundle:    *bundle,
-		Error:             nil,
+	return &types.SimulatedBundleOrder{
+		Bundle: &simulatedBundle{
+			MevGasPrice:       new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)),
+			TotalEth:          totalEth,
+			EthSentToCoinbase: ethSentToCoinbase,
+			TotalGasUsed:      totalGasUsed,
+			OriginalBundle:    *bundle.Bundle,
+			Error:             nil,
+		},
 	}
 }
-
