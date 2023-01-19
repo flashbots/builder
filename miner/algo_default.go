@@ -25,25 +25,26 @@ func NewGreedyBuilder(chain *core.BlockChain, chainConfig *params.ChainConfig, b
 	}
 }
 
-func (g *GreedyBuilder) doBuildBlock(inputEnv *environment, orders []types.Order) (*environment, []types.Order) {
+func (g *GreedyBuilder) doBuildBlock(inputEnv *environment, bundles []types.MevBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedOrder) {
+	// pre-simualtion
 	simulator := NewDefaultSimulator(inputEnv, g.chainData.chain, g.chainData.blacklist)
-	simulatedOrders, err := g.simulateOrders(inputEnv, orders, simulator)
+	simulatedBundles, err := g.simulatedBundles(inputEnv, bundles, simulator)
 	if err != nil {
 		log.Error("Failed to simulate bundles", "err", err)
 	}
-	return g.buildBlock(inputEnv, simulatedOrders)
-}
-
-func (g *GreedyBuilder) buildBlock(env *environment, orders []types.Order) (*environment, []types.Order) {
-	sortedOrders := types.NewOrdersByPriceAndNonce(env.signer, orders, env.header.BaseFee)
-	envDiff := newEnvironmentDiff(env)
+	// heuristic to sort by effective gas price
+	sortedOrders := types.NewTransactionsByPriceAndNonce(inputEnv.signer, transactions, simulatedBundles, inputEnv.header.BaseFee)
+	// simulator that commits state changes
+	envDiff := newEnvironmentDiff(inputEnv)
+	// merging algorithm
 	usedBundles := g.mergeOrdersIntoEnvDiff(envDiff, sortedOrders)
+	// apply state changes to base env
 	envDiff.applyToBaseEnv()
 	return envDiff.baseEnvironment, usedBundles
 }
 
-func (b *GreedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) []types.Order {
-	usedBundles := []types.Order{}
+func (b *GreedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) []types.SimulatedOrder {
+	usedBundles := []types.SimulatedOrder{}
 
 	for {
 		order := orders.Peek()
@@ -84,42 +85,28 @@ func (b *GreedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders 
 	return usedBundles
 }
 
-func (g *GreedyBuilder) simulateOrders(env *environment, orders []types.Order, simulator *DefaultSimulator) ([]types.Order, error) {
+func (g *GreedyBuilder) simulatedBundles(env *environment, bundles []types.MevBundle, simulator *DefaultSimulator) ([]types.SimulatedBundle, error) {
 	start := time.Now()
 	headerHash := env.header.Hash()
 	simCache := g.bundleCache.GetBundleCache(headerHash)
 
-	simResult := make([]*simulatedBundle, len(orders))
-	bundles := make([]types.MevBundle, 0, len(orders))
-	txs := make([]int, 0, len(orders))
+	simResult := make([]*simulatedBundle, len(bundles))
 	var wg sync.WaitGroup
-	for i, order := range orders {
-		if order.TxType() == types.Tx {
-			txs = append(txs, i)
-			continue
-		}
-
-		bundle := order.AsBundle()
-		if bundle == nil {
-			continue
-		}
-
-		bundles = append(bundles, *bundle)
-
+	for i, bundle := range bundles {
 		if simmed, ok := simCache.GetSimulatedBundle(bundle.Hash); ok {
 			simResult[i] = simmed
 			continue
 		}
 
 		wg.Add(1)
-		go func(idx int, bundle *types.MevBundle) {
+		go func(idx int, bundle types.MevBundle) {
 			defer wg.Done()
 
 			if len(bundle.Txs) == 0 {
 				return
 			}
 
-			simmed := Simulate[*types.BundleOrder, *types.SimulatedBundleOrder](simulator, &types.BundleOrder{Bundle: bundle})
+			simmed := Simulate[types.BundleOrder, types.SimulatedBundleOrder](simulator, types.BundleOrder{Bundle: &bundle})
 
 			if simmed.Err() != nil {
 				log.Trace("Error computing gas for a bundle", "error", simmed.Err())
@@ -133,18 +120,13 @@ func (g *GreedyBuilder) simulateOrders(env *environment, orders []types.Order, s
 
 	simCache.UpdateSimulatedBundles(simResult, bundles)
 
-	simulatedOrders := make([]types.Order, 0, len(orders))
+	simulatedBundles := make([]types.SimulatedBundle, 0, len(bundles))
 	for _, bundle := range simResult {
 		if bundle != nil {
-			simulatedOrders = append(simulatedOrders, types.SimulatedBundleOrder{Bundle: bundle})
+			simulatedBundles = append(simulatedBundles, *bundle)
 		}
 	}
 
-	log.Debug("Simulated bundles", "block", env.header.Number, "allBundles", len(bundles), "okBundles", len(simulatedOrders), "time", time.Since(start))
-
-	for _, txIdx := range txs {
-		simulatedOrders = append(simulatedOrders, orders[txIdx])
-	}
-
-	return simulatedOrders, nil
+	log.Debug("Simulated bundles", "block", env.header.Number, "allBundles", len(bundles), "okBundles", len(simulatedBundles), "time", time.Since(start))
+	return simulatedBundles, nil
 }
