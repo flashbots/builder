@@ -1896,9 +1896,8 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 						// This could mean that the transaction was already replaced in the mempool.
 						// This prevents incentivising bundles to include replaced transactions.
 						txInPendingPool = true
-						break
 					}
-
+					break
 				}
 			}
 		}
