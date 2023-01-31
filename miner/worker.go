@@ -1877,10 +1877,10 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 		ethSentToCoinbase.Add(ethSentToCoinbase, coinbaseDelta)
 
 		txInPendingPool := false
-		txNonce := tx.Nonce()
-		txHash := tx.Hash()
 		if accountTxs, ok := pendingTxs[from]; ok {
 			// Check if tx is in (or was in) pending pool.
+			txNonce := tx.Nonce()
+			txHash := tx.Hash()
 			for _, accountTx := range accountTxs {
 				if accountTx.Nonce() == txNonce && accountTx.Hash() == txHash {
 					// Bundle includes a transaction from the mempool.
