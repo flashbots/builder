@@ -1866,12 +1866,11 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 		}
 
 		txInPendingPool := false
+		txHash := tx.Hash()
 		if accountTxs, ok := pendingTxs[from]; ok {
 			// check if tx is in pending pool
-			txNonce := tx.Nonce()
-
 			for _, accountTx := range accountTxs {
-				if accountTx.Nonce() == txNonce {
+				if accountTx.Hash() == txHash {
 					txInPendingPool = true
 					break
 				}
