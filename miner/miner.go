@@ -78,7 +78,7 @@ type Config struct {
 	AlgoType            AlgoType          // Algorithm to use for block building
 	Recommit            time.Duration     // The time interval for miner to re-create mining work.
 	Noverify            bool              // Disable remote mining solution verification(only useful in ethash).
-	BuilderTxSigningKey *ecdsa.PrivateKey // Signing key of builder coinbase to make transaction to validator
+	BuilderTxSigningKey *ecdsa.PrivateKey `toml:",omitempty"` // Signing key of builder coinbase to make transaction to validator
 	MaxMergedBundles    int
 	Blocklist           []common.Address `toml:",omitempty"`
 	NewPayloadTimeout   time.Duration    // The maximum time allowance for creating a new payload
