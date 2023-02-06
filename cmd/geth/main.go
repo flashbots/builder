@@ -151,6 +151,7 @@ var (
 		utils.GpoMaxGasPriceFlag,
 		utils.GpoIgnoreGasPriceFlag,
 		utils.MinerNotifyFullFlag,
+		utils.BuilderBlockValidationBlacklistSourceFilePath,
 		configFileFlag,
 	}, utils.NetworkFlags, utils.DatabasePathFlags)
 
