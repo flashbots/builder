@@ -7,6 +7,8 @@ import (
 	"math/big"
 	"os"
 
+	capellaapi "github.com/attestantio/go-builder-client/api/capella"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -16,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/trie"
 
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
@@ -60,6 +63,22 @@ func (a *AccessVerifier) verifyTransactions(signer types.Signer, txs types.Trans
 				return fmt.Errorf("transaction to blacklisted address %s", to.String())
 			}
 		}
+	}
+	return nil
+}
+
+func verifyWithdrawals(withdrawals types.Withdrawals, expectedWithdrawalsRoot common.Hash, isShanghai bool) error {
+	if !isShanghai {
+		// Reject payload attributes with withdrawals before shanghai
+		if withdrawals != nil {
+			return errors.New("withdrawals before shanghai")
+		}
+		return nil
+	}
+
+	withdrawalsRoot := types.DeriveSha(types.Withdrawals(withdrawals), trie.NewStackTrie(nil))
+	if withdrawalsRoot != expectedWithdrawalsRoot {
+		return fmt.Errorf("withdrawals mismatch")
 	}
 	return nil
 }
@@ -173,7 +192,84 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockV
 			return err
 		}
 		isPostMerge := true // the call is PoS-native
-		precompiles := vm.ActivePrecompiles(api.eth.APIBackend.ChainConfig().Rules(new(big.Int).SetUint64(params.ExecutionPayload.BlockNumber), isPostMerge, payload.Timestamp))
+		timestamp := params.BuilderSubmitBlockRequest.ExecutionPayload.Timestamp
+		precompiles := vm.ActivePrecompiles(api.eth.APIBackend.ChainConfig().Rules(new(big.Int).SetUint64(params.ExecutionPayload.BlockNumber), isPostMerge, timestamp))
+		tracer = logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, precompiles)
+		vmconfig = vm.Config{Tracer: tracer, Debug: true}
+	}
+
+	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig)
+	if err != nil {
+		log.Error("invalid payload", "hash", payload.BlockHash.String(), "number", payload.BlockNumber, "parentHash", payload.ParentHash.String(), "err", err)
+		return err
+	}
+
+	if api.accessVerifier != nil && tracer != nil {
+		if err := api.accessVerifier.verifyTraces(tracer); err != nil {
+			return err
+		}
+	}
+
+	log.Info("validated block", "hash", block.Hash(), "number", block.NumberU64(), "parentHash", block.ParentHash())
+	return nil
+}
+
+type BuilderBlockValidationRequestV2 struct {
+	capellaapi.SubmitBlockRequest
+	WithdrawalsRoot    common.Hash `json:"withdrawals_root"`
+	RegisteredGasLimit uint64      `json:"registered_gas_limit,string"`
+}
+
+func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockValidationRequestV2) error {
+	// TODO: fuzztest, make sure the validation is sound
+	// TODO: handle context!
+	if params.ExecutionPayload == nil {
+		return errors.New("nil execution payload")
+	}
+	payload := params.ExecutionPayload
+	block, err := engine.ExecutionPayloadV2ToBlock(payload)
+	if err != nil {
+		return err
+	}
+
+	isShanghai := api.eth.BlockChain().Config().IsShanghai(params.ExecutionPayload.Timestamp)
+	if err := verifyWithdrawals(block.Withdrawals(), params.WithdrawalsRoot, isShanghai); err != nil {
+		return err
+	}
+
+	if params.Message.ParentHash != phase0.Hash32(block.ParentHash()) {
+		return fmt.Errorf("incorrect ParentHash %s, expected %s", params.Message.ParentHash.String(), block.ParentHash().String())
+	}
+
+	if params.Message.BlockHash != phase0.Hash32(block.Hash()) {
+		return fmt.Errorf("incorrect BlockHash %s, expected %s", params.Message.BlockHash.String(), block.Hash().String())
+	}
+
+	if params.Message.GasLimit != block.GasLimit() {
+		return fmt.Errorf("incorrect GasLimit %d, expected %d", params.Message.GasLimit, block.GasLimit())
+	}
+
+	if params.Message.GasUsed != block.GasUsed() {
+		return fmt.Errorf("incorrect GasUsed %d, expected %d", params.Message.GasUsed, block.GasUsed())
+	}
+
+	feeRecipient := common.BytesToAddress(params.Message.ProposerFeeRecipient[:])
+	expectedProfit := params.Message.Value.ToBig()
+
+	var vmconfig vm.Config
+	var tracer *logger.AccessListTracer = nil
+	if api.accessVerifier != nil {
+		if err := api.accessVerifier.isBlacklisted(block.Coinbase()); err != nil {
+			return err
+		}
+		if err := api.accessVerifier.isBlacklisted(feeRecipient); err != nil {
+			return err
+		}
+		if err := api.accessVerifier.verifyTransactions(types.LatestSigner(api.eth.BlockChain().Config()), block.Transactions()); err != nil {
+			return err
+		}
+		isPostMerge := true // the call is PoS-native
+		precompiles := vm.ActivePrecompiles(api.eth.APIBackend.ChainConfig().Rules(new(big.Int).SetUint64(params.ExecutionPayload.BlockNumber), isPostMerge, params.ExecutionPayload.Timestamp))
 		tracer = logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, precompiles)
 		vmconfig = vm.Config{Tracer: tracer, Debug: true}
 	}
