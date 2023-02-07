@@ -1870,7 +1870,7 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 		if err != nil {
 			return simulatedBundle{}, err
 		}
-		gasFeesTx := gasUsed.Mul(gasUsed, gasPrice)
+		gasFeesTx := new(big.Int).Mul(gasUsed, gasPrice)
 		coinbaseBalanceAfter := state.GetBalance(env.coinbase)
 		coinbaseDelta := big.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
 		coinbaseDelta.Sub(coinbaseDelta, gasFeesTx)
