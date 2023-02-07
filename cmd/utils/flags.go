@@ -22,6 +22,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -576,6 +577,12 @@ var (
 		Name:     "miner.newpayload-timeout",
 		Usage:    "Specify the maximum time allowance for creating a new payload",
 		Value:    ethconfig.Defaults.Miner.NewPayloadTimeout,
+		Category: flags.MinerCategory,
+	}
+	MinerMaxMergedBundlesFlag = &cli.IntFlag{
+		Name:     "miner.maxmergedbundles",
+		Usage:    "flashbots - The maximum amount of bundles to merge. The miner will run this many workers in parallel to calculate if the full block is more profitable with these additional bundles.",
+		Value:    3,
 		Category: flags.MinerCategory,
 	}
 	MinerBlocklistFileFlag = &cli.StringFlag{

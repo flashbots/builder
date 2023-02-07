@@ -1,7 +1,6 @@
 package miner
 
 import (
-	"errors"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -91,53 +90,25 @@ type resChPair struct {
 	errCh chan error
 }
 
-func (w *multiWorker) GetSealingBlockAsync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool, blockHook BlockHookFn) (chan *types.Block, error) {
-	resChans := []resChPair{}
-
-	for _, worker := range w.workers {
-		resCh, errCh, err := worker.getSealingBlock(parent, timestamp, coinbase, gasLimit, random, noTxs, noExtra, blockHook)
-		if err != nil {
-			log.Error("could not start async block construction", "isFlashbotsWorker", worker.flashbots.isFlashbots, "#bundles", worker.flashbots.maxMergedBundles)
-			continue
-		}
-		resChans = append(resChans, resChPair{resCh, errCh})
-	}
-
-	if len(resChans) == 0 {
-		return nil, errors.New("no worker could start async block construction")
-	}
-
+func (w *multiWorker) GetSealingBlock(args *BuildPayloadArgs, noTxs bool, blockHook BlockHookFn) (chan *types.Block, error) {
 	resCh := make(chan *types.Block)
 
-	go func(resCh chan *types.Block) {
-		var res *types.Block = nil
-		for _, chPair := range resChans {
-			err := <-chPair.errCh
+	for _, w := range w.workers {
+		go func(worker *worker) {
+			var res *types.Block
+			newBlock, _, err := worker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, noTxs, blockHook)
 			if err != nil {
-				log.Error("could not generate block", "err", err)
-				continue
+				log.Error("could not generate block", "err", err, "isFlashbotsWorker", worker.flashbots.isFlashbots, "#bundles", worker.flashbots.maxMergedBundles)
+				return
 			}
-			newBlock := <-chPair.resCh
 			if res == nil || (newBlock != nil && newBlock.Profit.Cmp(res.Profit) > 0) {
 				res = newBlock
 			}
-		}
-		resCh <- res
-	}(resCh)
+			resCh <- res
+		}(w)
+	}
 
 	return resCh, nil
-}
-
-func (w *multiWorker) GetSealingBlockSync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool, blockHook BlockHookFn) (*types.Block, error) {
-	resCh, err := w.GetSealingBlockAsync(parent, timestamp, coinbase, gasLimit, random, noTxs, noExtra, blockHook)
-	if err != nil {
-		return nil, err
-	}
-	res := <-resCh
-	if res == nil {
-		return nil, errors.New("no viable blocks created")
-	}
-	return res, nil
 }
 
 func newMultiWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *multiWorker {

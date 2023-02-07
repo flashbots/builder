@@ -18,6 +18,7 @@ package ethapi
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -2294,20 +2295,12 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber)
 	var totalGasUsed uint64
 	gasFees := new(big.Int)
-	for i, tx := range txs {
+	rules := s.b.ChainConfig().Rules(blockNumber, args.Difficulty.BitLen() != 0, timestamp)
+	for _, tx := range txs {
 		// Check if the context was cancelled (eg. timed-out)
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-
-		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
-		state.Prepare(tx.Hash(), i)
-
-		receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
-		if err != nil {
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
-		}
-
 		txHash := tx.Hash().String()
 		from, err := types.Sender(signer, tx)
 		if err != nil {
@@ -2317,6 +2310,14 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		if tx.To() != nil {
 			to = tx.To().String()
 		}
+		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
+		state.Prepare(rules, from, coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
+
+		receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
+		if err != nil {
+			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+		}
+
 		jsonResult := map[string]interface{}{
 			"txHash":      txHash,
 			"gasUsed":     receipt.GasUsed,
@@ -2442,9 +2443,11 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 	// Block context
 	blockContext := core.NewEVMBlockContext(header, s.chain, &coinbase)
 
+	rules := s.b.ChainConfig().Rules(blockNumber, blockContext.Difficulty.BitLen() != 0, timestamp)
+
 	// Feed each of the transactions into the VM ctx
 	// And try and estimate the gas used
-	for i, txArgs := range args.Txs {
+	for _, txArgs := range args.Txs {
 		// Check if the context was cancelled (eg. timed-out)
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -2456,7 +2459,7 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 		rand.Read(randomHash[:])
 
 		// New random hash since its a call
-		statedb.Prepare(randomHash, i)
+		state.Prepare(rules, txArgs.from(), coinbase, txArgs.To, vm.ActivePrecompiles(rules), *txArgs.AccessList)
 
 		// Convert tx args to msg to apply state transition
 		msg, err := txArgs.ToMessage(globalGasCap, header.BaseFee)

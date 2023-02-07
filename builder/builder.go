@@ -9,14 +9,21 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
+	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 	"golang.org/x/time/rate"
 
+	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/beacon"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/flashbotsextra"
 	"github.com/ethereum/go-ethereum/log"
 
+	capellaapi "github.com/attestantio/go-builder-client/api/capella"
+	apiv1 "github.com/attestantio/go-builder-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/bellatrix"
+	"github.com/attestantio/go-eth2-client/spec/capella"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/flashbots/go-boost-utils/bls"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
@@ -38,6 +45,7 @@ type IBeaconClient interface {
 
 type IRelay interface {
 	SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, vd ValidatorData) error
+	SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
 	Start() error
 	Stop()
@@ -50,6 +58,7 @@ type IBuilder interface {
 }
 
 type Builder struct {
+	chainConfig          *params.ChainConfig
 	ds                   flashbotsextra.IDatabaseService
 	relay                IRelay
 	eth                  IEthereumService
@@ -68,7 +77,7 @@ type Builder struct {
 	slotCtxCancel context.CancelFunc
 }
 
-func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, validator *blockvalidation.BlockValidationAPI) *Builder {
+func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, validator *blockvalidation.BlockValidationAPI, chainConfig *params.ChainConfig) *Builder {
 	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
@@ -100,17 +109,31 @@ func (b *Builder) Stop() error {
 }
 
 func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
-	executableData := beacon.BlockToExecutableData(block)
-	payload, err := executableDataToExecutionPayload(executableData)
+	if b.chainConfig.IsShanghai(block.Time()) {
+
+	} else {
+		if err := b.submitBellatrixBlock(block, ordersClosedAt, sealedAt, commitedBundles, allBundles, proposerPubkey, vd, attrs); err != nil {
+			return err
+		}
+	}
+
+	log.Info("submitted block", "slot", attrs.Slot, "value", block.Profit.String(), "parent", block.ParentHash, "hash", block.Hash(), "#commitedBundles", len(commitedBundles))
+
+	return nil
+}
+
+func (b *Builder) submitBellatrixBlock(block *types.Block, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
+	value := new(boostTypes.U256Str)
+	err := value.FromBig(block.Profit)
 	if err != nil {
-		log.Error("could not format execution payload", "err", err)
+		log.Error("could not set block value", "err", err)
 		return err
 	}
 
-	value := new(boostTypes.U256Str)
-	err = value.FromBig(block.Profit)
+	executableData := engine.BlockToExecutableData(block, block.Profit)
+	payload, err := executableDataToExecutionPayload(executableData.ExecutionPayload)
 	if err != nil {
-		log.Error("could not set block value", "err", err)
+		log.Error("could not format execution payload", "err", err)
 		return err
 	}
 
@@ -121,8 +144,8 @@ func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, se
 		BuilderPubkey:        b.builderPublicKey,
 		ProposerPubkey:       proposerPubkey,
 		ProposerFeeRecipient: vd.FeeRecipient,
-		GasLimit:             executableData.GasLimit,
-		GasUsed:              executableData.GasUsed,
+		GasLimit:             executableData.ExecutionPayload.GasLimit,
+		GasUsed:              executableData.ExecutionPayload.GasUsed,
 		Value:                *value,
 	}
 
@@ -151,8 +174,56 @@ func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, se
 			return err
 		}
 	}
+	return nil
+}
 
-	log.Info("submitted block", "slot", blockBidMsg.Slot, "value", blockBidMsg.Value.String(), "parent", blockBidMsg.ParentHash, "hash", block.Hash(), "#commitedBundles", len(commitedBundles))
+func (b *Builder) submitCapellaBlock(block *types.Block, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
+	executableData := engine.BlockToExecutableData(block, block.Profit)
+	payload, err := executableDataToCapellaExecutionPayload(executableData.ExecutionPayload)
+	if err != nil {
+		log.Error("could not format execution payload", "err", err)
+		return err
+	}
+
+	value := new(boostTypes.U256Str)
+	err = value.FromBig(block.Profit)
+	if err != nil {
+		log.Error("could not set block value", "err", err)
+		return err
+	}
+
+	blockBidMsg := apiv1.BidTrace{
+		Slot:                 attrs.Slot,
+		ParentHash:           payload.ParentHash,
+		BlockHash:            payload.BlockHash,
+		BuilderPubkey:        phase0.BLSPubKey(b.builderPublicKey),
+		ProposerPubkey:       phase0.BLSPubKey(proposerPubkey),
+		ProposerFeeRecipient: bellatrix.ExecutionAddress(vd.FeeRecipient),
+		GasLimit:             executableData.ExecutionPayload.GasLimit,
+		GasUsed:              executableData.ExecutionPayload.GasUsed,
+		Value:                uint256.NewInt(value.BigInt().Uint64()),
+	}
+
+	boostBidTrace := convertBidTrace(blockBidMsg)
+
+	signature, err := boostTypes.SignMessage(&blockBidMsg, b.builderSigningDomain, b.builderSecretKey)
+	if err != nil {
+		log.Error("could not sign builder bid", "err", err)
+		return err
+	}
+
+	blockSubmitReq := capellaapi.SubmitBlockRequest{
+		Signature:        phase0.BLSSignature(signature),
+		Message:          &blockBidMsg,
+		ExecutionPayload: payload,
+	}
+
+	go b.ds.ConsumeBuiltBlock(block, ordersClosedAt, sealedAt, commitedBundles, allBundles, &boostBidTrace)
+	err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
+	if err != nil {
+		log.Error("could not submit block", "err", err, "#commitedBundles", len(commitedBundles))
+		return err
+	}
 
 	return nil
 }
@@ -203,7 +274,10 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 	}
 
 	for _, currentAttrs := range b.slotAttrs {
-		if *attrs == currentAttrs {
+		seen := attrs.HeadHash == currentAttrs.HeadHash && attrs.Slot == currentAttrs.Slot &&
+			attrs.GasLimit == currentAttrs.GasLimit && attrs.SuggestedFeeRecipient == currentAttrs.SuggestedFeeRecipient
+
+		if seen {
 			log.Debug("ignoring known payload attribute", "slot", attrs.Slot, "hash", attrs.HeadHash)
 			return nil
 		}
@@ -296,7 +370,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 	})
 }
 
-func executableDataToExecutionPayload(data *beacon.ExecutableDataV1) (*boostTypes.ExecutionPayload, error) {
+func executableDataToExecutionPayload(data *engine.ExecutableData) (*boostTypes.ExecutionPayload, error) {
 	transactionData := make([]hexutil.Bytes, len(data.Transactions))
 	for i, tx := range data.Transactions {
 		transactionData[i] = hexutil.Bytes(tx)
@@ -324,4 +398,48 @@ func executableDataToExecutionPayload(data *beacon.ExecutableDataV1) (*boostType
 		BlockHash:     [32]byte(data.BlockHash),
 		Transactions:  transactionData,
 	}, nil
+}
+
+func executableDataToCapellaExecutionPayload(data *engine.ExecutableData) (*capella.ExecutionPayload, error) {
+	transactionData := make([]bellatrix.Transaction, len(data.Transactions))
+	for i, tx := range data.Transactions {
+		transactionData[i] = bellatrix.Transaction(tx)
+	}
+
+	baseFeePerGas := new(boostTypes.U256Str)
+	err := baseFeePerGas.FromBig(data.BaseFeePerGas)
+	if err != nil {
+		return nil, err
+	}
+
+	return &capella.ExecutionPayload{
+		ParentHash:    [32]byte(data.ParentHash),
+		FeeRecipient:  [20]byte(data.FeeRecipient),
+		StateRoot:     [32]byte(data.StateRoot),
+		ReceiptsRoot:  [32]byte(data.ReceiptsRoot),
+		LogsBloom:     boostTypes.Bloom(types.BytesToBloom(data.LogsBloom)),
+		PrevRandao:    [32]byte(data.Random),
+		BlockNumber:   data.Number,
+		GasLimit:      data.GasLimit,
+		GasUsed:       data.GasUsed,
+		Timestamp:     data.Timestamp,
+		ExtraData:     data.ExtraData,
+		BaseFeePerGas: *baseFeePerGas,
+		BlockHash:     [32]byte(data.BlockHash),
+		Transactions:  transactionData,
+	}, nil
+}
+
+func convertBidTrace(bidTrace apiv1.BidTrace) boostTypes.BidTrace {
+	return boostTypes.BidTrace{
+		Slot:                 bidTrace.Slot,
+		ParentHash:           boostTypes.Hash(bidTrace.ParentHash),
+		BlockHash:            boostTypes.Hash(bidTrace.BlockHash),
+		BuilderPubkey:        boostTypes.PublicKey(bidTrace.BuilderPubkey),
+		ProposerPubkey:       boostTypes.PublicKey(bidTrace.ProposerPubkey),
+		ProposerFeeRecipient: boostTypes.Address(bidTrace.ProposerFeeRecipient),
+		GasLimit:             bidTrace.GasLimit,
+		GasUsed:              bidTrace.GasUsed,
+		Value:                boostTypes.IntToU256(bidTrace.Value.Uint64()),
+	}
 }

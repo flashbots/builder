@@ -18,7 +18,6 @@ package logger
 
 import (
 	"math/big"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -59,7 +58,7 @@ func (t *AccountTouchTracer) CaptureStart(_ *vm.EVM, from common.Address, to com
 	t.touched[to] = struct{}{}
 }
 
-func (t *AccountTouchTracer) CaptureEnd([]byte, uint64, time.Duration, error) {}
+func (t *AccountTouchTracer) CaptureEnd([]byte, uint64, error) {}
 
 func (t *AccountTouchTracer) CaptureEnter(_ vm.OpCode, _ common.Address, to common.Address, _ []byte, _ uint64, _ *big.Int) {
 	t.touched[to] = struct{}{}

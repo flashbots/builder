@@ -127,11 +127,7 @@ type testWorkerBackend struct {
 	uncleBlock *types.Block
 }
 
-func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, n int) *testWorkerBackend {
-	var gspec = &core.Genesis{
-		Config: chainConfig,
-		Alloc:  alloc,
-	}
+func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, genesis core.Genesis, n int) *testWorkerBackend {
 	switch e := engine.(type) {
 	case *clique.Clique:
 		genesis.ExtraData = make([]byte, 32+common.AddressLength+crypto.SignatureLength)
@@ -143,38 +139,34 @@ func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine 
 	default:
 		t.Fatalf("unexpected consensus engine type: %T", engine)
 	}
-	chain, err := core.NewBlockChain(db, &core.CacheConfig{TrieDirtyDisabled: true}, gspec, nil, engine, vm.Config{}, nil, nil)
-	if err != nil {
-		t.Fatalf("core.NewBlockChain failed: %v", err)
-	}
+	genesisBlock := genesis.MustCommit(db)
+
+	chain, _ := core.NewBlockChain(db, &core.CacheConfig{TrieDirtyDisabled: true}, &genesis, nil, engine, vm.Config{}, nil, nil)
 	txpool := txpool.NewTxPool(testTxPoolConfig, chainConfig, chain)
 
 	// Generate a small n-block chain and an uncle block for it
-	var uncle *types.Block
 	if n > 0 {
-		genDb, blocks, _ := core.GenerateChainWithGenesis(gspec, engine, n, func(i int, gen *core.BlockGen) {
+		blocks, _ := core.GenerateChain(chainConfig, genesisBlock, engine, db, n, func(i int, gen *core.BlockGen) {
 			gen.SetCoinbase(testBankAddress)
 		})
 		if _, err := chain.InsertChain(blocks); err != nil {
 			t.Fatalf("failed to insert origin chain: %v", err)
 		}
-		parent := chain.GetBlockByHash(chain.CurrentBlock().ParentHash)
-		blocks, _ = core.GenerateChain(chainConfig, parent, engine, genDb, 1, func(i int, gen *core.BlockGen) {
-			gen.SetCoinbase(testUserAddress)
-		})
-		uncle = blocks[0]
-	} else {
-		_, blocks, _ := core.GenerateChainWithGenesis(gspec, engine, 1, func(i int, gen *core.BlockGen) {
-			gen.SetCoinbase(testUserAddress)
-		})
-		uncle = blocks[0]
 	}
+	parent := genesisBlock
+	if n > 0 {
+		parent = chain.GetBlockByHash(chain.CurrentBlock().ParentHash())
+	}
+	blocks, _ := core.GenerateChain(chainConfig, parent, engine, db, 1, func(i int, gen *core.BlockGen) {
+		gen.SetCoinbase(testUserAddress)
+	})
+
 	return &testWorkerBackend{
 		db:         db,
 		chain:      chain,
 		txPool:     txpool,
-		genesis:    gspec,
-		uncleBlock: uncle,
+		genesis:    &genesis,
+		uncleBlock: blocks[0],
 	}
 }
 
@@ -256,7 +248,7 @@ func testGenerateBlockAndImport(t *testing.T, isClique bool) {
 		chainConfig = *params.AllEthashProtocolChanges
 		engine = ethash.NewFaker()
 	}
-	w, b := newTestWorker(t, &chainConfig, engine, db, 0)
+	w, b := newTestWorker(t, &chainConfig, engine, db, defaultGenesisAlloc, 0)
 	defer w.close()
 
 	// This test chain imports the mined blocks.
@@ -618,6 +610,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 		parent       common.Hash
 		coinbase     common.Address
 		random       common.Hash
+		withdrawals  types.Withdrawals
 		expectNumber uint64
 		expectErr    bool
 	}{
@@ -625,6 +618,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 			b.chain.Genesis().Hash(),
 			common.HexToAddress("0xdeadbeef"),
 			common.HexToHash("0xcafebabe"),
+			nil,
 			uint64(1),
 			false,
 		},
@@ -632,27 +626,31 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 			b.chain.CurrentBlock().Hash(),
 			common.HexToAddress("0xdeadbeef"),
 			common.HexToHash("0xcafebabe"),
-			b.chain.CurrentBlock().Number.Uint64() + 1,
+			nil,
+			b.chain.CurrentBlock().NumberU64() + 1,
 			false,
 		},
 		{
 			b.chain.CurrentBlock().Hash(),
 			common.Address{},
 			common.HexToHash("0xcafebabe"),
-			b.chain.CurrentBlock().Number.Uint64() + 1,
+			nil,
+			b.chain.CurrentBlock().NumberU64() + 1,
 			false,
 		},
 		{
 			b.chain.CurrentBlock().Hash(),
 			common.Address{},
 			common.Hash{},
-			b.chain.CurrentBlock().Number.Uint64() + 1,
+			nil,
+			b.chain.CurrentBlock().NumberU64() + 1,
 			false,
 		},
 		{
 			common.HexToHash("0xdeadbeef"),
 			common.HexToAddress("0xdeadbeef"),
 			common.HexToHash("0xcafebabe"),
+			nil,
 			0,
 			true,
 		},
@@ -660,7 +658,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 
 	// This API should work even when the automatic sealing is not enabled
 	for _, c := range cases {
-		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, c.random, nil, false)
+		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, c.withdrawals, true, nil)
 		if c.expectErr {
 			if err == nil {
 				t.Error("Expect error but get nil")
@@ -676,7 +674,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 	// This API should work even when the automatic sealing is enabled
 	w.start()
 	for _, c := range cases {
-		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, c.random, nil, false)
+		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, c.withdrawals, false, nil)
 		if c.expectErr {
 			if err == nil {
 				t.Error("Expect error but get nil")
@@ -824,24 +822,18 @@ func testBundles(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		blockCh, errCh, err := w.getSealingBlock(w.chain.CurrentBlock().Hash(), w.chain.CurrentHeader().Time+12, testUserAddress, 0, common.Hash{}, false, false, nil)
+		block, _, err := w.getSealingBlock(w.chain.CurrentBlock().Hash(), w.chain.CurrentHeader().Time+12, testUserAddress, 0, common.Hash{}, w.chain.CurrentBlock().Withdrawals(), false, nil)
 		require.NoError(t, err)
-		select {
-		case block := <-blockCh:
-			state, err := w.chain.State()
-			require.NoError(t, err)
-			balancePre := state.GetBalance(testUserAddress)
-			if _, err := w.chain.InsertChain([]*types.Block{block}); err != nil {
-				t.Fatalf("failed to insert new mined block %d: %v", block.NumberU64(), err)
-			}
-			state, err = w.chain.StateAt(block.Root())
-			require.NoError(t, err)
-			balancePost := state.GetBalance(testUserAddress)
-			t.Log("Balances", balancePre, balancePost)
-		case err := <-errCh:
-			require.NoError(t, err)
-		case <-time.After(3 * time.Second): // Worker needs 1s to include new changes.
-			t.Fatalf("timeout")
+
+		state, err := w.chain.State()
+		require.NoError(t, err)
+		balancePre := state.GetBalance(testUserAddress)
+		if _, err := w.chain.InsertChain([]*types.Block{block}); err != nil {
+			t.Fatalf("failed to insert new mined block %d: %v", block.NumberU64(), err)
 		}
+		state, err = w.chain.StateAt(block.Root())
+		require.NoError(t, err)
+		balancePost := state.GetBalance(testUserAddress)
+		t.Log("Balances", balancePre, balancePost)
 	}
 }

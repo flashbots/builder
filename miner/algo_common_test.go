@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	mapset "github.com/deckarep/golang-set"
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
@@ -48,7 +48,7 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 	gasFees := big.NewInt(0)
 	ethSentToCoinbase := big.NewInt(0)
 
-	for i, tx := range bundle.Txs {
+	for _, tx := range bundle.Txs {
 		if checkInterrupt(interrupt) {
 			return types.SimulatedBundle{}, errInterrupt
 		}
@@ -67,7 +67,13 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 			}
 		}
 
-		stateDB.Prepare(tx.Hash(), i+env.tcount)
+		rules := chData.chainConfig.Rules(env.header.Number, env.header.Difficulty.BitLen() != 0, env.header.Time)
+		from, err := types.Sender(env.signer, tx)
+		if err != nil {
+			return types.SimulatedBundle{}, err
+		}
+
+		stateDB.Prepare(rules, from, env.coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
 		coinbaseBalanceBefore := stateDB.GetBalance(env.coinbase)
 
 		var tempGasUsed uint64
@@ -202,7 +208,7 @@ func genTestSetupWithAlloc(config *params.ChainConfig, alloc core.GenesisAlloc) 
 	}
 	_ = gspec.MustCommit(db)
 
-	chain, _ := core.NewBlockChain(db, &core.CacheConfig{TrieDirtyDisabled: true}, gspec.Config, ethash.NewFaker(), vm.Config{}, nil, nil)
+	chain, _ := core.NewBlockChain(db, &core.CacheConfig{TrieDirtyDisabled: true}, gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
 
 	stateDB, _ := state.New(chain.CurrentHeader().Root, state.NewDatabase(db), nil)
 
@@ -217,8 +223,8 @@ func newEnvironment(data chainData, state *state.StateDB, coinbase common.Addres
 		state:     state,
 		gasPool:   new(core.GasPool).AddGas(gasLimit),
 		coinbase:  coinbase,
-		ancestors: mapset.NewSet(),
-		family:    mapset.NewSet(),
+		ancestors: mapset.NewSet[common.Hash](),
+		family:    mapset.NewSet[common.Hash](),
 		header: &types.Header{
 			Coinbase:   coinbase,
 			ParentHash: currentBlock.Hash(),
@@ -518,7 +524,7 @@ func TestGetSealingWorkAlgos(t *testing.T) {
 		*local = *ethashChainConfig
 		local.TerminalTotalDifficulty = big.NewInt(0)
 		testConfig.AlgoType = algoType
-		testGetSealingWork(t, local, ethash.NewFaker(), true)
+		testGetSealingWork(t, local, ethash.NewFaker())
 	}
 }
 

@@ -232,8 +232,8 @@ func (config *Config) sanitize() Config {
 		conf.Lifetime = DefaultConfig.Lifetime
 	}
 	if conf.PrivateTxLifetime < 1 {
-		log.Warn("Sanitizing invalid txpool private tx lifetime", "provided", conf.PrivateTxLifetime, "updated", DefaultTxPoolConfig.PrivateTxLifetime)
-		conf.PrivateTxLifetime = DefaultTxPoolConfig.PrivateTxLifetime
+		log.Warn("Sanitizing invalid txpool private tx lifetime", "provided", conf.PrivateTxLifetime, "updated", DefaultConfig.PrivateTxLifetime)
+		conf.PrivateTxLifetime = DefaultConfig.PrivateTxLifetime
 	}
 	return conf
 }
@@ -285,6 +285,8 @@ type TxPool struct {
 
 	changesSinceReorg int // A counter for how many drops we've performed in-between reorg.
 
+	privateTxs    *timestampedTxHashSet
+	mevBundles    []types.MevBundle
 	bundleFetcher IFetcher
 }
 

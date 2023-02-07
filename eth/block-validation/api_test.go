@@ -8,12 +8,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core"
-	"github.com/ethereum/go-ethereum/core/beacon"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -21,6 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
+	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/params"
@@ -72,7 +73,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	tx2, _ := types.SignTx(types.NewTransaction(nonce+2, testAddr, big.NewInt(10), 21000, baseFee, nil), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
 	ethservice.TxPool().AddLocal(tx2)
 
-	execData, err := assembleBlock(api, parent.Hash(), &beacon.PayloadAttributesV1{
+	execData, err := assembleBlock(api, parent.Hash(), &engine.PayloadAttributes{
 		Timestamp:             parent.Time() + 5,
 		SuggestedFeeRecipient: testValidatorAddr,
 	})
@@ -119,7 +120,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	// Test tx from blacklisted address
 	api.accessVerifier = &AccessVerifier{
 		blacklistedAddresses: map[common.Address]struct{}{
-			testAddr: struct{}{},
+			testAddr: {},
 		},
 	}
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "transaction from blacklisted address 0x71562b71999873DB5b286dF957af199Ec94617F7")
@@ -127,7 +128,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	// Test tx to blacklisted address
 	api.accessVerifier = &AccessVerifier{
 		blacklistedAddresses: map[common.Address]struct{}{
-			common.Address{0x16}: struct{}{},
+			{0x16}: {},
 		},
 	}
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "transaction to blacklisted address 0x1600000000000000000000000000000000000000")
@@ -157,7 +158,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 }
 
 func updatePayloadHash(t *testing.T, blockRequest *BuilderBlockValidationRequest) {
-	updatedBlock, err := beacon.ExecutionPayloadToBlock(blockRequest.ExecutionPayload)
+	updatedBlock, err := engine.ExecutionPayloadToBlock(blockRequest.ExecutionPayload)
 	require.NoError(t, err)
 	copy(blockRequest.Message.BlockHash[:], updatedBlock.Hash().Bytes()[:32])
 }
@@ -225,12 +226,19 @@ func startEthService(t *testing.T, genesis *core.Genesis, blocks []*types.Block)
 	return n, ethservice
 }
 
-func assembleBlock(api *BlockValidationAPI, parentHash common.Hash, params *beacon.PayloadAttributesV1) (*beacon.ExecutableDataV1, error) {
-	block, err := api.eth.Miner().GetSealingBlockSync(parentHash, params.Timestamp, params.SuggestedFeeRecipient, 0, params.Random, false, nil)
+func assembleBlock(api *BlockValidationAPI, parentHash common.Hash, params *engine.PayloadAttributes) (*engine.ExecutableData, error) {
+	args := &miner.BuildPayloadArgs{
+		Parent:       parentHash,
+		Timestamp:    params.Timestamp,
+		FeeRecipient: params.SuggestedFeeRecipient,
+		Random:       params.Random,
+		Withdrawals:  params.Withdrawals,
+	}
+	payload, err := api.eth.Miner().BuildPayload(args)
 	if err != nil {
 		return nil, err
 	}
-	return beacon.BlockToExecutableData(block), nil
+	return payload.ResolveFull().ExecutionPayload, nil
 }
 
 func TestBlacklistLoad(t *testing.T) {
@@ -252,8 +260,8 @@ func TestBlacklistLoad(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, av)
 	require.EqualValues(t, av.blacklistedAddresses, map[common.Address]struct{}{
-		common.Address{0x13}: struct{}{},
-		common.Address{0x14}: struct{}{},
+		{0x13}: {},
+		{0x14}: {},
 	})
 
 	require.NoError(t, av.verifyTraces(logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, nil)))
@@ -275,7 +283,7 @@ func TestBlacklistLoad(t *testing.T) {
 	require.NoError(t, av.verifyTraces(tracer))
 }
 
-func ExecutableDataToExecutionPayload(data *beacon.ExecutableDataV1) (*boostTypes.ExecutionPayload, error) {
+func ExecutableDataToExecutionPayload(data *engine.ExecutableData) (*boostTypes.ExecutionPayload, error) {
 	transactionData := make([]hexutil.Bytes, len(data.Transactions))
 	for i, tx := range data.Transactions {
 		transactionData[i] = hexutil.Bytes(tx)

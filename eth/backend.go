@@ -317,7 +317,7 @@ func (s *Ethereum) APIs() []rpc.API {
 	}...)
 }
 
-func (s *Ethereum) RegisterBundleFetcher(fetcher core.IFetcher) {
+func (s *Ethereum) RegisterBundleFetcher(fetcher txpool.IFetcher) {
 	s.txPool.RegisterBundleFetcher(fetcher)
 }
 

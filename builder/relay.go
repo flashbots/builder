@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/attestantio/go-builder-client/api/capella"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
@@ -143,6 +144,23 @@ func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ V
 
 	if r.localRelay != nil {
 		r.localRelay.submitBlock(msg)
+	}
+
+	return nil
+}
+
+func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData) error {
+	log.Info("submitting block to remote relay", "endpoint", r.endpoint)
+	code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, r.endpoint+"/relay/v1/builder/blocks", msg, nil)
+	if err != nil {
+		return fmt.Errorf("error sending http request to relay %s. err: %w", r.endpoint, err)
+	}
+	if code > 299 {
+		return fmt.Errorf("non-ok response code %d from relay %s", code, r.endpoint)
+	}
+
+	if r.localRelay != nil {
+		r.localRelay.submitBlockCapella(msg)
 	}
 
 	return nil
