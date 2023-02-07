@@ -216,8 +216,8 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockV
 
 type BuilderBlockValidationRequestV2 struct {
 	capellaapi.SubmitBlockRequest
-	WithdrawalsRoot    common.Hash `json:"withdrawals_root"`
 	RegisteredGasLimit uint64      `json:"registered_gas_limit,string"`
+	WithdrawalsRoot    common.Hash `json:"withdrawals_root"`
 }
 
 func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockValidationRequestV2) error {
@@ -232,10 +232,11 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockV
 		return err
 	}
 
-	isShanghai := api.eth.BlockChain().Config().IsShanghai(params.ExecutionPayload.Timestamp)
-	if err := verifyWithdrawals(block.Withdrawals(), params.WithdrawalsRoot, isShanghai); err != nil {
-		return err
-	}
+	// validated at the relay
+	// isShanghai := api.eth.BlockChain().Config().IsShanghai(params.ExecutionPayload.Timestamp)
+	// if err := verifyWithdrawals(block.Withdrawals(), params.WithdrawalsRoot, isShanghai); err != nil {
+	// 	return err
+	// }
 
 	if params.Message.ParentHash != phase0.Hash32(block.ParentHash()) {
 		return fmt.Errorf("incorrect ParentHash %s, expected %s", params.Message.ParentHash.String(), block.ParentHash().String())
