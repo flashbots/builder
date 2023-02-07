@@ -318,7 +318,9 @@ func NewTxPool(config Config, chainconfig *params.ChainConfig, chain blockChain)
 		reorgShutdownCh: make(chan struct{}),
 		initDoneCh:      make(chan struct{}),
 		gasPrice:        new(big.Int).SetUint64(config.PriceLimit),
+		privateTxs:      newExpiringTxHashSet(config.PrivateTxLifetime),
 	}
+
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
 		log.Info("Setting new local account", "address", addr)
@@ -1063,7 +1065,7 @@ func (pool *TxPool) AddPrivateRemote(tx *types.Transaction) error {
 	return errs[0]
 }
 
-// AddRemotesSync is like AddRemotes, but waits for pool reorganization. Tests use this method.
+// This is like AddRemotes, but waits for pool reorganization. Tests use this method.
 func (pool *TxPool) AddRemotesSync(txs []*types.Transaction) []error {
 	return pool.addTxs(txs, false, true, false)
 }
