@@ -11,5 +11,6 @@ type BuilderPayloadAttributes struct {
 	SuggestedFeeRecipient common.Address `json:"suggestedFeeRecipient,omitempty"`
 	Slot                  uint64         `json:"slot"`
 	HeadHash              common.Hash    `json:"blockHash"`
+	Withdrawals           Withdrawals    `json:"withdrawals"`
 	GasLimit              uint64
 }

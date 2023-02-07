@@ -79,6 +79,11 @@ type Config struct {
 	Noverify   bool           // Disable remote mining solution verification(only useful in ethash).
 
 	NewPayloadTimeout time.Duration // The maximum time allowance for creating a new payload
+
+	AlgoType            AlgoType          // Algorithm to use for block building
+	BuilderTxSigningKey *ecdsa.PrivateKey // Signing key of builder coinbase to make transaction to validator
+	MaxMergedBundles    int
+	Blocklist           []common.Address `toml:",omitempty"`
 }
 
 // DefaultConfig contains default settings for miner.
@@ -102,7 +107,7 @@ type Miner struct {
 	exitCh  chan struct{}
 	startCh chan struct{}
 	stopCh  chan struct{}
-	worker  *worker
+	worker  *multiWorker
 
 	wg sync.WaitGroup
 }
@@ -285,5 +290,13 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 
 // BuildPayload builds the payload according to the provided parameters.
 func (miner *Miner) BuildPayload(args *BuildPayloadArgs) (*Payload, error) {
-	return miner.worker.buildPayload(args)
+	return miner.worker.regularWorker.buildPayload(args)
 }
+
+// BuildPayload builds the payload according to the provided parameters.
+func (miner *Miner) GetSealingBlock(args *BuildPayloadArgs, noTxs bool, blockHook BlockHookFn) (chan *types.Block, error) {
+	return miner.worker.GetSealingBlock(args, noTxs, blockHook)
+}
+
+// Accepts the block, time at which orders were taken, bundles which were used to build the block and all bundles that were considered for the block
+type BlockHookFn = func(*types.Block, time.Time, []types.SimulatedBundle, []types.SimulatedBundle)

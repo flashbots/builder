@@ -7,8 +7,8 @@ import (
 	"math/big"
 	"os"
 
+	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/beacon"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth"
@@ -136,7 +136,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockV
 		return errors.New("nil execution payload")
 	}
 	payload := params.ExecutionPayload
-	block, err := beacon.ExecutionPayloadToBlock(payload)
+	block, err := engine.ExecutionPayloadToBlock(payload)
 	if err != nil {
 		return err
 	}
@@ -173,7 +173,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockV
 			return err
 		}
 		isPostMerge := true // the call is PoS-native
-		precompiles := vm.ActivePrecompiles(api.eth.APIBackend.ChainConfig().Rules(new(big.Int).SetUint64(params.ExecutionPayload.BlockNumber), isPostMerge))
+		precompiles := vm.ActivePrecompiles(api.eth.APIBackend.ChainConfig().Rules(new(big.Int).SetUint64(params.ExecutionPayload.BlockNumber), isPostMerge, payload.Timestamp))
 		tracer = logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, precompiles)
 		vmconfig = vm.Config{Tracer: tracer, Debug: true}
 	}

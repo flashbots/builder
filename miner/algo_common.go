@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
@@ -150,7 +151,13 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 		return nil, shiftTx, err
 	}
 
-	envDiff.state.Prepare(tx.Hash(), envDiff.baseEnvironment.tcount+len(envDiff.newTxs))
+	rules := chData.chainConfig.Rules(header.Number, header.Difficulty.BitLen() != 0, header.Time)
+	from, err := types.Sender(signer, tx)
+	if err != nil {
+		return nil, shiftTx, err
+	}
+
+	envDiff.state.Prepare(rules, from, *coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
 
 	receipt, newState, err := applyTransactionWithBlacklist(signer, chData.chainConfig, chData.chain, coinbase,
 		envDiff.gasPool, envDiff.state, header, tx, &header.GasUsed, *chData.chain.GetVMConfig(), chData.blacklist)
@@ -221,7 +228,7 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 		}
 
 		if tx.Value().Sign() == -1 {
-			return core.ErrNegativeValue
+			return txpool.ErrNegativeValue
 		}
 
 		_, err := tx.EffectiveGasTip(envDiff.header.BaseFee)

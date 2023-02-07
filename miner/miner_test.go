@@ -222,7 +222,7 @@ func TestMinerSetEtherbase(t *testing.T) {
 
 	coinbase := common.HexToAddress("0xdeedbeef")
 	miner.SetEtherbase(coinbase)
-	if addr := miner.worker.etherbase(); addr != coinbase {
+	if addr := miner.worker.regularWorker.etherbase(); addr != coinbase {
 		t.Fatalf("Unexpected etherbase want %x got %x", coinbase, addr)
 	}
 }

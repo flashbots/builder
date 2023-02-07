@@ -817,7 +817,7 @@ func (s *StateDB) Snapshot() int {
 	if metrics.EnabledBuilder {
 		stateSnapshotMeter.Mark(1)
 	}
-	
+
 	return id
 }
 

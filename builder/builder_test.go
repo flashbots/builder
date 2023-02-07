@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/beacon"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/flashbotsextra"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/flashbots/go-boost-utils/bls"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 	"github.com/stretchr/testify/require"
@@ -42,7 +43,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 
 	bDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeAppBuilder, [4]byte{0x02, 0x0, 0x0, 0x0}, boostTypes.Hash{})
 
-	testExecutableData := &beacon.ExecutableDataV1{
+	testExecutableData := &engine.ExecutableData{
 		ParentHash:   common.Hash{0x02, 0x03},
 		FeeRecipient: common.Address(feeRecipient),
 		StateRoot:    common.Hash{0x07, 0x16},
@@ -60,7 +61,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 		Transactions: [][]byte{},
 	}
 
-	testBlock, err := beacon.ExecutableDataToBlock(*testExecutableData)
+	testBlock, err := engine.ExecutableDataToBlock(*testExecutableData)
 	require.NoError(t, err)
 	testBlock.Profit = big.NewInt(10)
 
@@ -74,7 +75,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 
 	testEthService := &testEthereumService{synced: true, testExecutableData: testExecutableData, testBlock: testBlock}
 
-	builder := NewBuilder(sk, flashbotsextra.NilDbService{}, &testRelay, bDomain, testEthService, false, nil)
+	builder := NewBuilder(sk, flashbotsextra.NilDbService{}, &testRelay, bDomain, testEthService, false, nil, params.TestChainConfig)
 	builder.Start()
 	defer builder.Stop()
 
@@ -135,7 +136,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 	// Change the hash, expect to get the block
 	testExecutableData.ExtraData = hexutil.MustDecode("0x0042fafd")
 	testExecutableData.BlockHash = common.HexToHash("0x0579b1aaca5c079c91e5774bac72c7f9bc2ddf2b126e9c632be68a1cb8f3fc71")
-	testBlock, err = beacon.ExecutableDataToBlock(*testExecutableData)
+	testBlock, err = engine.ExecutableDataToBlock(*testExecutableData)
 	testBlock.Profit = big.NewInt(10)
 	require.NoError(t, err)
 	testEthService.testBlock = testBlock

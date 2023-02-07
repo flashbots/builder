@@ -345,7 +345,7 @@ func (s *remoteSealer) loop() {
 //	result[1], 32 bytes hex encoded seed hash used for DAG
 //	result[2], 32 bytes hex encoded boundary condition ("target"), 2^256/difficulty
 //	result[3], hex encoded block number
-func (s *remoteSealer) makeWork(block *types.Block) {
+func (s *remoteSealer) makeWork(block *types.Block, profit *big.Int) {
 	hash := s.ethash.SealHash(block.Header())
 	s.currentWork[0] = hash.Hex()
 	s.currentWork[1] = common.BytesToHash(SeedHash(block.NumberU64())).Hex()

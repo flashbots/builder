@@ -4,8 +4,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/beacon"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/log"
@@ -20,7 +20,7 @@ type IEthereumService interface {
 
 type testEthereumService struct {
 	synced             bool
-	testExecutableData *beacon.ExecutableDataV1
+	testExecutableData *engine.ExecutableData
 	testBlock          *types.Block
 	testBundlesMerged  []types.SimulatedBundle
 	testAllBundles     []types.SimulatedBundle
@@ -46,7 +46,14 @@ func NewEthereumService(eth *eth.Ethereum) *EthereumService {
 func (s *EthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error {
 	// Send a request to generate a full block in the background.
 	// The result can be obtained via the returned channel.
-	resCh, err := s.eth.Miner().GetSealingBlockAsync(attrs.HeadHash, uint64(attrs.Timestamp), attrs.SuggestedFeeRecipient, attrs.GasLimit, attrs.Random, false, sealedBlockCallback)
+	args := &miner.BuildPayloadArgs{
+		Parent:       attrs.HeadHash,
+		Timestamp:    uint64(attrs.Timestamp),
+		FeeRecipient: attrs.SuggestedFeeRecipient,
+		Random:       attrs.Random,
+		Withdrawals:  attrs.Withdrawals,
+	}
+	resCh, err := s.eth.Miner().GetSealingBlock(args, false, sealedBlockCallback)
 	if err != nil {
 		log.Error("Failed to create async sealing payload", "err", err)
 		return err

@@ -8,7 +8,6 @@ import (
 	"math/rand"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -23,7 +22,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-	tu "github.com/ethereum/go-ethereum/test_utils"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
@@ -208,13 +206,8 @@ func TestSimulatorState(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		blockCh, errCh, err := w.getSealingBlock(b.chain.CurrentBlock().Hash(), b.chain.CurrentHeader().Time+12, testAddress1, 0, common.Hash{}, false, false, nil)
+		block, _, err := w.getSealingBlock(b.chain.CurrentBlock().Hash(), b.chain.CurrentHeader().Time+12, testAddress1, 0, common.Hash{}, b.chain.CurrentBlock().Withdrawals(), false, nil)
 		require.NoError(t, err)
-		require.Equal(t, tu.ChanResult[error]{nil, false}, tu.RequireChan[error](errCh, 100*time.Millisecond))
-
-		blockChRes := tu.RequireChan[*types.Block](blockCh, 100*time.Millisecond)
-		block := blockChRes.Value
-		require.False(t, blockChRes.Timeout)
 		require.NotNil(t, block)
 		if requireTx != -1 {
 			require.Equal(t, requireTx, len(block.Transactions()))

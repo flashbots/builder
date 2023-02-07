@@ -12,18 +12,19 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/beacon"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/flashbotsextra"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/flashbots/go-boost-utils/bls"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 	"github.com/stretchr/testify/require"
 )
 
-func newTestBackend(t *testing.T, forkchoiceData *beacon.ExecutableDataV1, block *types.Block) (*Builder, *LocalRelay, *ValidatorPrivateData) {
+func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *types.Block) (*Builder, *LocalRelay, *ValidatorPrivateData) {
 	validator := NewRandomValidator()
 	sk, _ := bls.GenerateRandomSecretKey()
 	bDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeAppBuilder, [4]byte{0x02, 0x0, 0x0, 0x0}, boostTypes.Hash{})
@@ -32,7 +33,7 @@ func newTestBackend(t *testing.T, forkchoiceData *beacon.ExecutableDataV1, block
 	beaconClient := &testBeaconClient{validator: validator}
 	localRelay := NewLocalRelay(sk, beaconClient, bDomain, cDomain, ForkData{}, true)
 	ethService := &testEthereumService{synced: true, testExecutableData: forkchoiceData, testBlock: block}
-	backend := NewBuilder(sk, flashbotsextra.NilDbService{}, localRelay, bDomain, ethService, false, nil)
+	backend := NewBuilder(sk, flashbotsextra.NilDbService{}, localRelay, bDomain, ethService, false, nil, params.TestChainConfig)
 	// service := NewService("127.0.0.1:31545", backend)
 
 	backend.limiter = rate.NewLimiter(rate.Inf, 0)
@@ -117,7 +118,7 @@ func registerValidator(t *testing.T, v *ValidatorPrivateData, relay *LocalRelay)
 }
 
 func TestGetHeader(t *testing.T) {
-	forkchoiceData := &beacon.ExecutableDataV1{
+	forkchoiceData := &engine.ExecutableData{
 		ParentHash:    common.HexToHash("0xafafafa"),
 		FeeRecipient:  common.Address{0x01},
 		LogsBloom:     types.Bloom{0x00, 0x05, 0x10}.Bytes(),
@@ -126,7 +127,7 @@ func TestGetHeader(t *testing.T) {
 		ExtraData:     []byte{},
 	}
 
-	forkchoiceBlock, err := beacon.ExecutableDataToBlock(*forkchoiceData)
+	forkchoiceBlock, err := engine.ExecutableDataToBlock(*forkchoiceData)
 	require.NoError(t, err)
 	forkchoiceBlock.Profit = big.NewInt(10)
 
@@ -178,7 +179,7 @@ func TestGetHeader(t *testing.T) {
 }
 
 func TestGetPayload(t *testing.T) {
-	forkchoiceData := &beacon.ExecutableDataV1{
+	forkchoiceData := &engine.ExecutableData{
 		ParentHash:    common.HexToHash("0xafafafa"),
 		FeeRecipient:  common.Address{0x01},
 		LogsBloom:     types.Bloom{}.Bytes(),
@@ -187,7 +188,7 @@ func TestGetPayload(t *testing.T) {
 		ExtraData:     []byte{},
 	}
 
-	forkchoiceBlock, err := beacon.ExecutableDataToBlock(*forkchoiceData)
+	forkchoiceBlock, err := engine.ExecutableDataToBlock(*forkchoiceData)
 	require.NoError(t, err)
 	forkchoiceBlock.Profit = big.NewInt(10)
 

@@ -2490,7 +2490,7 @@ func TestBundleCancellations(t *testing.T) {
 	require.Equal(t, []types.MevBundle{bundle01_uuid1_signer1}, cr.Value)
 
 	fetcher.resps[1] = []types.LatestUuidBundle{
-		types.LatestUuidBundle{
+		{
 			Uuid:           bundle03_uuid1_signer1.Uuid,
 			SigningAddress: bundle03_uuid1_signer1.SigningAddress,
 			BundleHash:     bundle03_uuid1_signer1.Hash,

@@ -144,7 +144,7 @@ func newNode(typ nodetype, genesis *core.Genesis, enodes []*enode.Node) *ethNode
 
 func (n *ethNode) assembleBlock(parentHash common.Hash, parentTimestamp uint64) (*engine.ExecutableData, error) {
 	if n.typ != eth2MiningNode {
-		return nil, nil, errors.New("invalid node type")
+		return nil, errors.New("invalid node type")
 	}
 	timestamp := uint64(time.Now().Unix())
 	if timestamp <= parentTimestamp {
@@ -162,7 +162,7 @@ func (n *ethNode) assembleBlock(parentHash common.Hash, parentTimestamp uint64) 
 	}
 	payload, err := n.api.ForkchoiceUpdatedV1(fcState, &payloadAttribute)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	time.Sleep(time.Second * 5) // give enough time for block creation
 	return n.api.GetPayloadV1(*payload.PayloadID)
@@ -357,7 +357,7 @@ func (mgr *nodeManager) run() {
 			if parentBlock.NumberU64() == 0 {
 				timestamp = uint64(time.Now().Unix()) - uint64(blockIntervalInt)
 			}
-			ed, _, err := producers[0].assembleBlock(hash, timestamp)
+			ed, err := producers[0].assembleBlock(hash, timestamp)
 			if err != nil {
 				log.Error("Failed to assemble the block", "err", err)
 				continue
