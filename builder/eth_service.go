@@ -10,11 +10,13 @@ import (
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/miner"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 type IEthereumService interface {
 	BuildBlock(attrs *types.BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error
 	GetBlockByHash(hash common.Hash) *types.Block
+	Config() *params.ChainConfig
 	Synced() bool
 }
 
@@ -34,6 +36,8 @@ func (t *testEthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, 
 func (t *testEthereumService) GetBlockByHash(hash common.Hash) *types.Block { return t.testBlock }
 
 func (t *testEthereumService) Synced() bool { return t.synced }
+
+func (t *testEthereumService) Config() *params.ChainConfig { return params.TestChainConfig }
 
 type EthereumService struct {
 	eth *eth.Ethereum
@@ -80,4 +84,8 @@ func (s *EthereumService) GetBlockByHash(hash common.Hash) *types.Block {
 
 func (s *EthereumService) Synced() bool {
 	return s.eth.Synced()
+}
+
+func (s *EthereumService) Config() *params.ChainConfig {
+	return s.eth.BlockChain().Config()
 }

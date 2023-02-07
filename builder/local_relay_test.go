@@ -18,7 +18,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/flashbotsextra"
 	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/flashbots/go-boost-utils/bls"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 	"github.com/stretchr/testify/require"
@@ -33,7 +32,7 @@ func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *
 	beaconClient := &testBeaconClient{validator: validator}
 	localRelay := NewLocalRelay(sk, beaconClient, bDomain, cDomain, ForkData{}, true)
 	ethService := &testEthereumService{synced: true, testExecutableData: forkchoiceData, testBlock: block}
-	backend := NewBuilder(sk, flashbotsextra.NilDbService{}, localRelay, bDomain, ethService, false, nil, params.TestChainConfig)
+	backend := NewBuilder(sk, flashbotsextra.NilDbService{}, localRelay, bDomain, ethService, false, nil)
 	// service := NewService("127.0.0.1:31545", backend)
 
 	backend.limiter = rate.NewLimiter(rate.Inf, 0)

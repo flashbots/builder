@@ -9,7 +9,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
-	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"golang.org/x/time/rate"
 
@@ -58,7 +57,6 @@ type IBuilder interface {
 }
 
 type Builder struct {
-	chainConfig          *params.ChainConfig
 	ds                   flashbotsextra.IDatabaseService
 	relay                IRelay
 	eth                  IEthereumService
@@ -77,7 +75,7 @@ type Builder struct {
 	slotCtxCancel context.CancelFunc
 }
 
-func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, validator *blockvalidation.BlockValidationAPI, chainConfig *params.ChainConfig) *Builder {
+func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, validator *blockvalidation.BlockValidationAPI) *Builder {
 	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
@@ -109,8 +107,10 @@ func (b *Builder) Stop() error {
 }
 
 func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
-	if b.chainConfig.IsShanghai(block.Time()) {
-
+	if b.eth.Config().IsShanghai(block.Time()) {
+		if err := b.submitCapellaBlock(block, ordersClosedAt, sealedAt, commitedBundles, allBundles, proposerPubkey, vd, attrs); err != nil {
+			return err
+		}
 	} else {
 		if err := b.submitBellatrixBlock(block, ordersClosedAt, sealedAt, commitedBundles, allBundles, proposerPubkey, vd, attrs); err != nil {
 			return err
