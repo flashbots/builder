@@ -406,6 +406,16 @@ func executableDataToCapellaExecutionPayload(data *engine.ExecutableData) (*cape
 		transactionData[i] = bellatrix.Transaction(tx)
 	}
 
+	withdrawalData := make([]*capella.Withdrawal, len(data.Withdrawals))
+	for i, wd := range data.Withdrawals {
+		withdrawalData[i] = &capella.Withdrawal{
+			Index:          capella.WithdrawalIndex(wd.Index),
+			ValidatorIndex: phase0.ValidatorIndex(wd.Validator),
+			Address:        bellatrix.ExecutionAddress(wd.Address),
+			Amount:         phase0.Gwei(wd.Amount),
+		}
+	}
+
 	baseFeePerGas := new(boostTypes.U256Str)
 	err := baseFeePerGas.FromBig(data.BaseFeePerGas)
 	if err != nil {
@@ -427,6 +437,7 @@ func executableDataToCapellaExecutionPayload(data *engine.ExecutableData) (*cape
 		BaseFeePerGas: *baseFeePerGas,
 		BlockHash:     [32]byte(data.BlockHash),
 		Transactions:  transactionData,
+		Withdrawals:   withdrawalData,
 	}, nil
 }
 
