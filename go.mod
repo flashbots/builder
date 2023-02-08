@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v0.3.0
 	github.com/VictoriaMetrics/fastcache v1.6.0
-	github.com/attestantio/go-builder-client v0.2.7-0.20230205091614-90cf7cbe5451
+	github.com/attestantio/go-builder-client v0.2.7
 	github.com/attestantio/go-eth2-client v0.15.2
 	github.com/aws/aws-sdk-go-v2 v1.2.0
 	github.com/aws/aws-sdk-go-v2/config v1.1.1

@@ -63,6 +63,8 @@ github.com/andreyvit/diff v0.0.0-20170406064948-c7f18ee00883/go.mod h1:rCTlJbsFo
 github.com/apache/arrow/go/arrow v0.0.0-20191024131854-af6fa24be0db/go.mod h1:VTxUBvSJ3s3eHAg65PNgrsn5BtqCRPdmyXh6rAfdxN0=
 github.com/attestantio/go-builder-client v0.2.7-0.20230205091614-90cf7cbe5451 h1:eZ6JJeF2bLsLoubyYCysZ+GagRjQzyFo18EZ0UosKoY=
 github.com/attestantio/go-builder-client v0.2.7-0.20230205091614-90cf7cbe5451/go.mod h1:lZt7TKYeVfOfJPVtWdOguwysQeFqeQMDjCru87RBdic=
+github.com/attestantio/go-builder-client v0.2.7 h1:DVjqHj5vsM4LaHnRERgCq283aLG3lKR6kd920U1jrCY=
+github.com/attestantio/go-builder-client v0.2.7/go.mod h1:lZt7TKYeVfOfJPVtWdOguwysQeFqeQMDjCru87RBdic=
 github.com/attestantio/go-eth2-client v0.15.2 h1:4EYeA5IBSBypkUMhkkFALzMddaFDdb5PvCl7ORXEl6w=
 github.com/attestantio/go-eth2-client v0.15.2/go.mod h1:/Oh6YTuHmHhgLN/ZnQRKHGc7HdIzGlDkI2vjNZvOsvA=
 github.com/aws/aws-sdk-go-v2 v1.2.0 h1:BS+UYpbsElC82gB+2E2jiCBg36i8HlubTB/dO/moQ9c=
