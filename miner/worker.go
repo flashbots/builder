@@ -653,12 +653,14 @@ func (w *worker) mainLoop() {
 			}
 
 		case req := <-w.getWorkCh:
-			block, fees, err := w.generateWork(req.params)
-			req.result <- &newPayloadResult{
-				err:   err,
-				block: block,
-				fees:  fees,
-			}
+			go func() {
+				block, fees, err := w.generateWork(req.params)
+				req.result <- &newPayloadResult{
+					err:   err,
+					block: block,
+					fees:  fees,
+				}
+			}()
 		case ev := <-w.chainSideCh:
 			// Short circuit for duplicate side blocks
 			if _, exist := w.localUncles[ev.Block.Hash()]; exist {
@@ -1270,7 +1272,7 @@ func doPrepareHeader(genParams *generateParams, chain *core.BlockChain, config *
 		header.BaseFee = misc.CalcBaseFee(chainConfig, parent.Header())
 		if !chainConfig.IsLondon(parent.Number()) {
 			parentGasLimit := parent.GasLimit() * chainConfig.ElasticityMultiplier()
-			header.GasLimit = core.CalcGasLimit(parentGasLimit, config.GasCeil)
+			header.GasLimit = core.CalcGasLimit(parentGasLimit, gasTarget)
 		}
 	}
 	// Run the consensus preparation with the default or customized consensus engine.
@@ -1661,7 +1663,8 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 				log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
 					"uncles", len(env.uncles), "txs", env.tcount,
 					"gas", block.GasUsed(), "fees", feesInEther,
-					"elapsed", common.PrettyDuration(time.Since(start)))
+					"profit", ethIntToFloat(env.profit), "elapsed", common.PrettyDuration(time.Since(start)),
+					"isFlashbots", w.flashbots.isFlashbots, "worker", w.flashbots.maxMergedBundles)
 
 			case <-w.exitCh:
 				log.Info("Worker has exited")
