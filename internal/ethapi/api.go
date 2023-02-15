@@ -2302,7 +2302,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber)
 	var totalGasUsed uint64
 	gasFees := new(big.Int)
-	rules := s.b.ChainConfig().Rules(blockNumber, args.Difficulty.BitLen() != 0, timestamp)
+	rules := s.b.ChainConfig().Rules(blockNumber, header.Difficulty.Cmp(common.Big0) == 0, timestamp)
 	for _, tx := range txs {
 		// Check if the context was cancelled (eg. timed-out)
 		if err := ctx.Err(); err != nil {
@@ -2450,7 +2450,7 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 	// Block context
 	blockContext := core.NewEVMBlockContext(header, s.chain, &coinbase)
 
-	rules := s.b.ChainConfig().Rules(blockNumber, blockContext.Difficulty.BitLen() != 0, timestamp)
+	rules := s.b.ChainConfig().Rules(blockNumber, blockContext.Difficulty.Cmp(common.Big0) == 0, timestamp)
 
 	// Feed each of the transactions into the VM ctx
 	// And try and estimate the gas used
