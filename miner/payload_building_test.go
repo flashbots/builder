@@ -50,6 +50,7 @@ func TestBuildPayload(t *testing.T) {
 	}
 	verify := func(outer *engine.ExecutionPayloadEnvelope, txs int) {
 		payload := outer.ExecutionPayload
+		builderCoinbase := w.coinbase
 		if payload.ParentHash != b.chain.CurrentBlock().Hash() {
 			t.Fatal("Unexpect parent hash")
 		}
@@ -59,7 +60,7 @@ func TestBuildPayload(t *testing.T) {
 		if payload.Timestamp != timestamp {
 			t.Fatal("Unexpect timestamp")
 		}
-		if payload.FeeRecipient != recipient {
+		if payload.FeeRecipient != builderCoinbase {
 			t.Fatal("Unexpect fee recipient")
 		}
 		if len(payload.Transactions) != txs {
