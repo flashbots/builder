@@ -142,6 +142,9 @@ func applyTransactionWithBlacklist(signer types.Signer, config *params.ChainConf
 
 // commit tx to envDiff
 func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
+	// Start executing the transaction
+	envDiff.state.SetTxContext(tx.Hash(), envDiff.baseEnvironment.tcount)
+
 	header := envDiff.header
 	coinbase := &envDiff.baseEnvironment.coinbase
 	signer := envDiff.baseEnvironment.signer
@@ -151,7 +154,7 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 		return nil, shiftTx, err
 	}
 
-	rules := chData.chainConfig.Rules(header.Number, header.Difficulty.BitLen() != 0, header.Time)
+	rules := chData.chainConfig.Rules(header.Number, header.Difficulty.Cmp(common.Big0) == 0, header.Time)
 	from, err := types.Sender(signer, tx)
 	if err != nil {
 		return nil, shiftTx, err
@@ -161,7 +164,7 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 
 	receipt, newState, err := applyTransactionWithBlacklist(signer, chData.chainConfig, chData.chain, coinbase,
 		envDiff.gasPool, envDiff.state, header, tx, &header.GasUsed, *chData.chain.GetVMConfig(), chData.blacklist)
-	envDiff.state = newState
+		envDiff.state = newState
 	if err != nil {
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):

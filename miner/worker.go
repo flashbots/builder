@@ -1889,7 +1889,7 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 			}
 		}
 
-		rules := w.chainConfig.Rules(env.header.Number, env.header.Difficulty.BitLen() != 0, env.header.Time)
+		rules := w.chainConfig.Rules(env.header.Number, env.header.Difficulty.Cmp(common.Big0) == 0, env.header.Time)
 		from, err := types.Sender(env.signer, tx)
 		if err != nil {
 			return types.SimulatedBundle{}, err
