@@ -93,16 +93,15 @@ func TestBuildBlock(t *testing.T) {
 	service := NewEthereumService(ethservice)
 	service.eth.APIBackend.Miner().SetEtherbase(common.Address{0x05, 0x11})
 
-	err := service.BuildBlock(testPayloadAttributes, func(block *types.Block, _ time.Time, _ []types.SimulatedBundle, _ []types.SimulatedBundle) {
-		executableData := engine.BlockToExecutableData(block, block.Profit)
-		executionPayload := executableData.ExecutionPayload
-		require.Equal(t, common.Address{0x05, 0x11}, executionPayload.FeeRecipient)
-		require.Equal(t, common.Hash{0x05, 0x10}, executionPayload.Random)
-		require.Equal(t, parent.Hash(), executionPayload.ParentHash)
-		require.Equal(t, parent.Time()+1, executionPayload.Timestamp)
+	err := service.BuildBlock(testPayloadAttributes, func(block *types.Block, blockValue *big.Int, _ time.Time, _ []types.SimulatedBundle, _ []types.SimulatedBundle) {
+		executableData := engine.BlockToExecutableData(block, blockValue)
+		require.Equal(t, common.Address{0x05, 0x11}, executableData.ExecutionPayload.FeeRecipient)
+		require.Equal(t, common.Hash{0x05, 0x10}, executableData.ExecutionPayload.Random)
+		require.Equal(t, parent.Hash(), executableData.ExecutionPayload.ParentHash)
+		require.Equal(t, parent.Time()+1, executableData.ExecutionPayload.Timestamp)
 		require.Equal(t, block.ParentHash(), parent.Hash())
-		require.Equal(t, block.Hash(), executionPayload.BlockHash)
-		require.Equal(t, block.Profit.Uint64(), uint64(0))
+		require.Equal(t, block.Hash(), executableData.ExecutionPayload.BlockHash)
+		require.Equal(t, blockValue.Uint64(), uint64(0))
 	})
 
 	require.NoError(t, err)

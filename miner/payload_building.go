@@ -35,13 +35,13 @@ import (
 // Check engine-api specification for more details.
 // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#payloadattributesv1
 type BuildPayloadArgs struct {
-	Parent       common.Hash       // The parent block to build payload on top
-	Timestamp    uint64            // The provided timestamp of generated payload
-	FeeRecipient common.Address    // The provided recipient address for collecting transaction fee
+	Parent       common.Hash    // The parent block to build payload on top
+	Timestamp    uint64         // The provided timestamp of generated payload
+	FeeRecipient common.Address // The provided recipient address for collecting transaction fee
+	GasLimit     uint64
 	Random       common.Hash       // The provided randomness value
 	Withdrawals  types.Withdrawals // The provided withdrawals
-
-	GasLimit uint64 // The provided gas limit of generated payload
+	BlockHook    BlockHookFn
 }
 
 // Id computes an 8-byte identifier by hashing the components of the payload arguments.
@@ -50,6 +50,7 @@ func (args *BuildPayloadArgs) Id() engine.PayloadID {
 	hasher := sha256.New()
 	hasher.Write(args.Parent[:])
 	binary.Write(hasher, binary.BigEndian, args.Timestamp)
+	binary.Write(hasher, binary.BigEndian, args.GasLimit)
 	hasher.Write(args.Random[:])
 	hasher.Write(args.FeeRecipient[:])
 	rlp.Encode(hasher, args.Withdrawals)
@@ -110,6 +111,51 @@ func (payload *Payload) update(block *types.Block, fees *big.Int, elapsed time.D
 	payload.cond.Broadcast() // fire signal for notifying full block
 }
 
+func (payload *Payload) resolveBestFullPayload(payloads []*Payload) {
+	payload.lock.Lock()
+	defer payload.lock.Unlock()
+
+	log.Info("XXX resolving")
+	for _, p := range payloads {
+		p.lock.Lock()
+
+		if p.full == nil {
+			select {
+			case <-p.stop:
+				p.lock.Unlock()
+				continue
+			default:
+				p.cond.Wait()
+			}
+
+			if p.full == nil {
+				p.lock.Unlock()
+				continue
+			}
+
+			if payload.full == nil || payload.fullFees.Cmp(p.fullFees) < 0 {
+				log.Info("XXX updated")
+				payload.full = p.full
+				payload.fullFees = p.fullFees
+			}
+			p.lock.Unlock()
+		}
+	}
+
+	log.Info("XXX resolved")
+	payload.cond.Broadcast() // fire signal for notifying full block
+}
+
+func (payload *Payload) Cancel() {
+	select {
+	case <-payload.stop:
+	default:
+		close(payload.stop)
+	}
+
+	payload.cond.Broadcast()
+}
+
 // Resolve returns the latest built payload and also terminates the background
 // thread for updating payload. It's safe to be called multiple times.
 func (payload *Payload) Resolve() *engine.ExecutionPayloadEnvelope {
@@ -121,6 +167,7 @@ func (payload *Payload) Resolve() *engine.ExecutionPayloadEnvelope {
 	default:
 		close(payload.stop)
 	}
+
 	if payload.full != nil {
 		return engine.BlockToExecutableData(payload.full, payload.fullFees)
 	}
@@ -150,6 +197,11 @@ func (payload *Payload) ResolveFull() *engine.ExecutionPayloadEnvelope {
 		}
 		payload.cond.Wait()
 	}
+
+	if payload.full == nil {
+		return nil
+	}
+
 	return engine.BlockToExecutableData(payload.full, payload.fullFees)
 }
 
@@ -158,7 +210,7 @@ func (w *worker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	// Build the initial version with no transaction included. It should be fast
 	// enough to run. The empty payload can at least make sure there is something
 	// to deliver for not missing slot.
-	empty, _, err := w.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, 0, args.Random, args.Withdrawals, true, nil)
+	empty, _, err := w.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, true, args.BlockHook)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +234,7 @@ func (w *worker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 			select {
 			case <-timer.C:
 				start := time.Now()
-				block, fees, err := w.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, 0, args.Random, args.Withdrawals, false, nil)
+				block, fees, err := w.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook)
 				if err == nil {
 					payload.update(block, fees, time.Since(start))
 				}

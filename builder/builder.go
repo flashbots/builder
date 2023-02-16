@@ -3,10 +3,14 @@ package builder
 import (
 	"context"
 	"errors"
+	"math/big"
 	_ "os"
 	"sync"
 	"time"
 
+	"github.com/attestantio/go-eth2-client/spec/bellatrix"
+	"github.com/attestantio/go-eth2-client/spec/capella"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
 	"github.com/holiman/uint256"
@@ -20,9 +24,7 @@ import (
 
 	capellaapi "github.com/attestantio/go-builder-client/api/capella"
 	apiv1 "github.com/attestantio/go-builder-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec/bellatrix"
-	"github.com/attestantio/go-eth2-client/spec/capella"
-	"github.com/attestantio/go-eth2-client/spec/phase0"
+
 	"github.com/flashbots/go-boost-utils/bls"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
@@ -106,34 +108,34 @@ func (b *Builder) Stop() error {
 	return nil
 }
 
-func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
+func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
 	if b.eth.Config().IsShanghai(block.Time()) {
-		if err := b.submitCapellaBlock(block, ordersClosedAt, sealedAt, commitedBundles, allBundles, proposerPubkey, vd, attrs); err != nil {
+		if err := b.submitCapellaBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, proposerPubkey, vd, attrs); err != nil {
 			return err
 		}
 	} else {
-		if err := b.submitBellatrixBlock(block, ordersClosedAt, sealedAt, commitedBundles, allBundles, proposerPubkey, vd, attrs); err != nil {
+		if err := b.submitBellatrixBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, proposerPubkey, vd, attrs); err != nil {
 			return err
 		}
 	}
 
-	log.Info("submitted block", "slot", attrs.Slot, "value", block.Profit.String(), "parent", block.ParentHash, "hash", block.Hash(), "#commitedBundles", len(commitedBundles))
+	log.Info("submitted block", "slot", attrs.Slot, "value", blockValue.String(), "parent", block.ParentHash, "hash", block.Hash(), "#commitedBundles", len(commitedBundles))
 
 	return nil
 }
 
-func (b *Builder) submitBellatrixBlock(block *types.Block, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
-	value := new(boostTypes.U256Str)
-	err := value.FromBig(block.Profit)
-	if err != nil {
-		log.Error("could not set block value", "err", err)
-		return err
-	}
-
-	executableData := engine.BlockToExecutableData(block, block.Profit)
+func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
+	executableData := engine.BlockToExecutableData(block, blockValue)
 	payload, err := executableDataToExecutionPayload(executableData.ExecutionPayload)
 	if err != nil {
 		log.Error("could not format execution payload", "err", err)
+		return err
+	}
+
+	value := new(boostTypes.U256Str)
+	err = value.FromBig(blockValue)
+	if err != nil {
+		log.Error("could not set block value", "err", err)
 		return err
 	}
 
@@ -167,18 +169,21 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, ordersClosedAt time.T
 			log.Error("could not validate block", "err", err)
 		}
 	} else {
-		go b.ds.ConsumeBuiltBlock(block, ordersClosedAt, sealedAt, commitedBundles, allBundles, &blockBidMsg)
+		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, &blockBidMsg)
 		err = b.relay.SubmitBlock(&blockSubmitReq, vd)
 		if err != nil {
 			log.Error("could not submit block", "err", err, "#commitedBundles", len(commitedBundles))
 			return err
 		}
 	}
+
+	log.Info("submitted block", "slot", blockBidMsg.Slot, "value", blockBidMsg.Value.String(), "parent", blockBidMsg.ParentHash, "hash", block.Hash(), "#commitedBundles", len(commitedBundles))
+
 	return nil
 }
 
-func (b *Builder) submitCapellaBlock(block *types.Block, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
-	executableData := engine.BlockToExecutableData(block, block.Profit)
+func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
+	executableData := engine.BlockToExecutableData(block, blockValue)
 	payload, err := executableDataToCapellaExecutionPayload(executableData.ExecutionPayload)
 	if err != nil {
 		log.Error("could not format execution payload", "err", err)
@@ -186,7 +191,7 @@ func (b *Builder) submitCapellaBlock(block *types.Block, ordersClosedAt time.Tim
 	}
 
 	value := new(boostTypes.U256Str)
-	err = value.FromBig(block.Profit)
+	err = value.FromBig(blockValue)
 	if err != nil {
 		log.Error("could not set block value", "err", err)
 		return err
@@ -218,13 +223,12 @@ func (b *Builder) submitCapellaBlock(block *types.Block, ordersClosedAt time.Tim
 		ExecutionPayload: payload,
 	}
 
-	go b.ds.ConsumeBuiltBlock(block, ordersClosedAt, sealedAt, commitedBundles, allBundles, &boostBidTrace)
+	go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, &boostBidTrace)
 	err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
 	if err != nil {
 		log.Error("could not submit block", "err", err, "#commitedBundles", len(commitedBundles))
 		return err
 	}
-
 	return nil
 }
 
@@ -274,10 +278,7 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 	}
 
 	for _, currentAttrs := range b.slotAttrs {
-		seen := attrs.HeadHash == currentAttrs.HeadHash && attrs.Slot == currentAttrs.Slot &&
-			attrs.GasLimit == currentAttrs.GasLimit && attrs.SuggestedFeeRecipient == currentAttrs.SuggestedFeeRecipient
-
-		if seen {
+		if attrs.Equal(&currentAttrs) {
 			log.Debug("ignoring known payload attribute", "slot", attrs.Slot, "hash", attrs.HeadHash)
 			return nil
 		}
@@ -290,6 +291,7 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 
 type blockQueueEntry struct {
 	block           *types.Block
+	blockValue      *big.Int
 	ordersCloseTime time.Time
 	sealedAt        time.Time
 	commitedBundles []types.SimulatedBundle
@@ -320,7 +322,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 	submitBestBlock := func() {
 		queueMu.Lock()
 		if queueBestEntry.block.Hash() != queueLastSubmittedHash {
-			err := b.onSealedBlock(queueBestEntry.block, queueBestEntry.ordersCloseTime, queueBestEntry.sealedAt, queueBestEntry.commitedBundles, queueBestEntry.allBundles, proposerPubkey, vd, attrs)
+			err := b.onSealedBlock(queueBestEntry.block, queueBestEntry.blockValue, queueBestEntry.ordersCloseTime, queueBestEntry.sealedAt, queueBestEntry.commitedBundles, queueBestEntry.allBundles, proposerPubkey, vd, attrs)
 
 			if err != nil {
 				log.Error("could not run sealed block hook", "err", err)
@@ -335,7 +337,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock)
 
 	// Populates queue with submissions that increase block profit
-	blockHook := func(block *types.Block, ordersCloseTime time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle) {
+	blockHook := func(block *types.Block, blockValue *big.Int, ordersCloseTime time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle) {
 		if ctx.Err() != nil {
 			return
 		}
@@ -347,6 +349,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 		if block.Hash() != queueLastSubmittedHash {
 			queueBestEntry = blockQueueEntry{
 				block:           block,
+				blockValue:      new(big.Int).Set(blockValue),
 				ordersCloseTime: ordersCloseTime,
 				sealedAt:        sealedAt,
 				commitedBundles: commitedBundles,

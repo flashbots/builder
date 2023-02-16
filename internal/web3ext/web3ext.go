@@ -612,15 +612,20 @@ web3._extend({
 			params: 1,
 		}),
 		new web3._extend.Method({
-			name: 'call',
-			call: 'eth_call',
-			params: 3,
-			inputFormatter: [web3._extend.formatters.inputCallFormatter, web3._extend.formatters.inputDefaultBlockNumberFormatter, null],
+			name: 'sendBundle',
+			call: 'eth_sendBundle',
+			params: 1,
 		}),
 		new web3._extend.Method({
 			name: 'callBundle',
 			call: 'eth_callBundle',
 			params: 6
+		}),
+		new web3._extend.Method({
+			name: 'call',
+			call: 'eth_call',
+			params: 3,
+			inputFormatter: [web3._extend.formatters.inputCallFormatter, web3._extend.formatters.inputDefaultBlockNumberFormatter, null],
 		}),
 	],
 	properties: [

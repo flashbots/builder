@@ -573,12 +573,6 @@ var (
 		Usage:    "Disable remote sealing verification",
 		Category: flags.MinerCategory,
 	}
-	MinerNewPayloadTimeout = &cli.DurationFlag{
-		Name:     "miner.newpayload-timeout",
-		Usage:    "Specify the maximum time allowance for creating a new payload",
-		Value:    ethconfig.Defaults.Miner.NewPayloadTimeout,
-		Category: flags.MinerCategory,
-	}
 	MinerMaxMergedBundlesFlag = &cli.IntFlag{
 		Name:     "miner.maxmergedbundles",
 		Usage:    "flashbots - The maximum amount of bundles to merge. The miner will run this many workers in parallel to calculate if the full block is more profitable with these additional bundles.",
@@ -589,6 +583,12 @@ var (
 		Name:     "miner.blocklist",
 		Usage:    "flashbots - Path to JSON file with list of blocked addresses. Miner will ignore txs that touch mentioned addresses.",
 		Value:    "",
+		Category: flags.MinerCategory,
+	}
+	MinerNewPayloadTimeout = &cli.DurationFlag{
+		Name:     "miner.newpayload-timeout",
+		Usage:    "Specify the maximum time allowance for creating a new payload",
+		Value:    ethconfig.Defaults.Miner.NewPayloadTimeout,
 		Category: flags.MinerCategory,
 	}
 

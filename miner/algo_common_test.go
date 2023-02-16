@@ -48,7 +48,7 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 	gasFees := big.NewInt(0)
 	ethSentToCoinbase := big.NewInt(0)
 
-	for _, tx := range bundle.Txs {
+	for i, tx := range bundle.Txs {
 		if checkInterrupt(interrupt) {
 			return types.SimulatedBundle{}, errInterrupt
 		}
@@ -67,13 +67,7 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 			}
 		}
 
-		rules := chData.chainConfig.Rules(env.header.Number, env.header.Difficulty.BitLen() != 0, env.header.Time)
-		from, err := types.Sender(env.signer, tx)
-		if err != nil {
-			return types.SimulatedBundle{}, err
-		}
-
-		stateDB.Prepare(rules, from, env.coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
+		stateDB.SetTxContext(tx.Hash(), i+env.tcount)
 		coinbaseBalanceBefore := stateDB.GetBalance(env.coinbase)
 
 		var tempGasUsed uint64

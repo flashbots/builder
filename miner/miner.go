@@ -68,22 +68,20 @@ func AlgoTypeFlagToEnum(algoString string) (AlgoType, error) {
 
 // Config is the configuration parameters of mining.
 type Config struct {
-	Etherbase  common.Address `toml:",omitempty"` // Public address for block mining rewards
-	Notify     []string       `toml:",omitempty"` // HTTP URL list to be notified of new work packages (only useful in ethash).
-	NotifyFull bool           `toml:",omitempty"` // Notify with pending block headers instead of work packages
-	ExtraData  hexutil.Bytes  `toml:",omitempty"` // Block extra data set by the miner
-	GasFloor   uint64         // Target gas floor for mined blocks.
-	GasCeil    uint64         // Target gas ceiling for mined blocks.
-	GasPrice   *big.Int       // Minimum gas price for mining a transaction
-	Recommit   time.Duration  // The time interval for miner to re-create mining work.
-	Noverify   bool           // Disable remote mining solution verification(only useful in ethash).
-
-	NewPayloadTimeout time.Duration // The maximum time allowance for creating a new payload
-
+	Etherbase           common.Address    `toml:",omitempty"` // Public address for block mining rewards (default = first account)
+	Notify              []string          `toml:",omitempty"` // HTTP URL list to be notified of new work packages (only useful in ethash).
+	NotifyFull          bool              `toml:",omitempty"` // Notify with pending block headers instead of work packages
+	ExtraData           hexutil.Bytes     `toml:",omitempty"` // Block extra data set by the miner
+	GasFloor            uint64            // Target gas floor for mined blocks.
+	GasCeil             uint64            // Target gas ceiling for mined blocks.
+	GasPrice            *big.Int          // Minimum gas price for mining a transaction
 	AlgoType            AlgoType          // Algorithm to use for block building
+	Recommit            time.Duration     // The time interval for miner to re-create mining work.
+	Noverify            bool              // Disable remote mining solution verification(only useful in ethash).
 	BuilderTxSigningKey *ecdsa.PrivateKey // Signing key of builder coinbase to make transaction to validator
 	MaxMergedBundles    int
 	Blocklist           []common.Address `toml:",omitempty"`
+	NewPayloadTimeout   time.Duration    // The maximum time allowance for creating a new payload
 }
 
 // DefaultConfig contains default settings for miner.
@@ -288,15 +286,10 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 	return miner.worker.regularWorker.pendingLogsFeed.Subscribe(ch)
 }
 
+// Accepts the block, time at which orders were taken, bundles which were used to build the block and all bundles that were considered for the block
+type BlockHookFn = func(*types.Block, *big.Int, time.Time, []types.SimulatedBundle, []types.SimulatedBundle)
+
 // BuildPayload builds the payload according to the provided parameters.
 func (miner *Miner) BuildPayload(args *BuildPayloadArgs) (*Payload, error) {
-	return miner.worker.regularWorker.buildPayload(args)
+	return miner.worker.buildPayload(args)
 }
-
-// BuildPayload builds the payload according to the provided parameters.
-func (miner *Miner) GetSealingBlock(args *BuildPayloadArgs, noTxs bool, blockHook BlockHookFn) (chan *types.Block, error) {
-	return miner.worker.GetSealingBlock(args, noTxs, blockHook)
-}
-
-// Accepts the block, time at which orders were taken, bundles which were used to build the block and all bundles that were considered for the block
-type BlockHookFn = func(*types.Block, time.Time, []types.SimulatedBundle, []types.SimulatedBundle)

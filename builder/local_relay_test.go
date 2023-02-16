@@ -23,7 +23,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *types.Block) (*Builder, *LocalRelay, *ValidatorPrivateData) {
+func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *types.Block, blockValue *big.Int) (*Builder, *LocalRelay, *ValidatorPrivateData) {
 	validator := NewRandomValidator()
 	sk, _ := bls.GenerateRandomSecretKey()
 	bDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeAppBuilder, [4]byte{0x02, 0x0, 0x0, 0x0}, boostTypes.Hash{})
@@ -31,7 +31,7 @@ func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *
 	cDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeBeaconProposer, [4]byte{0x02, 0x0, 0x0, 0x0}, genesisValidatorsRoot)
 	beaconClient := &testBeaconClient{validator: validator}
 	localRelay := NewLocalRelay(sk, beaconClient, bDomain, cDomain, ForkData{}, true)
-	ethService := &testEthereumService{synced: true, testExecutableData: forkchoiceData, testBlock: block}
+	ethService := &testEthereumService{synced: true, testExecutableData: forkchoiceData, testBlock: block, testBlockValue: blockValue}
 	backend := NewBuilder(sk, flashbotsextra.NilDbService{}, localRelay, bDomain, ethService, false, nil)
 	// service := NewService("127.0.0.1:31545", backend)
 
@@ -59,7 +59,7 @@ func testRequest(t *testing.T, localRelay *LocalRelay, method string, path strin
 }
 
 func TestValidatorRegistration(t *testing.T) {
-	_, relay, _ := newTestBackend(t, nil, nil)
+	_, relay, _ := newTestBackend(t, nil, nil, nil)
 	log.Error("rsk", "sk", hexutil.Encode(relay.relaySecretKey.Serialize()))
 
 	v := NewRandomValidator()
@@ -128,9 +128,9 @@ func TestGetHeader(t *testing.T) {
 
 	forkchoiceBlock, err := engine.ExecutableDataToBlock(*forkchoiceData)
 	require.NoError(t, err)
-	forkchoiceBlock.Profit = big.NewInt(10)
+	forkchoiceBlockProfit := big.NewInt(10)
 
-	backend, relay, validator := newTestBackend(t, forkchoiceData, forkchoiceBlock)
+	backend, relay, validator := newTestBackend(t, forkchoiceData, forkchoiceBlock, forkchoiceBlockProfit)
 
 	path := fmt.Sprintf("/eth/v1/builder/header/%d/%s/%s", 0, forkchoiceData.ParentHash.Hex(), validator.Pk.String())
 	rr := testRequest(t, relay, "GET", path, nil)
@@ -162,7 +162,7 @@ func TestGetHeader(t *testing.T) {
 	expectedHeader, err := boostTypes.PayloadToPayloadHeader(executionPayload)
 	require.NoError(t, err)
 	expectedValue := new(boostTypes.U256Str)
-	err = expectedValue.FromBig(forkchoiceBlock.Profit)
+	err = expectedValue.FromBig(forkchoiceBlockProfit)
 	require.NoError(t, err)
 	require.EqualValues(t, &boostTypes.BuilderBid{
 		Header: expectedHeader,
@@ -189,9 +189,9 @@ func TestGetPayload(t *testing.T) {
 
 	forkchoiceBlock, err := engine.ExecutableDataToBlock(*forkchoiceData)
 	require.NoError(t, err)
-	forkchoiceBlock.Profit = big.NewInt(10)
+	forkchoiceBlockProfit := big.NewInt(10)
 
-	backend, relay, validator := newTestBackend(t, forkchoiceData, forkchoiceBlock)
+	backend, relay, validator := newTestBackend(t, forkchoiceData, forkchoiceBlock, forkchoiceBlockProfit)
 
 	registerValidator(t, validator, relay)
 	backend.OnPayloadAttribute(&types.BuilderPayloadAttributes{})

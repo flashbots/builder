@@ -33,7 +33,6 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/event"
@@ -88,8 +87,8 @@ var (
 	errBundleInterrupted          = errors.New("interrupt while applying bundles")
 	errBlockInterruptedByNewHead  = errors.New("new head arrived while building block")
 	errBlockInterruptedByRecommit = errors.New("recommit interrupt while building block")
-	errBlockInterruptedByTimeout  = errors.New("timeout while building block")
 	errBlocklistViolation         = errors.New("blocklist violation")
+	errBlockInterruptedByTimeout  = errors.New("timeout while building block")
 )
 
 // environment is the worker's current environment and holds all
@@ -292,6 +291,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	var builderCoinbase common.Address
 	if config.BuilderTxSigningKey == nil {
 		log.Error("Builder tx signing key is not set")
+		builderCoinbase = config.Etherbase
 	} else {
 		builderCoinbase = crypto.PubkeyToAddress(config.BuilderTxSigningKey.PublicKey)
 	}
@@ -961,14 +961,8 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 	envGasUsed := env.header.GasUsed
 	stateDB := env.state
 
-	rules := w.chainConfig.Rules(env.header.Number, env.header.Difficulty.BitLen() != 0, env.header.Time)
-	from, err := types.Sender(env.signer, tx)
-	if err != nil {
-		return nil, err
-	}
-
-	// It's important to copy then .Prepare() - don't reorder.
-	stateDB.Prepare(rules, from, env.coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
+	// It's important to copy then .SetTxContext() - don't reorder.
+	stateDB.SetTxContext(tx.Hash(), env.tcount)
 
 	snapshot := stateDB.Snapshot()
 
@@ -1022,24 +1016,11 @@ func (w *worker) commitBundle(env *environment, txs types.Transactions, interrup
 	var coalescedLogs []*types.Log
 
 	for _, tx := range txs {
-		// In the following three cases, we will interrupt the execution of the transaction.
-		// (1) new head block event arrival, the interrupt signal is 1
-		// (2) worker start or restart, the interrupt signal is 1
-		// (3) worker recreate the sealing block with any newly arrived transactions, the interrupt signal is 2.
-		// Discard the interrupted work, since it is incomplete and contains partial bundles
-		if interrupt != nil && atomic.LoadInt32(interrupt) != commitInterruptNone {
-			// Notify resubmit loop to increase resubmitting interval due to too frequent commits.
-			if atomic.LoadInt32(interrupt) == commitInterruptResubmit {
-				ratio := float64(gasLimit-env.gasPool.Gas()) / float64(gasLimit)
-				if ratio < 0.1 {
-					ratio = 0.1
+		// Check interruption signal and abort building if it's fired.
+		if interrupt != nil {
+			if signal := atomic.LoadInt32(interrupt); signal != commitInterruptNone {
+				return signalToErr(signal)
 				}
-				w.resubmitAdjustCh <- &intervalAdjust{
-					ratio: ratio,
-					inc:   true,
-				}
-			}
-			return errBundleInterrupted
 		}
 		// If we don't have enough gas for any further transactions discard the block
 		// since not all bundles of the were applied
@@ -1111,11 +1092,7 @@ func (w *worker) commitBundle(env *environment, txs types.Transactions, interrup
 		}
 		w.pendingLogsFeed.Send(cpy)
 	}
-	// Notify resubmit loop to decrease resubmitting interval if current interval is larger
-	// than the user-specified one.
-	if interrupt != nil {
-		w.resubmitAdjustCh <- &intervalAdjust{inc: false}
-	}
+
 	return nil
 }
 
@@ -1138,7 +1115,7 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 			log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", params.TxGas)
 			break
 		}
-		// Retrieve the next transaction and abort if all done.
+		// Retrieve the next transaction and abort if all done
 		order := txs.Peek()
 		if order == nil {
 			break
@@ -1159,8 +1136,6 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 			txs.Pop()
 			continue
 		}
-		// Start executing the transaction
-		env.state.SetTxContext(tx.Hash(), env.tcount)
 
 		logs, err := w.commitTransaction(env, tx)
 		switch {
@@ -1252,10 +1227,9 @@ func doPrepareHeader(genParams *generateParams, chain *core.BlockChain, config *
 	if gasTarget == 0 {
 		gasTarget = config.GasCeil
 	}
-	num := parent.Number()
 	header := &types.Header{
 		ParentHash: parent.Hash(),
-		Number:     num.Add(num, common.Big1),
+		Number:     new(big.Int).Add(parent.Number(), common.Big1),
 		GasLimit:   core.CalcGasLimit(parent.GasLimit(), gasTarget),
 		Time:       timestamp,
 		Coinbase:   genParams.coinbase,
@@ -1263,6 +1237,7 @@ func doPrepareHeader(genParams *generateParams, chain *core.BlockChain, config *
 	if len(extra) != 0 {
 		header.Extra = extra
 	}
+
 	// Set the randomness field from the beacon chain if it's available.
 	if genParams.random != (common.Hash{}) {
 		header.MixDigest = genParams.random
@@ -1467,26 +1442,26 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 	defer work.discard()
 
 	finalizeFn := func(env *environment, orderCloseTime time.Time, blockBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, noTxs bool) (*types.Block, *big.Int, error) {
-		block, err := w.finalizeBlock(env, params.withdrawals, validatorCoinbase, noTxs)
+		block, profit, err := w.finalizeBlock(env, params.withdrawals, validatorCoinbase, noTxs)
 		if err != nil {
 			log.Error("could not finalize block", "err", err)
-			return nil, big.NewInt(0), err
+			return nil, nil, err
 		}
 
-		log.Info("Block finalized and assembled", "blockProfit", ethIntToFloat(block.Profit), "txs", len(env.txs), "bundles", len(blockBundles), "gasUsed", block.GasUsed(), "time", time.Since(start))
+		log.Info("Block finalized and assembled", "blockProfit", ethIntToFloat(profit), "txs", len(env.txs), "bundles", len(blockBundles), "gasUsed", block.GasUsed(), "time", time.Since(start))
 		if metrics.EnabledBuilder {
 			buildBlockTimer.Update(time.Since(start))
-			blockProfitHistogram.Update(block.Profit.Int64())
-			blockProfitGauge.Update(block.Profit.Int64())
-			culmulativeProfitGauge.Inc(block.Profit.Int64())
+			blockProfitHistogram.Update(profit.Int64())
+			blockProfitGauge.Update(profit.Int64())
+			culmulativeProfitGauge.Inc(profit.Int64())
 			gasUsedGauge.Update(int64(block.GasUsed()))
 			transactionNumGauge.Update(int64(len(env.txs)))
 		}
 		if params.onBlock != nil {
-			go params.onBlock(block, orderCloseTime, blockBundles, allBundles)
+			go params.onBlock(block, profit, orderCloseTime, blockBundles, allBundles)
 		}
 
-		return block, block.Profit, nil
+		return block, profit, nil
 	}
 
 	if params.noTxs {
@@ -1495,14 +1470,15 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 
 	paymentTxReserve, err := w.proposerTxPrepare(work, &validatorCoinbase)
 	if err != nil {
-		return nil, big.NewInt(0), err
+		return nil, nil, err
 	}
 
 	orderCloseTime := time.Now()
+
 	err, blockBundles, allBundles := w.fillTransactionsSelectAlgo(nil, work)
 
 	if err != nil {
-		return nil, big.NewInt(0), err
+		return nil, nil, err
 	}
 
 	// no bundles or tx from mempool
@@ -1512,35 +1488,32 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 
 	err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve)
 	if err != nil {
-		return nil, big.NewInt(0), err
+		return nil, nil, err
 	}
 
 	return finalizeFn(work, orderCloseTime, blockBundles, allBundles, false)
 }
 
-func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals, validatorCoinbase common.Address, noTxs bool) (*types.Block, error) {
+func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals, validatorCoinbase common.Address, noTxs bool) (*types.Block, *big.Int, error) {
 	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, work.unclelist(), work.receipts, withdrawals)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	block.Profit = big.NewInt(0)
-
 	if w.config.BuilderTxSigningKey == nil {
-		return block, nil
+		return block, big.NewInt(0), nil
 	}
 
 	if noTxs {
-		return block, nil
+		return block, big.NewInt(0), nil
 	}
 
 	blockProfit, err := w.checkProposerPayment(work, validatorCoinbase)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	block.Profit = blockProfit
-	return block, nil
+	return block, blockProfit, nil
 }
 
 func (w *worker) checkProposerPayment(work *environment, validatorCoinbase common.Address) (*big.Int, error) {
@@ -1591,12 +1564,9 @@ func (w *worker) commitWork(interrupt *int32, noempty bool, timestamp int64) {
 	if !noempty && atomic.LoadUint32(&w.noempty) == 0 {
 		w.commit(work.copy(), nil, false, start)
 	}
-	// Fill pending transactions from the txpool into the block.
+
+	// Fill pending transactions from the txpool
 	err, _, _ = w.fillTransactionsSelectAlgo(interrupt, work)
-	if err != nil && !errors.Is(err, errBlockInterruptedByRecommit) {
-		work.discard()
-		return
-	}
 	switch {
 	case err == nil:
 		// The entire block is filled, decrease resubmit interval in case
@@ -1615,12 +1585,7 @@ func (w *worker) commitWork(interrupt *int32, noempty bool, timestamp int64) {
 			ratio: ratio,
 			inc:   true,
 		}
-
-	case errors.Is(err, errBlockInterruptedByNewHead):
-		// If the block building is interrupted by newhead event, discard it
-		// totally. Committing the interrupted block introduces unnecessary
-		// delay, and possibly causes miner to mine on the previous head,
-		// which could result in higher uncle rate.
+	default:
 		work.discard()
 		return
 	}
@@ -1658,13 +1623,11 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 			case w.taskCh <- &task{receipts: env.receipts, state: env.state, block: block, createdAt: time.Now(), profit: env.profit, isFlashbots: w.flashbots.isFlashbots, worker: w.flashbots.maxMergedBundles}:
 				w.unconfirmed.Shift(block.NumberU64() - 1)
 
-				fees := totalFees(block, env.receipts)
-				feesInEther := new(big.Float).Quo(new(big.Float).SetInt(fees), big.NewFloat(params.Ether))
+				fees := totalFees(block, env)
 				log.Info("Commit new sealing work", "number", block.Number(), "sealhash", w.engine.SealHash(block.Header()),
-					"uncles", len(env.uncles), "txs", env.tcount,
-					"gas", block.GasUsed(), "fees", feesInEther,
-					"profit", ethIntToFloat(env.profit), "elapsed", common.PrettyDuration(time.Since(start)),
-					"isFlashbots", w.flashbots.isFlashbots, "worker", w.flashbots.maxMergedBundles)
+					"uncles", len(env.uncles), "txs", env.tcount, "gas", block.GasUsed(), "fees", ethIntToFloat(fees),
+					"elapsed", common.PrettyDuration(time.Since(start)), "isFlashbots", w.flashbots.isFlashbots,
+					"worker", w.flashbots.maxMergedBundles)
 
 			case <-w.exitCh:
 				log.Info("Worker has exited")
@@ -1689,9 +1652,9 @@ func (w *worker) getSealingBlock(parent common.Hash, timestamp uint64, coinbase 
 			coinbase:    coinbase,
 			gasLimit:    gasLimit,
 			random:      random,
+			withdrawals: withdrawals,
 			noUncle:     true,
 			noTxs:       noTxs,
-			withdrawals: withdrawals,
 			onBlock:     blockHook,
 		},
 		result: make(chan *newPayloadResult, 1),
@@ -1874,7 +1837,7 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 
 	ethSentToCoinbase := new(big.Int)
 
-	for _, tx := range bundle.Txs {
+	for i, tx := range bundle.Txs {
 		if env.header.BaseFee != nil && tx.Type() == 2 {
 			// Sanity check for extremely large numbers
 			if tx.GasFeeCap().BitLen() > 256 {
@@ -1889,13 +1852,7 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 			}
 		}
 
-		rules := w.chainConfig.Rules(env.header.Number, env.header.Difficulty.Cmp(common.Big0) == 0, env.header.Time)
-		from, err := types.Sender(env.signer, tx)
-		if err != nil {
-			return types.SimulatedBundle{}, err
-		}
-
-		state.Prepare(rules, from, env.coinbase, tx.To(), vm.ActivePrecompiles(rules), tx.AccessList())
+		state.SetTxContext(tx.Hash(), i+currentTxCount)
 		coinbaseBalanceBefore := state.GetBalance(env.coinbase)
 
 		config := *w.chain.GetVMConfig()
@@ -1921,6 +1878,11 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 		}
 
 		totalGasUsed += receipt.GasUsed
+
+		from, err := types.Sender(env.signer, tx)
+		if err != nil {
+			return simulatedBundle{}, err
+		}
 
 		txInPendingPool := false
 		if accountTxs, ok := pendingTxs[from]; ok {
@@ -1989,29 +1951,9 @@ func ethIntToFloat(eth *big.Int) *big.Float {
 	return new(big.Float).Quo(new(big.Float).SetInt(eth), new(big.Float).SetInt(big.NewInt(params.Ether)))
 }
 
-// totalFees computes total consumed miner fees in Wei. Block transactions and receipts have to have the same order.
-func totalFees(block *types.Block, receipts []*types.Receipt) *big.Int {
-	feesWei := new(big.Int)
-	for i, tx := range block.Transactions() {
-		minerFee, _ := tx.EffectiveGasTip(block.BaseFee())
-		feesWei.Add(feesWei, new(big.Int).Mul(new(big.Int).SetUint64(receipts[i].GasUsed), minerFee))
-	}
-	return feesWei
-}
-
-// signalToErr converts the interruption signal to a concrete error type for return.
-// The given signal must be a valid interruption signal.
-func signalToErr(signal int32) error {
-	switch signal {
-	case commitInterruptNewHead:
-		return errBlockInterruptedByNewHead
-	case commitInterruptResubmit:
-		return errBlockInterruptedByRecommit
-	case commitInterruptTimeout:
-		return errBlockInterruptedByTimeout
-	default:
-		panic(fmt.Errorf("undefined signal %d", signal))
-	}
+// totalFees computes total consumed miner fees in ETH. Block transactions and receipts have to have the same order.
+func totalFees(block *types.Block, env *environment) *big.Int {
+	return new(big.Int).Set(env.profit)
 }
 
 type proposerTxReservation struct {
@@ -2069,4 +2011,19 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 		return err
 	}
 	return nil
+}
+
+// signalToErr converts the interruption signal to a concrete error type for return.
+// The given signal must be a valid interruption signal.
+func signalToErr(signal int32) error {
+	switch signal {
+	case commitInterruptNewHead:
+		return errBlockInterruptedByNewHead
+	case commitInterruptResubmit:
+		return errBlockInterruptedByRecommit
+	case commitInterruptTimeout:
+		return errBlockInterruptedByTimeout
+	default:
+		panic(fmt.Errorf("undefined signal %d", signal))
+	}
 }
