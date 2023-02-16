@@ -380,8 +380,8 @@ func TestNegativeValue(t *testing.T) {
 	tx, _ := types.SignTx(types.NewTransaction(0, common.Address{}, big.NewInt(-1), 100, big.NewInt(1), nil), types.HomesteadSigner{}, key)
 	from, _ := deriveSender(tx)
 	testAddBalance(pool, from, big.NewInt(1))
-	if err := pool.AddRemote(tx); err != ErrNegativeValue {
-		t.Error("expected", ErrNegativeValue, "got", err)
+	if err := pool.AddRemote(tx); err != core.ErrNegativeValue {
+		t.Error("expected", core.ErrNegativeValue, "got", err)
 	}
 }
 
@@ -2490,7 +2490,7 @@ func TestBundleCancellations(t *testing.T) {
 	require.Equal(t, []types.MevBundle{bundle01_uuid1_signer1}, cr.Value)
 
 	fetcher.resps[1] = []types.LatestUuidBundle{
-		{
+		types.LatestUuidBundle{
 			Uuid:           bundle03_uuid1_signer1.Uuid,
 			SigningAddress: bundle03_uuid1_signer1.SigningAddress,
 			BundleHash:     bundle03_uuid1_signer1.Hash,

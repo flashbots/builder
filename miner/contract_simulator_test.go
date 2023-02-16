@@ -206,7 +206,7 @@ func TestSimulatorState(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		block, _, err := w.getSealingBlock(b.chain.CurrentBlock().Hash(), b.chain.CurrentHeader().Time+12, testAddress1, 0, common.Hash{}, b.chain.CurrentBlock().Withdrawals(), false, nil)
+		block, _, err := w.getSealingBlock(b.chain.CurrentBlock().Hash(), b.chain.CurrentHeader().Time+12, testAddress1, 0, common.Hash{}, nil, false, nil)
 		require.NoError(t, err)
 		require.NotNil(t, block)
 		if requireTx != -1 {

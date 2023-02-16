@@ -42,7 +42,7 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 			Time:       16000000,
 			BaseFee:    big.NewInt(7),
 		}, nil, nil, nil, nil)
-	block.Profit = big.NewInt(10)
+	blockProfit := big.NewInt(10)
 
 	simBundle1 := types.SimulatedBundle{
 		MevGasPrice:       big.NewInt(9),
@@ -53,7 +53,7 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 			Txs:               types.Transactions{types.NewTransaction(uint64(50), common.Address{0x60}, big.NewInt(19), uint64(67), big.NewInt(43), []byte{})},
 			BlockNumber:       big.NewInt(12),
 			MinTimestamp:      uint64(1000000),
-			RevertingTxHashes: []common.Hash{{0x10, 0x17}},
+			RevertingTxHashes: []common.Hash{common.Hash{0x10, 0x17}},
 			Hash:              common.Hash{0x09, 0x78},
 		},
 	}
@@ -67,7 +67,7 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 			Txs:               types.Transactions{types.NewTransaction(uint64(51), common.Address{0x61}, big.NewInt(109), uint64(167), big.NewInt(433), []byte{})},
 			BlockNumber:       big.NewInt(12),
 			MinTimestamp:      uint64(1000020),
-			RevertingTxHashes: []common.Hash{{0x11, 0x17}},
+			RevertingTxHashes: []common.Hash{common.Hash{0x11, 0x17}},
 			Hash:              common.Hash{0x10, 0x78},
 		},
 	}
@@ -84,7 +84,7 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 			Txs:               types.Transactions{types.NewTransaction(uint64(51), common.Address{0x62}, big.NewInt(20), uint64(68), big.NewInt(44), []byte{})},
 			BlockNumber:       big.NewInt(12),
 			MinTimestamp:      uint64(1000021),
-			RevertingTxHashes: []common.Hash{{0x10, 0x18}},
+			RevertingTxHashes: []common.Hash{common.Hash{0x10, 0x18}},
 			Hash:              common.Hash{0x09, 0x79},
 		},
 	}
@@ -98,7 +98,7 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 			Txs:               types.Transactions{types.NewTransaction(uint64(52), common.Address{0x62}, big.NewInt(110), uint64(168), big.NewInt(434), []byte{})},
 			BlockNumber:       big.NewInt(12),
 			MinTimestamp:      uint64(1000022),
-			RevertingTxHashes: []common.Hash{{0x11, 0x19}},
+			RevertingTxHashes: []common.Hash{common.Hash{0x11, 0x19}},
 			Hash:              common.Hash{0x10, 0x80},
 		},
 	}
@@ -110,7 +110,7 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 
 	ocAt := time.Now().Add(-time.Hour).UTC()
 	sealedAt := time.Now().Add(-30 * time.Minute).UTC()
-	ds.ConsumeBuiltBlock(block, ocAt, sealedAt, []types.SimulatedBundle{simBundle1, simBundle2}, []types.SimulatedBundle{simBundle1, simBundle2, simBundle3, simBundle4}, bidTrace)
+	ds.ConsumeBuiltBlock(block, blockProfit, ocAt, sealedAt, []types.SimulatedBundle{simBundle1, simBundle2}, []types.SimulatedBundle{simBundle1, simBundle2, simBundle3, simBundle4}, bidTrace)
 
 	var dbBlock BuiltBlock
 	require.NoError(t, ds.db.Get(&dbBlock, "select block_id, block_number, profit, slot, hash, gas_limit, gas_used, base_fee, parent_hash, timestamp, timestamp_datetime, orders_closed_at, sealed_at from built_blocks where hash = '0x9cc3ee47d091fea38c0187049cae56abe4e642eeb06c4832f06ec59f5dbce7ab'"))

@@ -1,6 +1,7 @@
 package miner
 
 import (
+	"errors"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -90,25 +91,48 @@ type resChPair struct {
 	errCh chan error
 }
 
-func (w *multiWorker) GetSealingBlock(args *BuildPayloadArgs, noTxs bool, blockHook BlockHookFn) (chan *types.Block, error) {
-	resCh := make(chan *types.Block)
-
-	for _, w := range w.workers {
-		go func(worker *worker) {
-			var res *types.Block
-			newBlock, _, err := worker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, noTxs, blockHook)
+func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
+	// Build the initial version with no transaction included. It should be fast
+	// enough to run. The empty payload can at least make sure there is something
+	// to deliver for not missing slot.
+	var empty *types.Block
+	for _, worker := range w.workers {
+		var err error
+		empty, _, err = worker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, true, nil)
 			if err != nil {
-				log.Error("could not generate block", "err", err, "isFlashbotsWorker", worker.flashbots.isFlashbots, "#bundles", worker.flashbots.maxMergedBundles)
-				return
+			log.Error("could not start async block construction", "isFlashbotsWorker", worker.flashbots.isFlashbots, "#bundles", worker.flashbots.maxMergedBundles)
+			continue
 			}
-			if res == nil || (newBlock != nil && newBlock.Profit.Cmp(res.Profit) > 0) {
-				res = newBlock
+		break
 			}
-			resCh <- res
-		}(w)
+
+	if empty == nil {
+		return nil, errors.New("no worker could build an empty block")
 	}
 
-	return resCh, nil
+	// Construct a payload object for return.
+	payload := newPayload(empty, args.Id())
+
+	// Keep separate payloads for each worker so that ResolveFull actually resolves the best of all workers
+	workerPayloads := []*Payload{}
+
+	for _, worker := range w.workers {
+		workerPayload := newPayload(empty, args.Id())
+		workerPayloads = append(workerPayloads, workerPayload)
+		go func() {
+			// Update routine done elsewhere!
+
+			start := time.Now()
+			block, fees, err := worker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook)
+			if err == nil {
+				workerPayload.update(block, fees, time.Since(start))
+			}
+		}()
+	}
+
+	go payload.resolveBestFullPayload(workerPayloads)
+
+	return payload, nil
 }
 
 func newMultiWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *multiWorker {
