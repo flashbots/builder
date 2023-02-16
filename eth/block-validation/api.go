@@ -220,6 +220,27 @@ type BuilderBlockValidationRequestV2 struct {
 	WithdrawalsRoot    common.Hash `json:"withdrawals_root"`
 }
 
+func (r *BuilderBlockValidationRequestV2) UnmarshalJSON(data []byte) error {
+	params := &struct {
+		RegisteredGasLimit uint64      `json:"registered_gas_limit,string"`
+		WithdrawalsRoot    common.Hash `json:"withdrawals_root"`
+	}{}
+	err := json.Unmarshal(data, params)
+	if err != nil {
+		return err
+	}
+	r.RegisteredGasLimit = params.RegisteredGasLimit
+	r.WithdrawalsRoot = params.WithdrawalsRoot
+
+	blockRequest := new(capellaapi.SubmitBlockRequest)
+	err = json.Unmarshal(data, &blockRequest)
+	if err != nil {
+		return err
+	}
+	r.SubmitBlockRequest = *blockRequest
+	return nil
+}
+
 func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockValidationRequestV2) error {
 	// TODO: fuzztest, make sure the validation is sound
 	// TODO: handle context!
