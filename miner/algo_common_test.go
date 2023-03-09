@@ -213,7 +213,7 @@ func newEnvironment(data chainData, state *state.StateDB, coinbase common.Addres
 	currentBlock := data.chain.CurrentBlock()
 	// Note the passed coinbase may be different with header.Coinbase.
 	return &environment{
-		signer:    types.MakeSigner(data.chainConfig, currentBlock.Number()),
+		signer:    types.MakeSigner(data.chainConfig, currentBlock.Number),
 		state:     state,
 		gasPool:   new(core.GasPool).AddGas(gasLimit),
 		coinbase:  coinbase,
@@ -222,7 +222,7 @@ func newEnvironment(data chainData, state *state.StateDB, coinbase common.Addres
 		header: &types.Header{
 			Coinbase:   coinbase,
 			ParentHash: currentBlock.Hash(),
-			Number:     new(big.Int).Add(currentBlock.Number(), big.NewInt(1)),
+			Number:     new(big.Int).Add(currentBlock.Number, big.NewInt(1)),
 			GasLimit:   gasLimit,
 			GasUsed:    0,
 			BaseFee:    baseFee,

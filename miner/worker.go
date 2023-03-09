@@ -1204,21 +1204,23 @@ type generateParams struct {
 	onBlock     BlockHookFn       // Callback to call for each produced block
 }
 
-func doPrepareHeader(genParams *generateParams, chain *core.BlockChain, config *Config, chainConfig *params.ChainConfig, extra []byte, engine consensus.Engine) (*types.Header, *types.Block, error) {
+func doPrepareHeader(genParams *generateParams, chain *core.BlockChain, config *Config, chainConfig *params.ChainConfig, extra []byte, engine consensus.Engine) (*types.Header, *types.Header, error) {
 	// Find the parent block for sealing task
 	parent := chain.CurrentBlock()
 	if genParams.parentHash != (common.Hash{}) {
-		parent = chain.GetBlockByHash(genParams.parentHash)
+		block := chain.GetBlockByHash(genParams.parentHash)
+		if block == nil {
+			return nil, nil, fmt.Errorf("missing parent")
+		}
+		parent = block.Header()
 	}
-	if parent == nil {
-		return nil, nil, fmt.Errorf("missing parent")
-	}
+
 	// Sanity check the timestamp correctness, recap the timestamp
 	// to parent+1 if the mutation is allowed.
 	timestamp := genParams.timestamp
 	if parent.Time >= timestamp {
 		if genParams.forceTime {
-			return nil, nil, fmt.Errorf("invalid timestamp, parent %d given %d", parent.Time(), timestamp)
+			return nil, nil, fmt.Errorf("invalid timestamp, parent %d given %d", parent.Time, timestamp)
 		}
 		timestamp = parent.Time + 1
 	}
@@ -1229,8 +1231,8 @@ func doPrepareHeader(genParams *generateParams, chain *core.BlockChain, config *
 	}
 	header := &types.Header{
 		ParentHash: parent.Hash(),
-		Number:     new(big.Int).Add(parent.Number(), common.Big1),
-		GasLimit:   core.CalcGasLimit(parent.GasLimit(), gasTarget),
+		Number:     new(big.Int).Add(parent.Number, common.Big1),
+		GasLimit:   core.CalcGasLimit(parent.GasLimit, gasTarget),
 		Time:       timestamp,
 		Coinbase:   genParams.coinbase,
 	}
@@ -1244,9 +1246,9 @@ func doPrepareHeader(genParams *generateParams, chain *core.BlockChain, config *
 	}
 	// Set baseFee and GasLimit if we are on an EIP-1559 chain
 	if chainConfig.IsLondon(header.Number) {
-		header.BaseFee = misc.CalcBaseFee(chainConfig, parent.Header())
-		if !chainConfig.IsLondon(parent.Number()) {
-			parentGasLimit := parent.GasLimit() * chainConfig.ElasticityMultiplier()
+		header.BaseFee = misc.CalcBaseFee(chainConfig, parent)
+		if !chainConfig.IsLondon(parent.Number) {
+			parentGasLimit := parent.GasLimit * chainConfig.ElasticityMultiplier()
 			header.GasLimit = core.CalcGasLimit(parentGasLimit, gasTarget)
 		}
 	}

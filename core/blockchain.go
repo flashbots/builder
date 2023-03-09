@@ -2500,7 +2500,7 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 	}
 
 	current := bc.CurrentBlock()
-	reorg, err := bc.forker.ReorgNeeded(current.Header(), header)
+	reorg, err := bc.forker.ReorgNeeded(current, header)
 	if err == nil && reorg {
 		return errors.New("block requires a reorg")
 	}

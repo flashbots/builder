@@ -17,10 +17,10 @@
 package miner
 
 import (
-	"crypto/rand"
 	"crypto/ecdsa"
 	"errors"
 	"math/big"
+	"math/rand"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -139,34 +139,39 @@ func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine 
 	default:
 		t.Fatalf("unexpected consensus engine type: %T", engine)
 	}
-	genesisBlock := genesis.MustCommit(db)
-
-	chain, _ := core.NewBlockChain(db, &core.CacheConfig{TrieDirtyDisabled: true}, &genesis, nil, engine, vm.Config{}, nil, nil)
+	chain, err := core.NewBlockChain(db, &core.CacheConfig{TrieDirtyDisabled: true}, &genesis, nil, engine, vm.Config{}, nil, nil)
+	if err != nil {
+		t.Fatalf("core.NewBlockChain failed: %v", err)
+	}
 	txpool := txpool.NewTxPool(testTxPoolConfig, chainConfig, chain)
 
 	// Generate a small n-block chain and an uncle block for it
+	var uncle *types.Block
 	if n > 0 {
-		blocks, _ := core.GenerateChain(chainConfig, genesisBlock, engine, db, n, func(i int, gen *core.BlockGen) {
+		genDb, blocks, _ := core.GenerateChainWithGenesis(&genesis, engine, n, func(i int, gen *core.BlockGen) {
 			gen.SetCoinbase(testBankAddress)
 		})
 		if _, err := chain.InsertChain(blocks); err != nil {
 			t.Fatalf("failed to insert origin chain: %v", err)
 		}
+		parent := chain.GetBlockByHash(chain.CurrentBlock().ParentHash)
+		blocks, _ = core.GenerateChain(chainConfig, parent, engine, genDb, 1, func(i int, gen *core.BlockGen) {
+			gen.SetCoinbase(testUserAddress)
+		})
+		uncle = blocks[0]
+	} else {
+		_, blocks, _ := core.GenerateChainWithGenesis(&genesis, engine, 1, func(i int, gen *core.BlockGen) {
+			gen.SetCoinbase(testUserAddress)
+		})
+		uncle = blocks[0]
 	}
-	parent := genesisBlock
-	if n > 0 {
-		parent = chain.GetBlockByHash(chain.CurrentBlock().ParentHash())
-	}
-	blocks, _ := core.GenerateChain(chainConfig, parent, engine, db, 1, func(i int, gen *core.BlockGen) {
-		gen.SetCoinbase(testUserAddress)
-	})
 
 	return &testWorkerBackend{
 		db:         db,
 		chain:      chain,
 		txPool:     txpool,
 		genesis:    &genesis,
-		uncleBlock: blocks[0],
+		uncleBlock: uncle,
 	}
 }
 
@@ -610,7 +615,6 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 		parent       common.Hash
 		coinbase     common.Address
 		random       common.Hash
-		withdrawals  types.Withdrawals
 		expectNumber uint64
 		expectErr    bool
 	}{
@@ -618,7 +622,6 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 			b.chain.Genesis().Hash(),
 			common.HexToAddress("0xdeadbeef"),
 			common.HexToHash("0xcafebabe"),
-			nil,
 			uint64(1),
 			false,
 		},
@@ -626,31 +629,27 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 			b.chain.CurrentBlock().Hash(),
 			common.HexToAddress("0xdeadbeef"),
 			common.HexToHash("0xcafebabe"),
-			nil,
-			b.chain.CurrentBlock().NumberU64() + 1,
+			b.chain.CurrentBlock().Number.Uint64() + 1,
 			false,
 		},
 		{
 			b.chain.CurrentBlock().Hash(),
 			common.Address{},
 			common.HexToHash("0xcafebabe"),
-			nil,
-			b.chain.CurrentBlock().NumberU64() + 1,
+			b.chain.CurrentBlock().Number.Uint64() + 1,
 			false,
 		},
 		{
 			b.chain.CurrentBlock().Hash(),
 			common.Address{},
 			common.Hash{},
-			nil,
-			b.chain.CurrentBlock().NumberU64() + 1,
+			b.chain.CurrentBlock().Number.Uint64() + 1,
 			false,
 		},
 		{
 			common.HexToHash("0xdeadbeef"),
 			common.HexToAddress("0xdeadbeef"),
 			common.HexToHash("0xcafebabe"),
-			nil,
 			0,
 			true,
 		},
@@ -658,7 +657,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 
 	// This API should work even when the automatic sealing is not enabled
 	for _, c := range cases {
-		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, c.withdrawals, true, nil)
+		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, nil, true, nil)
 		if c.expectErr {
 			if err == nil {
 				t.Error("Expect error but get nil")
@@ -674,7 +673,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 	// This API should work even when the automatic sealing is enabled
 	w.start()
 	for _, c := range cases {
-		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, c.withdrawals, false, nil)
+		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, nil, false, nil)
 		if c.expectErr {
 			if err == nil {
 				t.Error("Expect error but get nil")
@@ -816,13 +815,13 @@ func testBundles(t *testing.T) {
 			bundles[randomBundleIndex].Txs = append(bundles[randomBundleIndex].Txs, tx)
 		}
 
-		blockNumber := big.NewInt(0).Add(w.chain.CurrentBlock().Number(), big.NewInt(1))
+		blockNumber := big.NewInt(0).Add(w.chain.CurrentBlock().Number, big.NewInt(1))
 		for _, bundle := range bundles {
 			err := b.txPool.AddMevBundle(bundle.Txs, blockNumber, types.EmptyUUID, common.Address{}, 0, 0, nil)
 			require.NoError(t, err)
 		}
 
-		block, _, err := w.getSealingBlock(w.chain.CurrentBlock().Hash(), w.chain.CurrentHeader().Time+12, testUserAddress, 0, common.Hash{}, w.chain.CurrentBlock().Withdrawals(), false, nil)
+		block, _, err := w.getSealingBlock(w.chain.CurrentBlock().Hash(), w.chain.CurrentHeader().Time+12, testUserAddress, 0, common.Hash{}, nil, false, nil)
 		require.NoError(t, err)
 
 		state, err := w.chain.State()

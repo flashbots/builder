@@ -83,7 +83,7 @@ func TestBuildBlock(t *testing.T) {
 	parent := ethservice.BlockChain().CurrentBlock()
 
 	testPayloadAttributes := &types.BuilderPayloadAttributes{
-		Timestamp:             hexutil.Uint64(parent.Time() + 1),
+		Timestamp:             hexutil.Uint64(parent.Time + 1),
 		Random:                common.Hash{0x05, 0x10},
 		SuggestedFeeRecipient: common.Address{0x04, 0x10},
 		GasLimit:              uint64(4800000),
@@ -98,7 +98,7 @@ func TestBuildBlock(t *testing.T) {
 		require.Equal(t, common.Address{0x05, 0x11}, executableData.ExecutionPayload.FeeRecipient)
 		require.Equal(t, common.Hash{0x05, 0x10}, executableData.ExecutionPayload.Random)
 		require.Equal(t, parent.Hash(), executableData.ExecutionPayload.ParentHash)
-		require.Equal(t, parent.Time()+1, executableData.ExecutionPayload.Timestamp)
+		require.Equal(t, parent.Time+1, executableData.ExecutionPayload.Timestamp)
 		require.Equal(t, block.ParentHash(), parent.Hash())
 		require.Equal(t, block.Hash(), executableData.ExecutionPayload.BlockHash)
 		require.Equal(t, blockValue.Uint64(), uint64(0))
