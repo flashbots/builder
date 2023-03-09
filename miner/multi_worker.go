@@ -111,23 +111,30 @@ func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	}
 
 	// Construct a payload object for return.
-	payload := newPayload(empty, args.Id())
+	var payload *Payload
 
 	// Keep separate payloads for each worker so that ResolveFull actually resolves the best of all workers
 	workerPayloads := []*Payload{}
 
-	for _, worker := range w.workers {
+	for i, w := range w.workers {
 		workerPayload := newPayload(empty, args.Id())
 		workerPayloads = append(workerPayloads, workerPayload)
-		go func() {
-			// Update routine done elsewhere!
+		if i == 0 {
+			payload = workerPayload
+		}
 
+		go func(w *worker) {
+			// Update routine done elsewhere!
 			start := time.Now()
-			block, fees, err := worker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook)
+			block, fees, err := w.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook)
 			if err == nil {
 				workerPayload.update(block, fees, time.Since(start))
 			}
-		}()
+		}(w)
+	}
+
+	if payload == nil {
+		return newPayload(empty, args.Id()), nil
 	}
 
 	go payload.resolveBestFullPayload(workerPayloads)

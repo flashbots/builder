@@ -113,7 +113,7 @@ func (payload *Payload) resolveBestFullPayload(payloads []*Payload) {
 	payload.lock.Lock()
 	defer payload.lock.Unlock()
 
-	log.Info("XXX resolving")
+	log.Debug("resolving best payload")
 	for _, p := range payloads {
 		p.lock.Lock()
 
@@ -132,7 +132,7 @@ func (payload *Payload) resolveBestFullPayload(payloads []*Payload) {
 			}
 
 			if payload.full == nil || payload.fullFees.Cmp(p.fullFees) < 0 {
-				log.Info("XXX updated")
+				log.Debug("best payload updated", "id", p.id)
 				payload.full = p.full
 				payload.fullFees = p.fullFees
 			}
@@ -140,7 +140,7 @@ func (payload *Payload) resolveBestFullPayload(payloads []*Payload) {
 		}
 	}
 
-	log.Info("XXX resolved")
+	log.Debug("best payload resolved", "id", payload.id)
 	payload.cond.Broadcast() // fire signal for notifying full block
 }
 
