@@ -79,7 +79,7 @@ func newPayload(empty *types.Block, id engine.PayloadID) *Payload {
 		empty: empty,
 		stop:  make(chan struct{}),
 	}
-	log.Info("Starting work on payload", "id", payload.id)
+
 	payload.cond = sync.NewCond(&payload.lock)
 	return payload
 }
@@ -113,7 +113,7 @@ func (payload *Payload) resolveBestFullPayload(payloads []*Payload) {
 	payload.lock.Lock()
 	defer payload.lock.Unlock()
 
-	log.Debug("resolving best payload")
+	log.Trace("resolving best payload")
 	for _, p := range payloads {
 		p.lock.Lock()
 
@@ -132,7 +132,7 @@ func (payload *Payload) resolveBestFullPayload(payloads []*Payload) {
 			}
 
 			if payload.full == nil || payload.fullFees.Cmp(p.fullFees) < 0 {
-				log.Debug("best payload updated", "id", p.id)
+				log.Trace("best payload updated", "id", p.id, "blockHash", p.full.Hash())
 				payload.full = p.full
 				payload.fullFees = p.fullFees
 			}
@@ -140,7 +140,7 @@ func (payload *Payload) resolveBestFullPayload(payloads []*Payload) {
 		}
 	}
 
-	log.Debug("best payload resolved", "id", payload.id)
+	log.Trace("best payload resolved", "id", payload.id, "blockHash", payload.full.Hash())
 	payload.cond.Broadcast() // fire signal for notifying full block
 }
 

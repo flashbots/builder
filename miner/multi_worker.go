@@ -111,17 +111,18 @@ func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	}
 
 	// Construct a payload object for return.
-	var payload *Payload
+	payload := newPayload(empty, args.Id())
+
+	if len(w.workers) == 0 {
+		return payload, nil
+	}
 
 	// Keep separate payloads for each worker so that ResolveFull actually resolves the best of all workers
 	workerPayloads := []*Payload{}
 
-	for i, w := range w.workers {
+	for _, w := range w.workers {
 		workerPayload := newPayload(empty, args.Id())
 		workerPayloads = append(workerPayloads, workerPayload)
-		if i == 0 {
-			payload = workerPayload
-		}
 
 		go func(w *worker) {
 			// Update routine done elsewhere!
@@ -132,11 +133,7 @@ func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 			}
 		}(w)
 	}
-
-	if payload == nil {
-		return newPayload(empty, args.Id()), nil
-	}
-
+	
 	go payload.resolveBestFullPayload(workerPayloads)
 
 	return payload, nil
