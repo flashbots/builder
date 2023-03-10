@@ -77,6 +77,10 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 		if hash := types.DeriveSha(block.Withdrawals(), trie.NewStackTrie(nil)); hash != *header.WithdrawalsHash {
 			return fmt.Errorf("withdrawals root hash mismatch (header value %x, calculated %x)", *header.WithdrawalsHash, hash)
 		}
+	} else {
+		if block.Withdrawals() != nil {
+			return fmt.Errorf("withdrawals list present in block body for nil withdrawals hash")
+		}
 	}
 
 	if !v.bc.HasBlockAndState(block.ParentHash(), block.NumberU64()-1) {
