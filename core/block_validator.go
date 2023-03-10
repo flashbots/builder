@@ -68,8 +68,11 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 	if hash := types.DeriveSha(block.Transactions(), trie.NewStackTrie(nil)); hash != header.TxHash {
 		return fmt.Errorf("transaction root hash mismatch (header value %x, calculated %x)", header.TxHash, hash)
 	}
-	// Withdrawals are present after the Shanghai fork.
-	if header.WithdrawalsHash != nil {
+	if v.config.IsShanghai(header.Time) {
+		if header.WithdrawalsHash == nil {
+			return fmt.Errorf("withdrawals hash is missing")
+		}
+		// Withdrawals are present after the Shanghai fork.
 		// Withdrawals list must be present in body after Shanghai.
 		if block.Withdrawals() == nil {
 			return fmt.Errorf("missing withdrawals in block body")
@@ -78,8 +81,11 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 			return fmt.Errorf("withdrawals root hash mismatch (header value %x, calculated %x)", *header.WithdrawalsHash, hash)
 		}
 	} else {
+		if header.WithdrawalsHash != nil {
+			return fmt.Errorf("withdrawals hash present before shanghai")
+		}
 		if block.Withdrawals() != nil {
-			return fmt.Errorf("withdrawals list present in block body for nil withdrawals hash")
+			return fmt.Errorf("withdrawals list present in block body before shanghai")
 		}
 	}
 

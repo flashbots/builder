@@ -166,7 +166,7 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, 
 	if b.dryRun {
 		err = b.validator.ValidateBuilderSubmissionV1(&blockvalidation.BuilderBlockValidationRequest{BuilderSubmitBlockRequest: blockSubmitReq, RegisteredGasLimit: vd.GasLimit})
 		if err != nil {
-			log.Error("could not validate block for bellatrix", "err", err)
+			log.Error("could not validate bellatrix block", "err", err)
 		}
 	} else {
 		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, &blockBidMsg)
