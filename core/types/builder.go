@@ -4,6 +4,9 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"golang.org/x/exp/slices"
+
+	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
+	capellaapi "github.com/attestantio/go-builder-client/api/capella"
 )
 
 type BuilderPayloadAttributes struct {
@@ -30,4 +33,9 @@ func (attrs *BuilderPayloadAttributes) Equal(other *BuilderPayloadAttributes) bo
 		return false
 	}
 	return true
+}
+
+type BuilderSubmitBlockRequest struct {
+	Capella   *capellaapi.SubmitBlockRequest
+	Bellatrix *bellatrixapi.SubmitBlockRequest
 }

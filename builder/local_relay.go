@@ -12,12 +12,19 @@ import (
 	"sync"
 	"time"
 
+	"github.com/attestantio/go-builder-client/api"
 	"github.com/attestantio/go-builder-client/api/capella"
+	"github.com/attestantio/go-builder-client/spec"
+	apiv1capella "github.com/attestantio/go-eth2-client/api/v1/capella"
+	consensusspec "github.com/attestantio/go-eth2-client/spec"
+	capellaspec "github.com/attestantio/go-eth2-client/spec/capella"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/flashbots/go-boost-utils/bls"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 	"github.com/gorilla/mux"
+	"github.com/holiman/uint256"
 )
 
 type ForkData struct {
@@ -46,10 +53,12 @@ type LocalRelay struct {
 
 	enableBeaconChecks bool
 
-	bestDataLock sync.Mutex
-	bestHeader   *boostTypes.ExecutionPayloadHeader
-	bestPayload  *boostTypes.ExecutionPayload
-	profit       boostTypes.U256Str
+	bestDataLock       sync.Mutex
+	bestHeader         *boostTypes.ExecutionPayloadHeader
+	bestPayload        *boostTypes.ExecutionPayload
+	profit             boostTypes.U256Str
+	bestHeaderCapella  *capellaspec.ExecutionPayloadHeader
+	bestPayloadCapella *capellaspec.ExecutionPayload
 
 	indexTemplate *template.Template
 	fd            ForkData
@@ -246,6 +255,21 @@ func (r *LocalRelay) handleGetHeader(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	isCapellaPayload := false
+	r.bestDataLock.Lock()
+	if r.bestHeaderCapella != nil {
+		isCapellaPayload = true
+	}
+	r.bestDataLock.Unlock()
+
+	if isCapellaPayload {
+		r.getCapellaHeader(w, req, parentHashHex)
+	} else {
+		r.getBellatrixHeader(w, req, parentHashHex)
+	}
+}
+
+func (r *LocalRelay) getBellatrixHeader(w http.ResponseWriter, req *http.Request, parentHashHex string) {
 	r.bestDataLock.Lock()
 	bestHeader := r.bestHeader
 	profit := r.profit
@@ -280,13 +304,64 @@ func (r *LocalRelay) handleGetHeader(w http.ResponseWriter, req *http.Request) {
 	}
 }
 
-func (r *LocalRelay) handleGetPayload(w http.ResponseWriter, req *http.Request) {
-	payload := new(boostTypes.SignedBlindedBeaconBlock)
-	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid payload")
+func (r *LocalRelay) getCapellaHeader(w http.ResponseWriter, req *http.Request, parentHashHex string) {
+	r.bestDataLock.Lock()
+	bestHeader := r.bestHeaderCapella
+	profit := r.profit
+	r.bestDataLock.Unlock()
+
+	value, overflow := uint256.FromBig(profit.BigInt())
+	if overflow {
+		log.Error("overflow converting profit to uint256", "profit", profit)
+		respondError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
+	if bestHeader == nil || bestHeader.ParentHash.String() != parentHashHex {
+		respondError(w, http.StatusBadRequest, "unknown payload")
+		return
+	}
+
+	bid := capella.BuilderBid{
+		Header: bestHeader,
+		Value:  value,
+		Pubkey: phase0.BLSPubKey(r.relayPublicKey),
+	}
+	signature, err := boostTypes.SignMessage(&bid, r.builderSigningDomain, r.relaySecretKey)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+
+	response := &spec.VersionedSignedBuilderBid{
+		Version: consensusspec.DataVersionCapella,
+		Capella: &capella.SignedBuilderBid{Message: &bid, Signature: phase0.BLSSignature(signature)},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		respondError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+}
+
+func (r *LocalRelay) handleGetPayload(w http.ResponseWriter, req *http.Request) {
+	payloadCapella := new(apiv1capella.SignedBlindedBeaconBlock)
+	if err := json.NewDecoder(req.Body).Decode(&payloadCapella); err != nil {
+		// attempt to decode as bellatrix payload
+		payloadBellatrix := new(boostTypes.SignedBlindedBeaconBlock)
+		if err := json.NewDecoder(req.Body).Decode(&payloadBellatrix); err != nil {
+			respondError(w, http.StatusBadRequest, "invalid payload")
+			return
+		}
+		r.getBellatrixPayload(w, req, payloadBellatrix)
+		return
+	}
+	r.getCapellaPayload(w, req, payloadCapella)
+}
+
+func (r *LocalRelay) getBellatrixPayload(w http.ResponseWriter, req *http.Request, payload *boostTypes.SignedBlindedBeaconBlock) {
 	if len(payload.Signature) != 96 {
 		respondError(w, http.StatusBadRequest, "invalid signature")
 		return
@@ -336,6 +411,67 @@ func (r *LocalRelay) handleGetPayload(w http.ResponseWriter, req *http.Request) 
 	response := boostTypes.GetPayloadResponse{
 		Version: "bellatrix",
 		Data:    bestPayload,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		respondError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+}
+
+func (r *LocalRelay) getCapellaPayload(w http.ResponseWriter, req *http.Request, payload *apiv1capella.SignedBlindedBeaconBlock) {
+	if len(payload.Signature) != 96 {
+		respondError(w, http.StatusBadRequest, "invalid signature")
+		return
+	}
+
+	nextSlotProposerPubkeyHex, err := r.beaconClient.getProposerForNextSlot(uint64(payload.Message.Slot))
+	if err != nil {
+		if r.enableBeaconChecks {
+			respondError(w, http.StatusBadRequest, "unknown validator")
+			return
+		}
+	}
+
+	nextSlotProposerPubkeyBytes, err := hexutil.Decode(string(nextSlotProposerPubkeyHex))
+	if err != nil {
+		if r.enableBeaconChecks {
+			respondError(w, http.StatusBadRequest, "unknown validator")
+			return
+		}
+	}
+
+	ok, err := boostTypes.VerifySignature(payload.Message, r.proposerSigningDomain, nextSlotProposerPubkeyBytes[:], payload.Signature[:])
+	if !ok || err != nil {
+		if r.enableBeaconChecks {
+			respondError(w, http.StatusBadRequest, "invalid signature")
+			return
+		}
+	}
+
+	r.bestDataLock.Lock()
+	bestHeader := r.bestHeaderCapella
+	bestPayload := r.bestPayloadCapella
+	r.bestDataLock.Unlock()
+
+	log.Info("Received blinded block", "payload", payload, "bestHeader", bestHeader)
+
+	if bestHeader == nil || bestPayload == nil {
+		respondError(w, http.StatusInternalServerError, "no payloads")
+		return
+	}
+
+	if !CapellaExecutionPayloadHeaderEqual(bestHeader, payload.Message.Body.ExecutionPayloadHeader) {
+		respondError(w, http.StatusBadRequest, "unknown payload")
+		return
+	}
+
+	response := api.VersionedExecutionPayload{
+		Version: consensusspec.DataVersionCapella,
+		Capella:    bestPayload,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -408,4 +544,8 @@ func (r *LocalRelay) handleStatus(w http.ResponseWriter, req *http.Request) {
 
 func ExecutionPayloadHeaderEqual(l *boostTypes.ExecutionPayloadHeader, r *boostTypes.ExecutionPayloadHeader) bool {
 	return l.ParentHash == r.ParentHash && l.FeeRecipient == r.FeeRecipient && l.StateRoot == r.StateRoot && l.ReceiptsRoot == r.ReceiptsRoot && l.LogsBloom == r.LogsBloom && l.Random == r.Random && l.BlockNumber == r.BlockNumber && l.GasLimit == r.GasLimit && l.GasUsed == r.GasUsed && l.Timestamp == r.Timestamp && l.BaseFeePerGas == r.BaseFeePerGas && bytes.Equal(l.ExtraData, r.ExtraData) && l.BlockHash == r.BlockHash && l.TransactionsRoot == r.TransactionsRoot
+}
+
+func CapellaExecutionPayloadHeaderEqual(l *capellaspec.ExecutionPayloadHeader, r *capellaspec.ExecutionPayloadHeader) bool {
+	return l.ParentHash == r.ParentHash && l.FeeRecipient == r.FeeRecipient && l.StateRoot == r.StateRoot && l.ReceiptsRoot == r.ReceiptsRoot && l.LogsBloom == r.LogsBloom && l.PrevRandao == r.PrevRandao && l.BlockNumber == r.BlockNumber && l.GasLimit == r.GasLimit && l.GasUsed == r.GasUsed && l.Timestamp == r.Timestamp && l.BaseFeePerGas == r.BaseFeePerGas && bytes.Equal(l.ExtraData, r.ExtraData) && l.BlockHash == r.BlockHash && l.TransactionsRoot == r.TransactionsRoot
 }
