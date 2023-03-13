@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -37,6 +38,8 @@ type PayloadAttributes struct {
 	Random                common.Hash         `json:"prevRandao"            gencodec:"required"`
 	SuggestedFeeRecipient common.Address      `json:"suggestedFeeRecipient" gencodec:"required"`
 	Withdrawals           []*types.Withdrawal `json:"withdrawals"`
+	GasLimit              uint64
+	Slot                  uint64
 }
 
 // JSON type overrides for PayloadAttributes.
@@ -236,4 +239,88 @@ func BlockToExecutableData(block *types.Block, fees *big.Int) *ExecutionPayloadE
 type ExecutionPayloadBodyV1 struct {
 	TransactionData []hexutil.Bytes     `json:"transactions"`
 	Withdrawals     []*types.Withdrawal `json:"withdrawals"`
+}
+
+func ExecutionPayloadToBlock(payload *boostTypes.ExecutionPayload) (*types.Block, error) {
+	// TODO: separate decode function to avoid allocating twice
+	transactionBytes := make([][]byte, len(payload.Transactions))
+	for i, txHexBytes := range payload.Transactions {
+		transactionBytes[i] = txHexBytes[:]
+	}
+	txs, err := decodeTransactions(transactionBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	header := &types.Header{
+		ParentHash:  common.Hash(payload.ParentHash),
+		UncleHash:   types.EmptyUncleHash,
+		Coinbase:    common.Address(payload.FeeRecipient),
+		Root:        common.Hash(payload.StateRoot),
+		TxHash:      types.DeriveSha(types.Transactions(txs), trie.NewStackTrie(nil)),
+		ReceiptHash: common.Hash(payload.ReceiptsRoot),
+		Bloom:       types.BytesToBloom(payload.LogsBloom[:]),
+		Difficulty:  common.Big0,
+		Number:      new(big.Int).SetUint64(payload.BlockNumber),
+		GasLimit:    payload.GasLimit,
+		GasUsed:     payload.GasUsed,
+		Time:        payload.Timestamp,
+		BaseFee:     payload.BaseFeePerGas.BigInt(),
+		Extra:       payload.ExtraData,
+		MixDigest:   common.Hash(payload.Random),
+	}
+	block := types.NewBlockWithHeader(header).WithBody(txs, nil /* uncles */)
+	return block, nil
+}
+
+func ExecutionPayloadV2ToBlock(payload *capella.ExecutionPayload) (*types.Block, error) {
+	// TODO: separate decode function to avoid allocating twice
+	transactionBytes := make([][]byte, len(payload.Transactions))
+	for i, txHexBytes := range payload.Transactions {
+		transactionBytes[i] = txHexBytes[:]
+	}
+	txs, err := decodeTransactions(transactionBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	withdrawals := make([]*types.Withdrawal, len(payload.Withdrawals))
+	for i, withdrawal := range payload.Withdrawals {
+		withdrawals[i] = &types.Withdrawal{
+			Index:     uint64(withdrawal.Index),
+			Validator: uint64(withdrawal.ValidatorIndex),
+			Address:   common.Address(withdrawal.Address),
+			Amount:    uint64(withdrawal.Amount),
+		}
+	}
+	withdrawalsHash := types.DeriveSha(types.Withdrawals(withdrawals), trie.NewStackTrie(nil))
+
+	// base fee per gas is stored little-endian but we need it
+	// big-endian for big.Int.
+	var baseFeePerGasBytes [32]byte
+	for i := 0; i < 32; i++ {
+		baseFeePerGasBytes[i] = payload.BaseFeePerGas[32-1-i]
+	}
+	baseFeePerGas := new(big.Int).SetBytes(baseFeePerGasBytes[:])
+
+	header := &types.Header{
+		ParentHash:      common.Hash(payload.ParentHash),
+		UncleHash:       types.EmptyUncleHash,
+		Coinbase:        common.Address(payload.FeeRecipient),
+		Root:            common.Hash(payload.StateRoot),
+		TxHash:          types.DeriveSha(types.Transactions(txs), trie.NewStackTrie(nil)),
+		ReceiptHash:     common.Hash(payload.ReceiptsRoot),
+		Bloom:           types.BytesToBloom(payload.LogsBloom[:]),
+		Difficulty:      common.Big0,
+		Number:          new(big.Int).SetUint64(payload.BlockNumber),
+		GasLimit:        payload.GasLimit,
+		GasUsed:         payload.GasUsed,
+		Time:            payload.Timestamp,
+		BaseFee:         baseFeePerGas,
+		Extra:           payload.ExtraData,
+		MixDigest:       common.Hash(payload.PrevRandao),
+		WithdrawalsHash: &withdrawalsHash,
+	}
+	block := types.NewBlockWithHeader(header).WithBody(txs, nil /* uncles */).WithWithdrawals(withdrawals)
+	return block, nil
 }

@@ -82,10 +82,6 @@ var (
 	// maximum allowance of the current block.
 	ErrGasLimit = errors.New("exceeds block gas limit")
 
-	// ErrNegativeValue is a sanity error to ensure no one is able to specify a
-	// transaction with a negative value.
-	ErrNegativeValue = errors.New("negative value")
-
 	// ErrOversizedData is returned if the input data of a transaction is greater
 	// than some meaningful limit a user might use. This is not a consensus error
 	// making the transaction invalid, rather a DOS protection.
@@ -232,8 +228,8 @@ func (config *Config) sanitize() Config {
 		conf.Lifetime = DefaultConfig.Lifetime
 	}
 	if conf.PrivateTxLifetime < 1 {
-		log.Warn("Sanitizing invalid txpool private tx lifetime", "provided", conf.PrivateTxLifetime, "updated", DefaultTxPoolConfig.PrivateTxLifetime)
-		conf.PrivateTxLifetime = DefaultTxPoolConfig.PrivateTxLifetime
+		log.Warn("Sanitizing invalid txpool private tx lifetime", "provided", conf.PrivateTxLifetime, "updated", DefaultConfig.PrivateTxLifetime)
+		conf.PrivateTxLifetime = DefaultConfig.PrivateTxLifetime
 	}
 	return conf
 }
@@ -285,6 +281,8 @@ type TxPool struct {
 
 	changesSinceReorg int // A counter for how many drops we've performed in-between reorg.
 
+	privateTxs    *timestampedTxHashSet
+	mevBundles    []types.MevBundle
 	bundleFetcher IFetcher
 }
 
@@ -316,7 +314,9 @@ func NewTxPool(config Config, chainconfig *params.ChainConfig, chain blockChain)
 		reorgShutdownCh: make(chan struct{}),
 		initDoneCh:      make(chan struct{}),
 		gasPrice:        new(big.Int).SetUint64(config.PriceLimit),
+		privateTxs:      newExpiringTxHashSet(config.PrivateTxLifetime),
 	}
+
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
 		log.Info("Setting new local account", "address", addr)
@@ -789,7 +789,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	// Transactions can't be negative. This may never happen using RLP decoded
 	// transactions but may occur if you create a transaction using the RPC.
 	if tx.Value().Sign() < 0 {
-		return ErrNegativeValue
+		return core.ErrNegativeValue
 	}
 	// Ensure the transaction doesn't exceed the current block limit gas.
 	if pool.currentMaxGas < tx.Gas() {

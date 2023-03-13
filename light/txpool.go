@@ -377,7 +377,7 @@ func (pool *TxPool) validateTx(ctx context.Context, tx *types.Transaction) error
 	// using RLP decoded transactions but may occur if you create
 	// a transaction using the RPC for example.
 	if tx.Value().Sign() < 0 {
-		return txpool.ErrNegativeValue
+		return core.ErrNegativeValue
 	}
 
 	// Transactor should have enough funds to cover the costs

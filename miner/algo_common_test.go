@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	mapset "github.com/deckarep/golang-set"
+	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
@@ -67,7 +67,7 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 			}
 		}
 
-		stateDB.Prepare(tx.Hash(), i+env.tcount)
+		stateDB.SetTxContext(tx.Hash(), i+env.tcount)
 		coinbaseBalanceBefore := stateDB.GetBalance(env.coinbase)
 
 		var tempGasUsed uint64
@@ -202,7 +202,7 @@ func genTestSetupWithAlloc(config *params.ChainConfig, alloc core.GenesisAlloc) 
 	}
 	_ = gspec.MustCommit(db)
 
-	chain, _ := core.NewBlockChain(db, &core.CacheConfig{TrieDirtyDisabled: true}, gspec.Config, ethash.NewFaker(), vm.Config{}, nil, nil)
+	chain, _ := core.NewBlockChain(db, &core.CacheConfig{TrieDirtyDisabled: true}, gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
 
 	stateDB, _ := state.New(chain.CurrentHeader().Root, state.NewDatabase(db), nil)
 
@@ -213,16 +213,16 @@ func newEnvironment(data chainData, state *state.StateDB, coinbase common.Addres
 	currentBlock := data.chain.CurrentBlock()
 	// Note the passed coinbase may be different with header.Coinbase.
 	return &environment{
-		signer:    types.MakeSigner(data.chainConfig, currentBlock.Number()),
+		signer:    types.MakeSigner(data.chainConfig, currentBlock.Number),
 		state:     state,
 		gasPool:   new(core.GasPool).AddGas(gasLimit),
 		coinbase:  coinbase,
-		ancestors: mapset.NewSet(),
-		family:    mapset.NewSet(),
+		ancestors: mapset.NewSet[common.Hash](),
+		family:    mapset.NewSet[common.Hash](),
 		header: &types.Header{
 			Coinbase:   coinbase,
 			ParentHash: currentBlock.Hash(),
-			Number:     new(big.Int).Add(currentBlock.Number(), big.NewInt(1)),
+			Number:     new(big.Int).Add(currentBlock.Number, big.NewInt(1)),
 			GasLimit:   gasLimit,
 			GasUsed:    0,
 			BaseFee:    baseFee,
@@ -518,7 +518,7 @@ func TestGetSealingWorkAlgos(t *testing.T) {
 		*local = *ethashChainConfig
 		local.TerminalTotalDifficulty = big.NewInt(0)
 		testConfig.AlgoType = algoType
-		testGetSealingWork(t, local, ethash.NewFaker(), true)
+		testGetSealingWork(t, local, ethash.NewFaker())
 	}
 }
 

@@ -24,14 +24,13 @@ import (
 	"reflect"
 	"unicode"
 
-	"github.com/urfave/cli/v2"
-
 	"github.com/ethereum/go-ethereum/accounts/external"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/accounts/scwallet"
 	"github.com/ethereum/go-ethereum/accounts/usbwallet"
 	"github.com/ethereum/go-ethereum/builder"
 	"github.com/ethereum/go-ethereum/cmd/utils"
+	blockvalidationapi "github.com/ethereum/go-ethereum/eth/block-validation"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
@@ -42,6 +41,7 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/naoina/toml"
+	"github.com/urfave/cli/v2"
 )
 
 var (
@@ -168,7 +168,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 		v := ctx.Uint64(utils.OverrideShanghai.Name)
 		cfg.Eth.OverrideShanghai = &v
 	}
-	backend, eth := utils.RegisterEthService(stack, &cfg.Eth)
+	backend, eth := utils.RegisterEthService(stack, &cfg.Eth, &cfg.Builder)
 
 	// Configure log filter RPC API.
 	filterSystem := utils.RegisterFilterAPI(stack, backend, &cfg.Eth)
