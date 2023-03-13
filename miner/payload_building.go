@@ -140,8 +140,14 @@ func (payload *Payload) resolveBestFullPayload(payloads []*Payload) {
 		}
 	}
 
-	log.Trace("best payload resolved", "id", payload.id, "blockHash", payload.full.Hash())
+	close(payload.stop)
 	payload.cond.Broadcast() // fire signal for notifying full block
+
+	if payload.full != nil {
+		log.Trace("best payload resolved", "id", payload.id, "blockHash", payload.full.Hash())
+	} else {
+		log.Trace("no payload resolved", "id", payload.id)
+	}
 }
 
 func (payload *Payload) Cancel() {
