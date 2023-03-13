@@ -18,6 +18,7 @@ package ethapi
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -2301,7 +2302,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		}
 
 		coinbaseBalanceBeforeTx := state.GetBalance(coinbase)
-		state.Prepare(tx.Hash(), i)
+		state.SetTxContext(tx.Hash(), i)
 
 		receipt, result, err := core.ApplyTransactionWithResult(s.b.ChainConfig(), s.chain, &coinbase, gp, state, header, tx, &header.GasUsed, vmconfig)
 		if err != nil {
@@ -2456,7 +2457,7 @@ func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundl
 		rand.Read(randomHash[:])
 
 		// New random hash since its a call
-		statedb.Prepare(randomHash, i)
+		statedb.SetTxContext(randomHash, i)
 
 		// Convert tx args to msg to apply state transition
 		msg, err := txArgs.ToMessage(globalGasCap, header.BaseFee)

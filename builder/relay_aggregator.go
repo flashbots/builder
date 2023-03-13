@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/attestantio/go-builder-client/api/capella"
 	"github.com/ethereum/go-ethereum/log"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
@@ -51,6 +52,26 @@ func (r *RemoteRelayAggregator) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRe
 	for _, relay := range relays {
 		go func(relay IRelay) {
 			err := relay.SubmitBlock(msg, registration)
+			if err != nil {
+				log.Error("could not submit block", "err", err)
+			}
+		}(relay)
+	}
+
+	return nil
+}
+
+func (r *RemoteRelayAggregator) SubmitBlockCapella(msg *capella.SubmitBlockRequest, registration ValidatorData) error {
+	r.registrationsCacheLock.RLock()
+	defer r.registrationsCacheLock.RUnlock()
+
+	relays, found := r.registrationsCache[registration]
+	if !found {
+		return fmt.Errorf("no relays for registration %s", registration.Pubkey)
+	}
+	for _, relay := range relays {
+		go func(relay IRelay) {
+			err := relay.SubmitBlockCapella(msg, registration)
 			if err != nil {
 				log.Error("could not submit block", "err", err)
 			}
