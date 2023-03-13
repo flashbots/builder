@@ -18,7 +18,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/ethereum/go-ethereum/trie"
 
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
@@ -63,22 +62,6 @@ func (a *AccessVerifier) verifyTransactions(signer types.Signer, txs types.Trans
 				return fmt.Errorf("transaction to blacklisted address %s", to.String())
 			}
 		}
-	}
-	return nil
-}
-
-func verifyWithdrawals(withdrawals types.Withdrawals, expectedWithdrawalsRoot common.Hash, isShanghai bool) error {
-	if !isShanghai {
-		// Reject payload attributes with withdrawals before shanghai
-		if withdrawals != nil {
-			return errors.New("withdrawals before shanghai")
-		}
-		return nil
-	}
-
-	withdrawalsRoot := types.DeriveSha(types.Withdrawals(withdrawals), trie.NewStackTrie(nil))
-	if withdrawalsRoot != expectedWithdrawalsRoot {
-		return fmt.Errorf("withdrawals mismatch")
 	}
 	return nil
 }
