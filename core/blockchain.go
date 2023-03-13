@@ -2532,6 +2532,20 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 		return err
 	}
 
+	if bc.Config().IsShanghai(header.Time) {
+		if header.WithdrawalsHash == nil {
+			return fmt.Errorf("withdrawals hash is missing")
+		}
+		// withdrawals hash and withdrawals validated later in ValidateBody
+	} else {
+		if header.WithdrawalsHash != nil {
+			return fmt.Errorf("withdrawals hash present before shanghai")
+		}
+		if block.Withdrawals() != nil {
+			return fmt.Errorf("withdrawals list present in block body before shanghai")
+		}
+	}
+
 	if err := bc.validator.ValidateBody(block); err != nil {
 		return err
 	}
