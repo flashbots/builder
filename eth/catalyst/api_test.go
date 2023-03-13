@@ -200,6 +200,7 @@ func TestEth2PrepareAndGetPayload(t *testing.T) {
 		Parent:       fcState.HeadBlockHash,
 		Timestamp:    blockParams.Timestamp,
 		FeeRecipient: blockParams.SuggestedFeeRecipient,
+		GasLimit:     blockParams.GasLimit,
 		Random:       blockParams.Random,
 	}).Id()
 	execData, err := api.GetPayloadV1(payloadID)
@@ -662,6 +663,7 @@ func assembleBlock(api *ConsensusAPI, parentHash common.Hash, params *engine.Pay
 		Parent:       parentHash,
 		Timestamp:    params.Timestamp,
 		FeeRecipient: params.SuggestedFeeRecipient,
+		GasLimit:     params.GasLimit,
 		Random:       params.Random,
 		Withdrawals:  params.Withdrawals,
 	}
@@ -900,6 +902,7 @@ func TestNewPayloadOnInvalidTerminalBlock(t *testing.T) {
 	args := &miner.BuildPayloadArgs{
 		Parent:       parent.Hash(),
 		Timestamp:    parent.Time() + 1,
+		GasLimit:     0,
 		Random:       crypto.Keccak256Hash([]byte{byte(1)}),
 		FeeRecipient: parent.Coinbase(),
 	}
@@ -1062,6 +1065,7 @@ func TestWithdrawals(t *testing.T) {
 	payloadID := (&miner.BuildPayloadArgs{
 		Parent:       fcState.HeadBlockHash,
 		Timestamp:    blockParams.Timestamp,
+		GasLimit:     blockParams.GasLimit,
 		FeeRecipient: blockParams.SuggestedFeeRecipient,
 		Random:       blockParams.Random,
 		Withdrawals:  blockParams.Withdrawals,
@@ -1110,6 +1114,7 @@ func TestWithdrawals(t *testing.T) {
 		Parent:       fcState.HeadBlockHash,
 		Timestamp:    blockParams.Timestamp,
 		FeeRecipient: blockParams.SuggestedFeeRecipient,
+		GasLimit:     blockParams.GasLimit,
 		Random:       blockParams.Random,
 		Withdrawals:  blockParams.Withdrawals,
 	}).Id()
@@ -1241,6 +1246,7 @@ func TestNilWithdrawals(t *testing.T) {
 			Parent:       fcState.HeadBlockHash,
 			Timestamp:    test.blockParams.Timestamp,
 			FeeRecipient: test.blockParams.SuggestedFeeRecipient,
+			GasLimit:     0,
 			Random:       test.blockParams.Random,
 		}).Id()
 		execData, err := api.GetPayloadV2(payloadID)

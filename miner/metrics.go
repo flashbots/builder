@@ -10,12 +10,11 @@ var (
 	blockProfitGauge       = metrics.NewRegisteredGauge("miner/block/profit/gauge", nil)
 	culmulativeProfitGauge = metrics.NewRegisteredGauge("miner/block/profit/culmulative", nil)
 
-	buildBlockTimer            = metrics.NewRegisteredTimer("miner/block/build", nil)
-	mergeAlgoTimer             = metrics.NewRegisteredTimer("miner/block/merge", nil)
-	blockBundleSimulationTimer = metrics.NewRegisteredTimer("miner/block/simulate", nil)
-	successfulBundleSimulationTimer	   = metrics.NewRegisteredTimer("miner/bundle/simulate/success", nil)
-	failedBundleSimulationTimer = metrics.NewRegisteredTimer("miner/bundle/simulate/failed", nil)
-	
+	buildBlockTimer                 = metrics.NewRegisteredTimer("miner/block/build", nil)
+	mergeAlgoTimer                  = metrics.NewRegisteredTimer("miner/block/merge", nil)
+	blockBundleSimulationTimer      = metrics.NewRegisteredTimer("miner/block/simulate", nil)
+	successfulBundleSimulationTimer = metrics.NewRegisteredTimer("miner/bundle/simulate/success", nil)
+	failedBundleSimulationTimer     = metrics.NewRegisteredTimer("miner/bundle/simulate/failed", nil)
 
 	simulationMeter          = metrics.NewRegisteredMeter("miner/block/simulation", nil)
 	simulationCommittedMeter = metrics.NewRegisteredMeter("miner/block/simulation/committed", nil)

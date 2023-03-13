@@ -91,53 +91,48 @@ type resChPair struct {
 	errCh chan error
 }
 
-func (w *multiWorker) GetSealingBlockAsync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool, blockHook BlockHookFn) (chan *types.Block, error) {
-	resChans := []resChPair{}
-
+func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
+	// Build the initial version with no transaction included. It should be fast
+	// enough to run. The empty payload can at least make sure there is something
+	// to deliver for not missing slot.
+	var empty *types.Block
 	for _, worker := range w.workers {
-		resCh, errCh, err := worker.getSealingBlock(parent, timestamp, coinbase, gasLimit, random, noTxs, noExtra, blockHook)
-		if err != nil {
+		var err error
+		empty, _, err = worker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, true, nil)
+			if err != nil {
 			log.Error("could not start async block construction", "isFlashbotsWorker", worker.flashbots.isFlashbots, "#bundles", worker.flashbots.maxMergedBundles)
 			continue
-		}
-		resChans = append(resChans, resChPair{resCh, errCh})
-	}
-
-	if len(resChans) == 0 {
-		return nil, errors.New("no worker could start async block construction")
-	}
-
-	resCh := make(chan *types.Block)
-
-	go func(resCh chan *types.Block) {
-		var res *types.Block = nil
-		for _, chPair := range resChans {
-			err := <-chPair.errCh
-			if err != nil {
-				log.Error("could not generate block", "err", err)
-				continue
 			}
-			newBlock := <-chPair.resCh
-			if res == nil || (newBlock != nil && newBlock.Profit.Cmp(res.Profit) > 0) {
-				res = newBlock
+		break
 			}
-		}
-		resCh <- res
-	}(resCh)
 
-	return resCh, nil
-}
+	if empty == nil {
+		return nil, errors.New("no worker could build an empty block")
+	}
 
-func (w *multiWorker) GetSealingBlockSync(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, noTxs bool, noExtra bool, blockHook BlockHookFn) (*types.Block, error) {
-	resCh, err := w.GetSealingBlockAsync(parent, timestamp, coinbase, gasLimit, random, noTxs, noExtra, blockHook)
-	if err != nil {
-		return nil, err
+	// Construct a payload object for return.
+	payload := newPayload(empty, args.Id())
+
+	// Keep separate payloads for each worker so that ResolveFull actually resolves the best of all workers
+	workerPayloads := []*Payload{}
+
+	for _, worker := range w.workers {
+		workerPayload := newPayload(empty, args.Id())
+		workerPayloads = append(workerPayloads, workerPayload)
+		go func() {
+			// Update routine done elsewhere!
+
+			start := time.Now()
+			block, fees, err := worker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook)
+			if err == nil {
+				workerPayload.update(block, fees, time.Since(start))
+			}
+		}()
 	}
-	res := <-resCh
-	if res == nil {
-		return nil, errors.New("no viable blocks created")
-	}
-	return res, nil
+
+	go payload.resolveBestFullPayload(workerPayloads)
+
+	return payload, nil
 }
 
 func newMultiWorker(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *multiWorker {

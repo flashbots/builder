@@ -34,7 +34,7 @@ func TestBuildPayload(t *testing.T) {
 		db        = rawdb.NewMemoryDatabase()
 		recipient = common.HexToAddress("0xdeadbeef")
 	)
-	w, b := newTestWorker(t, params.TestChainConfig, ethash.NewFaker(), db, 0)
+	w, b := newTestWorker(t, params.TestChainConfig, ethash.NewFaker(), db, defaultGenesisAlloc, 0)
 	defer w.close()
 
 	timestamp := uint64(time.Now().Unix())
@@ -50,6 +50,7 @@ func TestBuildPayload(t *testing.T) {
 	}
 	verify := func(outer *engine.ExecutionPayloadEnvelope, txs int) {
 		payload := outer.ExecutionPayload
+		builderCoinbase := w.coinbase
 		if payload.ParentHash != b.chain.CurrentBlock().Hash() {
 			t.Fatal("Unexpect parent hash")
 		}
@@ -59,7 +60,7 @@ func TestBuildPayload(t *testing.T) {
 		if payload.Timestamp != timestamp {
 			t.Fatal("Unexpect timestamp")
 		}
-		if payload.FeeRecipient != recipient {
+		if payload.FeeRecipient != builderCoinbase {
 			t.Fatal("Unexpect fee recipient")
 		}
 		if len(payload.Transactions) != txs {

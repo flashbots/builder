@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/attestantio/go-builder-client/api/capella"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 	"github.com/stretchr/testify/require"
 )
@@ -20,9 +21,11 @@ type testRelay struct {
 	gvsVd   ValidatorData
 	gvsErr  error
 
-	requestedSlot  uint64
-	submittedMsg   *boostTypes.BuilderSubmitBlockRequest
-	submittedMsgCh chan *boostTypes.BuilderSubmitBlockRequest
+	requestedSlot         uint64
+	submittedMsg          *boostTypes.BuilderSubmitBlockRequest
+	submittedMsgCh        chan *boostTypes.BuilderSubmitBlockRequest
+	submittedMsgCapella   *capella.SubmitBlockRequest
+	submittedMsgChCapella chan *capella.SubmitBlockRequest
 }
 
 type testRelayAggBackend struct {
@@ -53,6 +56,18 @@ func (r *testRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, regis
 	r.submittedMsg = msg
 	return r.sbError
 }
+
+func (r *testRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, registration ValidatorData) error {
+	if r.submittedMsgCh != nil {
+		select {
+		case r.submittedMsgChCapella <- msg:
+		default:
+		}
+	}
+	r.submittedMsgCapella = msg
+	return r.sbError
+}
+
 func (r *testRelay) GetValidatorForSlot(nextSlot uint64) (ValidatorData, error) {
 	r.requestedSlot = nextSlot
 	return r.gvsVd, r.gvsErr

@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/attestantio/go-builder-client/api/capella"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/flashbots/go-boost-utils/bls"
@@ -96,6 +97,17 @@ func (r *LocalRelay) Stop() {
 func (r *LocalRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
 	return r.submitBlock(msg)
+}
+
+func (r *LocalRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData) error {
+	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
+
+	return r.submitBlockCapella(msg)
+}
+
+// TODO: local relay support for capella
+func (r *LocalRelay) submitBlockCapella(msg *capella.SubmitBlockRequest) error {
+	return nil
 }
 
 func (r *LocalRelay) submitBlock(msg *boostTypes.BuilderSubmitBlockRequest) error {

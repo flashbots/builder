@@ -42,7 +42,7 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 			Time:       16000000,
 			BaseFee:    big.NewInt(7),
 		}, nil, nil, nil, nil)
-	block.Profit = big.NewInt(10)
+	blockProfit := big.NewInt(10)
 
 	simBundle1 := types.SimulatedBundle{
 		MevGasPrice:       big.NewInt(9),
@@ -110,7 +110,7 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 
 	ocAt := time.Now().Add(-time.Hour).UTC()
 	sealedAt := time.Now().Add(-30 * time.Minute).UTC()
-	ds.ConsumeBuiltBlock(block, ocAt, sealedAt, []types.SimulatedBundle{simBundle1, simBundle2}, []types.SimulatedBundle{simBundle1, simBundle2, simBundle3, simBundle4}, bidTrace)
+	ds.ConsumeBuiltBlock(block, blockProfit, ocAt, sealedAt, []types.SimulatedBundle{simBundle1, simBundle2}, []types.SimulatedBundle{simBundle1, simBundle2, simBundle3, simBundle4}, bidTrace)
 
 	var dbBlock BuiltBlock
 	require.NoError(t, ds.db.Get(&dbBlock, "select block_id, block_number, profit, slot, hash, gas_limit, gas_used, base_fee, parent_hash, timestamp, timestamp_datetime, orders_closed_at, sealed_at from built_blocks where hash = '0x9cc3ee47d091fea38c0187049cae56abe4e642eeb06c4832f06ec59f5dbce7ab'"))
