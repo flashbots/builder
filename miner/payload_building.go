@@ -142,7 +142,13 @@ func (payload *Payload) resolveBestFullPayload(payloads []*Payload) {
 		}
 	}
 
-	close(payload.stop)
+	// Since we are not expecting any updates, close the payload already
+	select {
+	case <-payload.stop:
+	default:
+		close(payload.stop)
+	}
+
 	payload.cond.Broadcast() // fire signal for notifying full block
 
 	if payload.full != nil {
