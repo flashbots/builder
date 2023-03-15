@@ -4,17 +4,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
-	"os"
 
 	capellaapi "github.com/attestantio/go-builder-client/api/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth"
-	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -22,106 +17,26 @@ import (
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
 
-type BlacklistedAddresses []common.Address
-
-type AccessVerifier struct {
-	blacklistedAddresses map[common.Address]struct{}
-}
-
-func (a *AccessVerifier) verifyTraces(tracer *logger.AccessListTracer) error {
-	log.Trace("x", "tracer.AccessList()", tracer.AccessList())
-	for _, accessTuple := range tracer.AccessList() {
-		// TODO: should we ignore common.Address{}?
-		if _, found := a.blacklistedAddresses[accessTuple.Address]; found {
-			log.Info("bundle accesses blacklisted address", "address", accessTuple.Address)
-			return fmt.Errorf("blacklisted address %s in execution trace", accessTuple.Address.String())
-		}
-	}
-
-	return nil
-}
-
-func (a *AccessVerifier) isBlacklisted(addr common.Address) error {
-	if _, present := a.blacklistedAddresses[addr]; present {
-		return fmt.Errorf("transaction from blacklisted address %s", addr.String())
-	}
-	return nil
-}
-
-func (a *AccessVerifier) verifyTransactions(signer types.Signer, txs types.Transactions) error {
-	for _, tx := range txs {
-		from, err := signer.Sender(tx)
-		if err == nil {
-			if _, present := a.blacklistedAddresses[from]; present {
-				return fmt.Errorf("transaction from blacklisted address %s", from.String())
-			}
-		}
-		to := tx.To()
-		if to != nil {
-			if _, present := a.blacklistedAddresses[*to]; present {
-				return fmt.Errorf("transaction to blacklisted address %s", to.String())
-			}
-		}
-	}
-	return nil
-}
-
-func NewAccessVerifierFromFile(path string) (*AccessVerifier, error) {
-	bytes, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-
-	var ba BlacklistedAddresses
-	if err := json.Unmarshal(bytes, &ba); err != nil {
-		return nil, err
-	}
-
-	blacklistedAddresses := make(map[common.Address]struct{}, len(ba))
-	for _, address := range ba {
-		blacklistedAddresses[address] = struct{}{}
-	}
-
-	return &AccessVerifier{
-		blacklistedAddresses: blacklistedAddresses,
-	}, nil
-}
-
-type BlockValidationConfig struct {
-	BlacklistSourceFilePath string
-}
-
 // Register adds catalyst APIs to the full node.
-func Register(stack *node.Node, backend *eth.Ethereum, cfg BlockValidationConfig) error {
-	var accessVerifier *AccessVerifier
-	if cfg.BlacklistSourceFilePath != "" {
-		var err error
-		accessVerifier, err = NewAccessVerifierFromFile(cfg.BlacklistSourceFilePath)
-		if err != nil {
-			return err
-		}
-	}
-
+func Register(stack *node.Node, backend *eth.Ethereum) error {
 	stack.RegisterAPIs([]rpc.API{
 		{
 			Namespace: "flashbots",
-			Service:   NewBlockValidationAPI(backend, accessVerifier),
+			Service:   NewBlockValidationAPI(backend),
 		},
 	})
 	return nil
 }
 
 type BlockValidationAPI struct {
-	eth            *eth.Ethereum
-	accessVerifier *AccessVerifier
+	eth *eth.Ethereum
 }
 
 // NewConsensusAPI creates a new consensus api for the given backend.
 // The underlying blockchain needs to have a valid terminal total difficulty set.
-func NewBlockValidationAPI(eth *eth.Ethereum, accessVerifier *AccessVerifier) *BlockValidationAPI {
+func NewBlockValidationAPI(eth *eth.Ethereum) *BlockValidationAPI {
 	return &BlockValidationAPI{
-		eth:            eth,
-		accessVerifier: accessVerifier,
+		eth: eth,
 	}
 }
 
@@ -162,35 +77,10 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockV
 	feeRecipient := common.BytesToAddress(params.Message.ProposerFeeRecipient[:])
 	expectedProfit := params.Message.Value.BigInt()
 
-	var vmconfig vm.Config
-	var tracer *logger.AccessListTracer = nil
-	if api.accessVerifier != nil {
-		if err := api.accessVerifier.isBlacklisted(block.Coinbase()); err != nil {
-			return err
-		}
-		if err := api.accessVerifier.isBlacklisted(feeRecipient); err != nil {
-			return err
-		}
-		if err := api.accessVerifier.verifyTransactions(types.LatestSigner(api.eth.BlockChain().Config()), block.Transactions()); err != nil {
-			return err
-		}
-		isPostMerge := true // the call is PoS-native
-		timestamp := params.BuilderSubmitBlockRequest.ExecutionPayload.Timestamp
-		precompiles := vm.ActivePrecompiles(api.eth.APIBackend.ChainConfig().Rules(new(big.Int).SetUint64(params.ExecutionPayload.BlockNumber), isPostMerge, timestamp))
-		tracer = logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, precompiles)
-		vmconfig = vm.Config{Tracer: tracer, Debug: true}
-	}
-
-	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig)
+	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, *api.eth.BlockChain().GetVMConfig())
 	if err != nil {
 		log.Error("invalid payload", "hash", payload.BlockHash.String(), "number", payload.BlockNumber, "parentHash", payload.ParentHash.String(), "err", err)
 		return err
-	}
-
-	if api.accessVerifier != nil && tracer != nil {
-		if err := api.accessVerifier.verifyTraces(tracer); err != nil {
-			return err
-		}
 	}
 
 	log.Info("validated block", "hash", block.Hash(), "number", block.NumberU64(), "parentHash", block.ParentHash())
@@ -261,34 +151,10 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockV
 	feeRecipient := common.BytesToAddress(params.Message.ProposerFeeRecipient[:])
 	expectedProfit := params.Message.Value.ToBig()
 
-	var vmconfig vm.Config
-	var tracer *logger.AccessListTracer = nil
-	if api.accessVerifier != nil {
-		if err := api.accessVerifier.isBlacklisted(block.Coinbase()); err != nil {
-			return err
-		}
-		if err := api.accessVerifier.isBlacklisted(feeRecipient); err != nil {
-			return err
-		}
-		if err := api.accessVerifier.verifyTransactions(types.LatestSigner(api.eth.BlockChain().Config()), block.Transactions()); err != nil {
-			return err
-		}
-		isPostMerge := true // the call is PoS-native
-		precompiles := vm.ActivePrecompiles(api.eth.APIBackend.ChainConfig().Rules(new(big.Int).SetUint64(params.ExecutionPayload.BlockNumber), isPostMerge, params.ExecutionPayload.Timestamp))
-		tracer = logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, precompiles)
-		vmconfig = vm.Config{Tracer: tracer, Debug: true}
-	}
-
-	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig)
+	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, *api.eth.BlockChain().GetVMConfig())
 	if err != nil {
 		log.Error("invalid payload", "hash", payload.BlockHash.String(), "number", payload.BlockNumber, "parentHash", payload.ParentHash.String(), "err", err)
 		return err
-	}
-
-	if api.accessVerifier != nil && tracer != nil {
-		if err := api.accessVerifier.verifyTraces(tracer); err != nil {
-			return err
-		}
 	}
 
 	log.Info("validated block", "hash", block.Hash(), "number", block.NumberU64(), "parentHash", block.ParentHash())

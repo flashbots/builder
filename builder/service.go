@@ -156,14 +156,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 
 	var validator *blockvalidation.BlockValidationAPI
 	if cfg.DryRun {
-		var accessVerifier *blockvalidation.AccessVerifier
-		if cfg.ValidationBlocklist != "" {
-			accessVerifier, err = blockvalidation.NewAccessVerifierFromFile(cfg.ValidationBlocklist)
-			if err != nil {
-				return fmt.Errorf("failed to load validation blocklist %w", err)
-			}
-		}
-		validator = blockvalidation.NewBlockValidationAPI(backend, accessVerifier)
+		validator = blockvalidation.NewBlockValidationAPI(backend)
 	}
 
 	// TODO: move to proper flags

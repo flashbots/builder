@@ -2527,6 +2527,8 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 	// and dangling prefetcher, without defering each and holding on live refs.
 	defer statedb.StopPrefetcher()
 
+	balanceBefore := statedb.GetBalance(feeRecipient)
+
 	receipts, _, usedGas, err := bc.processor.Process(block, statedb, vmConfig)
 	if err != nil {
 		return err
@@ -2554,6 +2556,17 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 		return err
 	}
 
+	// First just check the balance delta to see if it matches.
+	balanceAfter := statedb.GetBalance(feeRecipient)
+	feeRecipientDiff := new(big.Int).Sub(balanceAfter, balanceBefore)
+
+	// If diff is sufficiently large, just return success.
+	if feeRecipientDiff.Cmp(expectedProfit) >= 0 {
+		return nil
+	}
+	log.Warn(fmt.Sprintf("fee recipient diff %s is less than expected %s. checking for last transaction", feeRecipientDiff.String(), expectedProfit.String()))
+
+	// Flashbots logic for last transaction checks.
 	if len(receipts) == 0 {
 		return errors.New("no proposer payment receipt")
 	}
