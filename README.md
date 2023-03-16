@@ -104,6 +104,10 @@ Environment variables:
 BUILDER_TX_SIGNING_KEY - private key of the builder used to sign payment transaction, must be the same as the coinbase address
 ```
 
+## Block Validation
+
+The block validation api is exposed via the `flashbots` namespace. To enable block validation in the builder, enable the `flashbots` namespace in the http api `--http.api="engine,eth,builder,flashbots"`
+
 ## Metrics
 
 To enable metrics on the builder you will need to enable metrics with the flags `--metrics --metrics.addr 127.0.0.1 --metrics.builder` which will run
