@@ -104,6 +104,16 @@ Environment variables:
 BUILDER_TX_SIGNING_KEY - private key of the builder used to sign payment transaction, must be the same as the coinbase address
 ```
 
+## Block Validation
+
+The block validation api is exposed via the `flashbots` namespace. To enable block validation in the builder, enable the `flashbots` namespace in the http api `--http.api="engine,eth,builder,flashbots"`
+
+### Blacklisting
+
+By default the node will load blacklisted addresses from `ofac_blacklist.json` from working directory. You can specify the path to the file via `--builder.validation_blacklist`.  
+
+The default OFAC blacklist is provided with this repository in [ofac_blacklist.json](ofac_blacklist.json).  
+
 ## Metrics
 
 To enable metrics on the builder you will need to enable metrics with the flags `--metrics --metrics.addr 127.0.0.1 --metrics.builder` which will run
