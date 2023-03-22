@@ -124,6 +124,9 @@ func GetAPIs(apiBackend Backend, chain *core.BlockChain) []rpc.API {
 		}, {
 			Namespace: "eth",
 			Service:   NewBundleAPI(apiBackend, chain),
+		}, {
+			Namespace: "enclave",
+			Service:   NewPrivateTxBundleAPI(apiBackend),
 		},
 	}
 }
