@@ -84,7 +84,7 @@ func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRe
 		builderPublicKey:     pk,
 		builderSigningDomain: builderSigningDomain,
 
-		limiter:       rate.NewLimiter(rate.Every(time.Millisecond), 510),
+		limiter:       rate.NewLimiter(rate.Every(time.Millisecond), 600),
 		slot:          0,
 		slotCtx:       slotCtx,
 		slotCtxCancel: slotCtxCancel,
@@ -109,6 +109,9 @@ func (b *Builder) onSealedBlock(block *types.Block, ordersClosedAt time.Time, se
 
 	value := new(boostTypes.U256Str)
 	err = value.FromBig(block.Profit)
+
+	log.Info("Block profit for block", value)
+
 	if err != nil {
 		log.Error("could not set block value", "err", err)
 		return err
@@ -287,7 +290,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 	}
 
 	// resubmits block builder requests every second
-	runRetryLoop(ctx, 500*time.Millisecond, func() {
+	runRetryLoop(ctx, 1*time.Second, func() {
 		log.Debug("retrying BuildBlock", "slot", attrs.Slot, "parent", attrs.HeadHash)
 		err := b.eth.BuildBlock(attrs, blockHook)
 		if err != nil {
