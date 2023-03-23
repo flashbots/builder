@@ -1865,29 +1865,42 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 			return simulatedBundle{}, err
 		}
 
-		txInPendingPool := false
-		if accountTxs, ok := pendingTxs[from]; ok {
-			// check if tx is in pending pool
-			txNonce := tx.Nonce()
-
-			for _, accountTx := range accountTxs {
-				if accountTx.Nonce() == txNonce {
-					txInPendingPool = true
-					break
-				}
-			}
-		}
-
 		gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
 		gasPrice, err := tx.EffectiveGasTip(env.header.BaseFee)
 		if err != nil {
 			return simulatedBundle{}, err
 		}
-		gasFeesTx := gasUsed.Mul(gasUsed, gasPrice)
+		gasFeesTx := new(big.Int).Mul(gasUsed, gasPrice)
 		coinbaseBalanceAfter := state.GetBalance(env.coinbase)
 		coinbaseDelta := big.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
 		coinbaseDelta.Sub(coinbaseDelta, gasFeesTx)
 		ethSentToCoinbase.Add(ethSentToCoinbase, coinbaseDelta)
+
+		txInPendingPool := false
+		if accountTxs, ok := pendingTxs[from]; ok {
+			// Check if tx is in (or was in) pending pool.
+			txNonce := tx.Nonce()
+			txHash := tx.Hash()
+			for _, accountTx := range accountTxs {
+				if accountTx.Nonce() == txNonce && accountTx.Hash() == txHash {
+					// Bundle includes a transaction from the mempool.
+					txInPendingPool = true
+					break
+				} else if accountTx.Nonce() == txNonce && accountTx.Hash() != txHash {
+					// Bundle is attempting to replace a transaction from the mempool.
+					txTipValue := new(big.Int).Add(gasFeesTx, coinbaseDelta)
+					txTipGasPrice := new(big.Int).Div(txTipValue, gasUsed)
+					accountTxTipGasPrice := accountTx.EffectiveGasTipValue(env.header.BaseFee)
+					if txTipGasPrice.Cmp(accountTxTipGasPrice) != 1 {
+						// Replacement underpriced, so don't count the gas fees towards the bundle value.
+						// This could mean that the transaction was already replaced in the mempool.
+						// This prevents incentivising bundles to include replaced transactions.
+						txInPendingPool = true
+					}
+					break
+				}
+			}
+		}
 
 		if !txInPendingPool {
 			// If tx is not in pending pool, count the gas fees
