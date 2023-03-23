@@ -12,8 +12,18 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/r3labs/sse"
 )
+
+type IBeaconClient interface {
+	isValidator(pubkey PubkeyHex) bool
+	getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error)
+	SubscribeToPayloadAttributesEvents(payloadAttrC chan types.BuilderPayloadAttributes)
+	Start() error
+	Stop()
+}
 
 type testBeaconClient struct {
 	validator *ValidatorPrivateData
@@ -30,9 +40,26 @@ func (b *testBeaconClient) isValidator(pubkey PubkeyHex) bool {
 func (b *testBeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error) {
 	return PubkeyHex(hexutil.Encode(b.validator.Pk)), nil
 }
-func (b *testBeaconClient) Start() error {
-	return nil
+
+func (b *testBeaconClient) SubscribeToPayloadAttributesEvents(payloadAttrC chan types.BuilderPayloadAttributes) {}
+
+func (b *testBeaconClient) Start() error { return nil }
+
+type NilBeaconClient struct{}
+
+func (b *NilBeaconClient) isValidator(pubkey PubkeyHex) bool {
+	return false
 }
+
+func (b *NilBeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error) {
+	return PubkeyHex(""), nil
+}
+
+func (b *NilBeaconClient) SubscribeToPayloadAttributesEvents(payloadAttrC chan types.BuilderPayloadAttributes) {}
+
+func (b *NilBeaconClient) Start() error { return nil }
+
+func (b *NilBeaconClient) Stop() {}
 
 type BeaconClient struct {
 	endpoint      string
@@ -255,4 +282,49 @@ func fetchBeacon(url string, dst any) error {
 
 	log.Info("fetched", "url", url, "res", dst)
 	return nil
+}
+
+// SubscribeToPayloadAttributesEvents subscribes to payload attributes events to validate fields such as prevrandao and withdrawals
+func (b *BeaconClient) SubscribeToPayloadAttributesEvents(payloadAttrC chan types.BuilderPayloadAttributes) {
+	payloadAttributesResp := &struct {
+		Version string `json:"version"`
+		Data    struct {
+			ProposalSlot      uint64      `json:"proposal_slot,string"`
+			ParentBlockHash   common.Hash `json:"parent_block_hash"`
+			PayloadAttributes struct {
+				Timestamp             uint64              `json:"timestamp,string"`
+				PrevRandao            common.Hash         `json:"prev_randao"`
+				SuggestedFeeRecipient common.Address      `json:"suggested_fee_recipient"`
+				Withdrawals           []*types.Withdrawal `json:"withdrawals"`
+			} `json:"payload_attributes"`
+		} `json:"data"`
+	}{}
+
+	eventsURL := fmt.Sprintf("%s/eth/v1/events?topics=payload_attributes", b.endpoint)
+	log.Info("subscribing to payload_attributes events")
+
+	for {
+		client := sse.NewClient(eventsURL)
+		err := client.SubscribeRaw(func(msg *sse.Event) {
+			err := json.Unmarshal(msg.Data, &payloadAttributesResp)
+			if err != nil {
+				log.Error("could not unmarshal payload_attributes event", "err", err)
+			} else {
+				data := types.BuilderPayloadAttributes{
+					Slot:                  payloadAttributesResp.Data.ProposalSlot,
+					HeadHash:              payloadAttributesResp.Data.ParentBlockHash,
+					Timestamp:             hexutil.Uint64(payloadAttributesResp.Data.PayloadAttributes.Timestamp),
+					Random:                payloadAttributesResp.Data.PayloadAttributes.PrevRandao,
+					SuggestedFeeRecipient: payloadAttributesResp.Data.PayloadAttributes.SuggestedFeeRecipient,
+					Withdrawals:           payloadAttributesResp.Data.PayloadAttributes.Withdrawals,
+				}
+				payloadAttrC <- data
+			}
+		})
+		if err != nil {
+			log.Error("failed to subscribe to payload_attributes events", "err", err)
+			time.Sleep(1 * time.Second)
+		}
+		log.Warn("beaconclient SubscribeRaw ended, reconnecting")
+	}
 }

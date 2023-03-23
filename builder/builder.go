@@ -37,13 +37,6 @@ type ValidatorData struct {
 	GasLimit     uint64
 }
 
-type IBeaconClient interface {
-	isValidator(pubkey PubkeyHex) bool
-	getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error)
-	Start() error
-	Stop()
-}
-
 type IRelay interface {
 	SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, vd ValidatorData) error
 	SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
@@ -64,6 +57,7 @@ type Builder struct {
 	eth                  IEthereumService
 	dryRun               bool
 	validator            *blockvalidation.BlockValidationAPI
+	beaconClient         IBeaconClient
 	builderSecretKey     *bls.SecretKey
 	builderPublicKey     boostTypes.PublicKey
 	builderSigningDomain boostTypes.Domain
@@ -77,7 +71,7 @@ type Builder struct {
 	slotCtxCancel context.CancelFunc
 }
 
-func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, validator *blockvalidation.BlockValidationAPI) *Builder {
+func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, validator *blockvalidation.BlockValidationAPI, beaconClient IBeaconClient) *Builder {
 	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
@@ -89,6 +83,7 @@ func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRe
 		eth:                  eth,
 		dryRun:               dryRun,
 		validator:            validator,
+		beaconClient:         beaconClient,
 		builderSecretKey:     sk,
 		builderPublicKey:     pk,
 		builderSigningDomain: builderSigningDomain,
@@ -101,6 +96,15 @@ func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRe
 }
 
 func (b *Builder) Start() error {
+	// Start regular payload attributes updates
+	go func() {
+		c := make(chan types.BuilderPayloadAttributes)
+		go b.beaconClient.SubscribeToPayloadAttributesEvents(c)
+		for {
+			payloadAttributes := <-c
+			b.OnPayloadAttribute(&payloadAttributes)
+		}
+	}()
 	return b.relay.Start()
 }
 
