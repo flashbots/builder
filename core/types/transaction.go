@@ -460,37 +460,68 @@ func (s TxByNonce) Len() int           { return len(s) }
 func (s TxByNonce) Less(i, j int) bool { return s[i].Nonce() < s[j].Nonce() }
 func (s TxByNonce) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 
-type _Order interface {
+type Order interface {
 	AsTx() *Transaction
-	AsBundle() *SimulatedBundle
+	AsBundle() *MevBundle
+	TxNum() int
 }
 
-type _TxOrder struct {
-	tx *Transaction
+type TxOrder struct {
+	Tx *Transaction
 }
 
-func (o _TxOrder) AsTx() *Transaction         { return o.tx }
-func (o _TxOrder) AsBundle() *SimulatedBundle { return nil }
+func (o TxOrder) AsTx() *Transaction                  { return o.Tx }
+func (o TxOrder) AsBundle() *MevBundle                { return nil }
+func (o TxOrder) TxNum() int                          { return 1 }
 
-type _BundleOrder struct {
-	bundle *SimulatedBundle
+type BundleOrder struct {
+	Bundle *MevBundle
 }
 
-func (o _BundleOrder) AsTx() *Transaction         { return nil }
-func (o _BundleOrder) AsBundle() *SimulatedBundle { return o.bundle }
+func (o BundleOrder) AsTx() *Transaction                  { return nil }
+func (o BundleOrder) AsBundle() *MevBundle                { return o.Bundle }
+func (o BundleOrder) TxNum() int                          { return o.Bundle.Txs.Len() }
+
+type SimulationResult interface {
+	Err() error
+}
+
+type SimulatedOrder interface {
+	AsSimulatedTx() *Transaction
+	AsSimulatedBundle() *SimulatedBundle
+	Err() error
+}
+
+type SimulatedBundleOrder struct {
+	Bundle *SimulatedBundle
+	Error  error
+}
+
+func (o SimulatedBundleOrder) AsSimulatedTx() *Transaction         { return nil }
+func (o SimulatedBundleOrder) AsSimulatedBundle() *SimulatedBundle { return o.Bundle }
+func (o SimulatedBundleOrder) Err() error                          { return o.Error }
+
+type SimulatedTxOrder struct {
+	Tx    *Transaction
+	Error error
+}
+
+func (o SimulatedTxOrder) AsSimulatedTx() *Transaction         { return o.Tx }
+func (o SimulatedTxOrder) AsSimulatedBundle() *SimulatedBundle { return nil }
+func (o SimulatedTxOrder) Err() error                          { return o.Error }
 
 // TxWithMinerFee wraps a transaction with its gas price or effective miner gasTipCap
 type TxWithMinerFee struct {
-	order    _Order
+	order    SimulatedOrder
 	minerFee *big.Int
 }
 
 func (t *TxWithMinerFee) Tx() *Transaction {
-	return t.order.AsTx()
+	return t.order.AsSimulatedTx()
 }
 
 func (t *TxWithMinerFee) Bundle() *SimulatedBundle {
-	return t.order.AsBundle()
+	return t.order.AsSimulatedBundle()
 }
 
 // NewTxWithMinerFee creates a wrapped transaction, calculating the effective
@@ -502,7 +533,7 @@ func NewTxWithMinerFee(tx *Transaction, baseFee *big.Int) (*TxWithMinerFee, erro
 		return nil, err
 	}
 	return &TxWithMinerFee{
-		order:    _TxOrder{tx},
+		order:    SimulatedTxOrder{Tx: tx},
 		minerFee: minerFee,
 	}, nil
 }
@@ -511,9 +542,17 @@ func NewTxWithMinerFee(tx *Transaction, baseFee *big.Int) (*TxWithMinerFee, erro
 func NewBundleWithMinerFee(bundle *SimulatedBundle, baseFee *big.Int) (*TxWithMinerFee, error) {
 	minerFee := bundle.MevGasPrice
 	return &TxWithMinerFee{
-		order:    _BundleOrder{bundle},
+		order:    SimulatedBundleOrder{Bundle: bundle},
 		minerFee: minerFee,
 	}, nil
+}
+
+func NewOrderWithTxFee(order SimulatedOrder, baseFee *big.Int) (*TxWithMinerFee, error) {
+	if order.AsSimulatedTx() != nil {
+		return NewTxWithMinerFee(order.AsSimulatedTx(), baseFee)
+	} else {
+		return NewBundleWithMinerFee(order.AsSimulatedBundle(), baseFee)
+	}
 }
 
 // TxByPriceAndTime implements both the sort and the heap interface, making it useful
@@ -594,6 +633,44 @@ func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transa
 	// Assemble and return the transaction set
 	return &TransactionsByPriceAndNonce{
 		txs:     txs,
+		heads:   heads,
+		signer:  signer,
+		baseFee: baseFee,
+	}
+}
+
+// NewOrdersByPriceAndNonce creates a transaction set that can retrieve
+// price sorted transactions in a nonce-honouring way.
+//
+// Note, the input map is reowned so the caller should not interact any more with
+// if after providing it to the constructor.
+func NewOrdersByPriceAndNonce(signer Signer, orders []SimulatedOrder, txs map[common.Address]Transactions, baseFee *big.Int) *TransactionsByPriceAndNonce {
+	// Initialize a price and received time based heap with the head transactions
+	heads := make(TxByPriceAndTime, 0, len(orders))
+	for i := range orders {
+		wrapped, err := NewOrderWithTxFee(orders[i], baseFee)
+		if err != nil {
+			continue
+		}
+		heads = append(heads, wrapped)
+	}
+
+	for from, accTxs := range txs {
+		acc, _ := Sender(signer, accTxs[0])
+		wrapped, err := NewTxWithMinerFee(accTxs[0], baseFee)
+		// Remove transaction if sender doesn't match from, or if wrapping fails.
+		if acc != from || err != nil {
+			delete(txs, from)
+			continue
+		}
+		heads = append(heads, wrapped)
+		txs[from] = accTxs[1:]
+	}
+
+	heap.Init(&heads)
+
+	// Assemble and return the transaction set
+	return &TransactionsByPriceAndNonce{
 		heads:   heads,
 		signer:  signer,
 		baseFee: baseFee,
@@ -754,4 +831,5 @@ type SimulatedBundle struct {
 	EthSentToCoinbase *big.Int
 	TotalGasUsed      uint64
 	OriginalBundle    MevBundle
+	Error             error
 }
