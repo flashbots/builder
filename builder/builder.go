@@ -69,6 +69,8 @@ type Builder struct {
 	slotAttrs     []types.BuilderPayloadAttributes
 	slotCtx       context.Context
 	slotCtxCancel context.CancelFunc
+
+	stop chan struct{}
 }
 
 func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, validator *blockvalidation.BlockValidationAPI, beaconClient IBeaconClient) *Builder {
@@ -101,14 +103,20 @@ func (b *Builder) Start() error {
 		c := make(chan types.BuilderPayloadAttributes)
 		go b.beaconClient.SubscribeToPayloadAttributesEvents(c)
 		for {
-			payloadAttributes := <-c
-			b.OnPayloadAttribute(&payloadAttributes)
+			select {
+			case <-b.stop:
+				break
+			default:
+				payloadAttributes := <-c
+				b.OnPayloadAttribute(&payloadAttributes)
+			}
 		}
 	}()
 	return b.relay.Start()
 }
 
 func (b *Builder) Stop() error {
+	close(b.stop)
 	return nil
 }
 
