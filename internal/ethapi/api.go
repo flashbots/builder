@@ -2174,7 +2174,9 @@ func (s *PrivateTxBundleAPI) SendBundle(ctx context.Context, args SendBundleArgs
 		maxTimestamp = *args.MaxTimestamp
 	}
 
-	return s.b.SendBundle(ctx, txs, args.BlockNumber, replacementUuid, signingAddress, minTimestamp, maxTimestamp, args.RevertingTxHashes)
+	go s.b.SendBundle(ctx, txs, args.BlockNumber, replacementUuid, signingAddress, minTimestamp, maxTimestamp, args.RevertingTxHashes)
+
+	return nil
 }
 
 // BundleAPI offers an API for accepting bundled transactions
