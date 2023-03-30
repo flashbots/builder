@@ -705,8 +705,8 @@ var (
 	}
 	BuilderBlockValidationBlacklistSourceFilePath = &cli.StringFlag{
 		Name:     "builder.validation_blacklist",
-		Usage:    "Path to file containing blacklisted addresses, json-encoded list of strings. Default assumes CWD is repo's root",
-		Value:    "ofac_blacklist.json",
+		Usage:    "Path to file containing blacklisted addresses, json-encoded list of strings",
+		Value:    "",
 		Category: flags.BuilderCategory,
 	}
 	BuilderEnableLocalRelay = &cli.BoolFlag{

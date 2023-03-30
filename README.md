@@ -1,8 +1,10 @@
 [geth readme](README.original.md)
 
-# Builder API
+# Flashbots Block Builder
 
-Builder API implementing [builder spec](https://github.com/ethereum/builder-specs), making geth into a standalone block builder. 
+This project implements the Flashbots block builder, based on go-ethereum (geth).
+
+See also: https://docs.flashbots.net/flashbots-mev-boost/block-builders
 
 Run on your favorite network, including Mainnet, Goerli, Sepolia and local devnet. Instructions for running a pos local devnet can be found [here](https://github.com/avalonche/eth-pos-devnet).
 
@@ -32,53 +34,52 @@ Builder-related options:
 $ geth --help
 
    BUILDER
-   
+
     --builder                      (default: false)
           Enable the builder
-   
+
     --builder.beacon_endpoint value (default: "http://127.0.0.1:5052")
           Beacon endpoint to connect to for beacon chain data [$BUILDER_BEACON_ENDPOINT]
-   
+
     --builder.bellatrix_fork_version value (default: "0x02000000")
           Bellatrix fork version. [$BUILDER_BELLATRIX_FORK_VERSION]
-   
+
     --builder.dry-run              (default: false)
           Builder only validates blocks without submission to the relay
-   
+
     --builder.genesis_fork_version value (default: "0x00000000")
           Gensis fork version. [$BUILDER_GENESIS_FORK_VERSION]
-   
+
     --builder.genesis_validators_root value (default: "0x0000000000000000000000000000000000000000000000000000000000000000")
           Genesis validators root of the network. [$BUILDER_GENESIS_VALIDATORS_ROOT]
-   
+
     --builder.listen_addr value    (default: ":28545")
           Listening address for builder endpoint [$BUILDER_LISTEN_ADDR]
-   
+
     --builder.local_relay          (default: false)
           Enable the local relay
-   
+
     --builder.no_bundle_fetcher    (default: false)
           Disable the bundle fetcher
-   
+
     --builder.relay_secret_key value (default: "0x2fc12ae741f29701f8e30f5de6350766c020cb80768a0ff01e6838ffd2431e11")
           Builder local relay API key used for signing headers [$BUILDER_RELAY_SECRET_KEY]
-   
+
     --builder.remote_relay_endpoint value
           Relay endpoint to connect to for validator registration data, if not provided
           will expose validator registration locally [$BUILDER_REMOTE_RELAY_ENDPOINT]
-   
+
     --builder.secondary_remote_relay_endpoints value
           Comma separated relay endpoints to connect to for validator registration data
           missing from the primary remote relay, and to push blocks for registrations
           missing from or matching the primary [$BUILDER_SECONDARY_REMOTE_RELAY_ENDPOINTS]
-   
+
     --builder.secret_key value     (default: "0x2fc12ae741f29701f8e30f5de6350766c020cb80768a0ff01e6838ffd2431e11")
           Builder key used for signing blocks [$BUILDER_SECRET_KEY]
-   
-    --builder.validation_blacklist value (default: "ofac_blacklist.json")
+
+    --builder.validation_blacklist value (default: "")
           Path to file containing blacklisted addresses, json-encoded list of strings.
-          Default assumes CWD is repo's root
-   
+
     --builder.validator_checks     (default: false)
           Enable the validator checks
 
@@ -86,14 +87,14 @@ $ geth --help
 
     --miner.algotype value         (default: "mev-geth")
           Block building algorithm to use [=mev-geth] (mev-geth, greedy)
-   
-    --miner.blocklist value       
+
+    --miner.blocklist value
           flashbots - Path to JSON file with list of blocked addresses. Miner will ignore
           txs that touch mentioned addresses.
 
-    --miner.extradata value       
+    --miner.extradata value
           Block extra data set by the miner (default = client version)
-   
+
    METRICS
 
    --metrics.builder value          (default: false)
@@ -109,9 +110,18 @@ BUILDER_TX_SIGNING_KEY - private key of the builder used to sign payment transac
 
 To enable metrics on the builder you will need to enable metrics with the flags `--metrics --metrics.addr 127.0.0.1 --metrics.builder` which will run
 a metrics server serving at `127.0.0.1:6060/debug/metrics`. This will record performance metrics such as block profit and block building times.
-The full list of metrics can be found in `miner/metrics.go`. 
+The full list of metrics can be found in `miner/metrics.go`.
 
 See the [metrics docs](https://geth.ethereum.org/docs/monitoring/metrics) for geth for more documentation.
+
+## Blacklisting addresses
+
+If you want to reject transactions interacting with certain addresses, save the addresses in json file with an array of strings. Deciding whether to use such a list, as well as maintaining it, is your own responsibility.
+
+- for block building, use `--miner.blocklist`
+- for validation, use `--builder.validation_blacklist`
+
+--
 
 ## Details of the implementation
 
@@ -161,18 +171,33 @@ Miner is responsible for block creation. Request from the `builder` is routed to
 * Builder can filter transactions touching a particular set of addresses.
   If a bundle or transaction touches one of the addresses it is skipped. (see `--miner.blocklist` flag)
 
-## Bundle Movement 
+## Bundle Movement
 
-There are two ways bundles are moved to builders 
+There are two ways bundles are moved to builders
 
-1. via API -`sendBundle` 
+1. via API -`sendBundle`
 2. via Database - `flashbotsextra.IDatabaseService`
 
-### `fetcher` service 
-* Fetcher service is part of `flashbotsextra.IDatabaseService` which is responsible for fetching the bundles from db and pushing into mev bundles queue which will be processed by builder. 
-* Fetcher is a background process which fetches high priority and low priority bundles from db. 
-* Fetcher fetches `500` high priority bundles on every head change, and `100` low priority bundles in the interval of every `2 seconds`.  
+### `fetcher` service
+* Fetcher service is part of `flashbotsextra.IDatabaseService` which is responsible for fetching the bundles from db and pushing into mev bundles queue which will be processed by builder.
+* Fetcher is a background process which fetches high priority and low priority bundles from db.
+* Fetcher fetches `500` high priority bundles on every head change, and `100` low priority bundles in the interval of every `2 seconds`.
 
 ## Block builder diagram
 
 ![block builder diagram](docs/builder/builder-diagram.png "Block builder diagram")
+
+---
+
+# Security
+
+If you find a security vulnerability in this project or any other initiative
+related to proposer/builder separation in Ethereum, please let us know sending
+an email to security@flashbots.net.
+
+---
+
+# License
+
+The code in this project is free software under the [LGPL License](COPYING.LESSER).
+
