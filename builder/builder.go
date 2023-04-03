@@ -102,12 +102,12 @@ func (b *Builder) Start() error {
 	go func() {
 		c := make(chan types.BuilderPayloadAttributes)
 		go b.beaconClient.SubscribeToPayloadAttributesEvents(c)
+		beacon_loop:
 		for {
 			select {
 			case <-b.stop:
-				break
-			default:
-				payloadAttributes := <-c
+				break beacon_loop
+			case payloadAttributes := <-c:
 				b.OnPayloadAttribute(&payloadAttributes)
 			}
 		}

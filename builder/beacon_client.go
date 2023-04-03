@@ -287,21 +287,29 @@ func fetchBeacon(url string, dst any) error {
 	return nil
 }
 
+// PayloadAttributesEvent represents the data of a payload_attributes event
+// {"version": "capella", "data": {"proposer_index": "123", "proposal_slot": "10", "parent_block_number": "9", "parent_block_root": "0xcf8e0d4e9587369b2301d0790347320302cc0943d5a1884560367e8208d920f2", "parent_block_hash": "0x9a2fefd2fdb57f74993c7780ea5b9030d2897b615b89f808011ca5aebed54eaf", "payload_attributes": {"timestamp": "123456", "prev_randao": "0xcf8e0d4e9587369b2301d0790347320302cc0943d5a1884560367e8208d920f2", "suggested_fee_recipient": "0x0000000000000000000000000000000000000000", "withdrawals": [{"index": "5", "validator_index": "10", "address": "0x0000000000000000000000000000000000000000", "amount": "15640"}]}}}
+type PayloadAttributesEvent struct {
+	Version string                     `json:"version"`
+	Data    PayloadAttributesEventData `json:"data"`
+}
+
+type PayloadAttributesEventData struct {
+	ProposalSlot      uint64            `json:"proposal_slot,string"`
+	ParentBlockHash   common.Hash       `json:"parent_block_hash"`
+	PayloadAttributes PayloadAttributes `json:"payload_attributes"`
+}
+
+type PayloadAttributes struct {
+	Timestamp             uint64                `json:"timestamp,string"`
+	PrevRandao            common.Hash           `json:"prev_randao"`
+	SuggestedFeeRecipient common.Address        `json:"suggested_fee_recipient"`
+	Withdrawals           []*capella.Withdrawal `json:"withdrawals"`
+}
+
 // SubscribeToPayloadAttributesEvents subscribes to payload attributes events to validate fields such as prevrandao and withdrawals
 func (b *BeaconClient) SubscribeToPayloadAttributesEvents(payloadAttrC chan types.BuilderPayloadAttributes) {
-	payloadAttributesResp := &struct {
-		Version string `json:"version"`
-		Data    struct {
-			ProposalSlot      uint64      `json:"proposal_slot,string"`
-			ParentBlockHash   common.Hash `json:"parent_block_hash"`
-			PayloadAttributes struct {
-				Timestamp             uint64                `json:"timestamp,string"`
-				PrevRandao            common.Hash           `json:"prev_randao"`
-				SuggestedFeeRecipient common.Address        `json:"suggested_fee_recipient"`
-				Withdrawals           []*capella.Withdrawal `json:"withdrawals"`
-			} `json:"payload_attributes"`
-		} `json:"data"`
-	}{}
+	payloadAttributesResp := new(PayloadAttributesEvent)
 
 	eventsURL := fmt.Sprintf("%s/eth/v1/events?topics=payload_attributes", b.endpoint)
 	log.Info("subscribing to payload_attributes events")
@@ -309,7 +317,7 @@ func (b *BeaconClient) SubscribeToPayloadAttributesEvents(payloadAttrC chan type
 	for {
 		client := sse.NewClient(eventsURL)
 		err := client.SubscribeRaw(func(msg *sse.Event) {
-			err := json.Unmarshal(msg.Data, &payloadAttributesResp)
+			err := json.Unmarshal(msg.Data, payloadAttributesResp)
 			if err != nil {
 				log.Error("could not unmarshal payload_attributes event", "err", err)
 			} else {
