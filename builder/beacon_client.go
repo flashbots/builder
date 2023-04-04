@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/r3labs/sse"
+	"golang.org/x/exp/slices"
 )
 
 type IBeaconClient interface {
@@ -64,6 +66,123 @@ func (b *NilBeaconClient) Start() error { return nil }
 
 func (b *NilBeaconClient) Stop() {}
 
+type MultiBeaconClient struct {
+	clients []*BeaconClient
+	closeCh chan struct{}
+}
+
+func NewMultiBeaconClient(endpoints []string, slotsInEpoch uint64, secondsInSlot uint64) *MultiBeaconClient {
+	clients := []*BeaconClient{}
+	for _, endpoint := range endpoints {
+		client := NewBeaconClient(endpoint, slotsInEpoch, secondsInSlot)
+		clients = append(clients, client)
+	}
+
+	return &MultiBeaconClient{
+		clients: clients,
+		closeCh: make(chan struct{}),
+	}
+}
+
+func (m *MultiBeaconClient) isValidator(pubkey PubkeyHex) bool {
+	for _, c := range m.clients {
+		// Pick the first one, always true
+		return c.isValidator(pubkey)
+	}
+
+	return false
+}
+
+func (m *MultiBeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error) {
+	var allErrs error
+	for _, c := range m.clients {
+		pk, err := c.getProposerForNextSlot(requestedSlot)
+		if err != nil {
+			allErrs = errors.Join(allErrs, err)
+			continue
+		}
+
+		return pk, nil
+	}
+	return PubkeyHex(""), allErrs
+}
+
+func payloadAttributesMatch(l types.BuilderPayloadAttributes, r types.BuilderPayloadAttributes) bool {
+	if l.Timestamp != r.Timestamp ||
+		l.Random != r.Random ||
+		l.SuggestedFeeRecipient != r.SuggestedFeeRecipient ||
+		l.Slot != r.Slot ||
+		l.HeadHash != r.HeadHash ||
+		l.GasLimit != r.GasLimit {
+		return false
+	}
+
+	if !slices.Equal(l.Withdrawals, r.Withdrawals) {
+		return false
+	}
+
+	return true
+}
+
+func (m *MultiBeaconClient) SubscribeToPayloadAttributesEvents(payloadAttrC chan types.BuilderPayloadAttributes) {
+	clientsChan := make(chan types.BuilderPayloadAttributes, len(m.clients))
+	for _, c := range m.clients {
+		go c.SubscribeToPayloadAttributesEvents(clientsChan)
+	}
+
+	currentSlot := uint64(0)
+	currentSlotPayloadAttributes := []types.BuilderPayloadAttributes{}
+
+	for {
+		select {
+		case <-m.closeCh:
+			return
+		case payloadAttrs := <-clientsChan:
+			if payloadAttrs.Slot < currentSlot {
+				continue
+			} else if payloadAttrs.Slot == currentSlot {
+				shouldSkip := false
+				for _, previousPayloadAttrs := range currentSlotPayloadAttributes {
+					if payloadAttributesMatch(previousPayloadAttrs, payloadAttrs) {
+						shouldSkip = true
+						break
+					}
+				}
+				if shouldSkip {
+					continue
+				}
+
+				payloadAttrC <- payloadAttrs
+				currentSlotPayloadAttributes = append(currentSlotPayloadAttributes, payloadAttrs)
+			} else if payloadAttrs.Slot > currentSlot {
+				currentSlot = payloadAttrs.Slot
+				payloadAttrC <- payloadAttrs
+				currentSlotPayloadAttributes = []types.BuilderPayloadAttributes{payloadAttrs}
+			}
+
+		}
+	}
+}
+
+func (m *MultiBeaconClient) Start() error {
+	var allErrs error
+	for _, c := range m.clients {
+		err := c.Start()
+		if err != nil {
+			allErrs = errors.Join(allErrs, err)
+		}
+	}
+	return allErrs
+}
+
+func (m *MultiBeaconClient) Stop() {
+	for _, c := range m.clients {
+		c.Stop()
+	}
+
+	close(m.closeCh)
+}
+
 type BeaconClient struct {
 	endpoint      string
 	slotsInEpoch  uint64
@@ -72,21 +191,24 @@ type BeaconClient struct {
 	mu              sync.Mutex
 	slotProposerMap map[uint64]PubkeyHex
 
-	closeCh chan struct{}
+	ctx      context.Context
+	cancelFn context.CancelFunc
 }
 
 func NewBeaconClient(endpoint string, slotsInEpoch uint64, secondsInSlot uint64) *BeaconClient {
+	ctx, cancelFn := context.WithCancel(context.Background())
 	return &BeaconClient{
 		endpoint:        endpoint,
 		slotsInEpoch:    slotsInEpoch,
 		secondsInSlot:   secondsInSlot,
 		slotProposerMap: make(map[uint64]PubkeyHex),
-		closeCh:         make(chan struct{}),
+		ctx:             ctx,
+		cancelFn:        cancelFn,
 	}
 }
 
 func (b *BeaconClient) Stop() {
-	close(b.closeCh)
+	b.cancelFn()
 }
 
 func (b *BeaconClient) isValidator(pubkey PubkeyHex) bool {
@@ -139,7 +261,7 @@ func (b *BeaconClient) UpdateValidatorMapForever() {
 	defer timer.Stop()
 	for true {
 		select {
-		case <-b.closeCh:
+		case <-b.ctx.Done():
 			return
 		case <-timer.C:
 		}
@@ -181,6 +303,70 @@ func (b *BeaconClient) UpdateValidatorMapForever() {
 		b.mu.Unlock()
 
 		timer.Reset(time.Duration(nextFetchSlot-currentSlot) * durationPerSlot)
+	}
+}
+
+// PayloadAttributesEvent represents the data of a payload_attributes event
+// {"version": "capella", "data": {"proposer_index": "123", "proposal_slot": "10", "parent_block_number": "9", "parent_block_root": "0xcf8e0d4e9587369b2301d0790347320302cc0943d5a1884560367e8208d920f2", "parent_block_hash": "0x9a2fefd2fdb57f74993c7780ea5b9030d2897b615b89f808011ca5aebed54eaf", "payload_attributes": {"timestamp": "123456", "prev_randao": "0xcf8e0d4e9587369b2301d0790347320302cc0943d5a1884560367e8208d920f2", "suggested_fee_recipient": "0x0000000000000000000000000000000000000000", "withdrawals": [{"index": "5", "validator_index": "10", "address": "0x0000000000000000000000000000000000000000", "amount": "15640"}]}}}
+type PayloadAttributesEvent struct {
+	Version string                     `json:"version"`
+	Data    PayloadAttributesEventData `json:"data"`
+}
+
+type PayloadAttributesEventData struct {
+	ProposalSlot      uint64            `json:"proposal_slot,string"`
+	ParentBlockHash   common.Hash       `json:"parent_block_hash"`
+	PayloadAttributes PayloadAttributes `json:"payload_attributes"`
+}
+
+type PayloadAttributes struct {
+	Timestamp             uint64                `json:"timestamp,string"`
+	PrevRandao            common.Hash           `json:"prev_randao"`
+	SuggestedFeeRecipient common.Address        `json:"suggested_fee_recipient"`
+	Withdrawals           []*capella.Withdrawal `json:"withdrawals"`
+}
+
+// SubscribeToPayloadAttributesEvents subscribes to payload attributes events to validate fields such as prevrandao and withdrawals
+func (b *BeaconClient) SubscribeToPayloadAttributesEvents(payloadAttrC chan types.BuilderPayloadAttributes) {
+	payloadAttributesResp := new(PayloadAttributesEvent)
+
+	eventsURL := fmt.Sprintf("%s/eth/v1/events?topics=payload_attributes", b.endpoint)
+	log.Info("subscribing to payload_attributes events")
+
+	for {
+		client := sse.NewClient(eventsURL)
+		err := client.SubscribeRawWithContext(b.ctx, func(msg *sse.Event) {
+			err := json.Unmarshal(msg.Data, payloadAttributesResp)
+			if err != nil {
+				log.Error("could not unmarshal payload_attributes event", "err", err)
+			} else {
+				// convert capella.Withdrawal to types.Withdrawal
+				withdrawals := make([]*types.Withdrawal, len(payloadAttributesResp.Data.PayloadAttributes.Withdrawals))
+				for i, w := range payloadAttributesResp.Data.PayloadAttributes.Withdrawals {
+					withdrawals[i] = &types.Withdrawal{
+						Index:     uint64(w.Index),
+						Validator: uint64(w.ValidatorIndex),
+						Address:   common.Address(w.Address),
+						Amount:    uint64(w.Amount),
+					}
+				}
+
+				data := types.BuilderPayloadAttributes{
+					Slot:                  payloadAttributesResp.Data.ProposalSlot,
+					HeadHash:              payloadAttributesResp.Data.ParentBlockHash,
+					Timestamp:             hexutil.Uint64(payloadAttributesResp.Data.PayloadAttributes.Timestamp),
+					Random:                payloadAttributesResp.Data.PayloadAttributes.PrevRandao,
+					SuggestedFeeRecipient: payloadAttributesResp.Data.PayloadAttributes.SuggestedFeeRecipient,
+					Withdrawals:           withdrawals,
+				}
+				payloadAttrC <- data
+			}
+		})
+		if err != nil {
+			log.Error("failed to subscribe to payload_attributes events", "err", err)
+			time.Sleep(1 * time.Second)
+		}
+		log.Warn("beaconclient SubscribeRaw ended, reconnecting")
 	}
 }
 
@@ -285,68 +471,4 @@ func fetchBeacon(url string, dst any) error {
 
 	log.Info("fetched", "url", url, "res", dst)
 	return nil
-}
-
-// PayloadAttributesEvent represents the data of a payload_attributes event
-// {"version": "capella", "data": {"proposer_index": "123", "proposal_slot": "10", "parent_block_number": "9", "parent_block_root": "0xcf8e0d4e9587369b2301d0790347320302cc0943d5a1884560367e8208d920f2", "parent_block_hash": "0x9a2fefd2fdb57f74993c7780ea5b9030d2897b615b89f808011ca5aebed54eaf", "payload_attributes": {"timestamp": "123456", "prev_randao": "0xcf8e0d4e9587369b2301d0790347320302cc0943d5a1884560367e8208d920f2", "suggested_fee_recipient": "0x0000000000000000000000000000000000000000", "withdrawals": [{"index": "5", "validator_index": "10", "address": "0x0000000000000000000000000000000000000000", "amount": "15640"}]}}}
-type PayloadAttributesEvent struct {
-	Version string                     `json:"version"`
-	Data    PayloadAttributesEventData `json:"data"`
-}
-
-type PayloadAttributesEventData struct {
-	ProposalSlot      uint64            `json:"proposal_slot,string"`
-	ParentBlockHash   common.Hash       `json:"parent_block_hash"`
-	PayloadAttributes PayloadAttributes `json:"payload_attributes"`
-}
-
-type PayloadAttributes struct {
-	Timestamp             uint64                `json:"timestamp,string"`
-	PrevRandao            common.Hash           `json:"prev_randao"`
-	SuggestedFeeRecipient common.Address        `json:"suggested_fee_recipient"`
-	Withdrawals           []*capella.Withdrawal `json:"withdrawals"`
-}
-
-// SubscribeToPayloadAttributesEvents subscribes to payload attributes events to validate fields such as prevrandao and withdrawals
-func (b *BeaconClient) SubscribeToPayloadAttributesEvents(payloadAttrC chan types.BuilderPayloadAttributes) {
-	payloadAttributesResp := new(PayloadAttributesEvent)
-
-	eventsURL := fmt.Sprintf("%s/eth/v1/events?topics=payload_attributes", b.endpoint)
-	log.Info("subscribing to payload_attributes events")
-
-	for {
-		client := sse.NewClient(eventsURL)
-		err := client.SubscribeRaw(func(msg *sse.Event) {
-			err := json.Unmarshal(msg.Data, payloadAttributesResp)
-			if err != nil {
-				log.Error("could not unmarshal payload_attributes event", "err", err)
-			} else {
-				// convert capella.Withdrawal to types.Withdrawal
-				withdrawals := make([]*types.Withdrawal, len(payloadAttributesResp.Data.PayloadAttributes.Withdrawals))
-				for i, w := range payloadAttributesResp.Data.PayloadAttributes.Withdrawals {
-					withdrawals[i] = &types.Withdrawal{
-						Index:     uint64(w.Index),
-						Validator: uint64(w.ValidatorIndex),
-						Address:   common.Address(w.Address),
-						Amount:    uint64(w.Amount),
-					}
-				}
-
-				data := types.BuilderPayloadAttributes{
-					Slot:                  payloadAttributesResp.Data.ProposalSlot,
-					HeadHash:              payloadAttributesResp.Data.ParentBlockHash,
-					Timestamp:             hexutil.Uint64(payloadAttributesResp.Data.PayloadAttributes.Timestamp),
-					Random:                payloadAttributesResp.Data.PayloadAttributes.PrevRandao,
-					SuggestedFeeRecipient: payloadAttributesResp.Data.PayloadAttributes.SuggestedFeeRecipient,
-					Withdrawals:           withdrawals,
-				}
-				payloadAttrC <- data
-			}
-		})
-		if err != nil {
-			log.Error("failed to subscribe to payload_attributes events", "err", err)
-			time.Sleep(1 * time.Second)
-		}
-		log.Warn("beaconclient SubscribeRaw ended, reconnecting")
-	}
 }

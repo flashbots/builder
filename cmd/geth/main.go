@@ -171,7 +171,7 @@ var (
 		utils.BuilderGenesisForkVersion,
 		utils.BuilderBellatrixForkVersion,
 		utils.BuilderGenesisValidatorsRoot,
-		utils.BuilderBeaconEndpoint,
+		utils.BuilderBeaconEndpoints,
 		utils.BuilderRemoteRelayEndpoint,
 		utils.BuilderSecondaryRemoteRelayEndpoints,
 	}

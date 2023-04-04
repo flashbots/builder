@@ -121,10 +121,12 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	proposerSigningDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeBeaconProposer, bellatrixForkVersion, genesisValidatorsRoot)
 
 	var beaconClient IBeaconClient
-	if cfg.BeaconEndpoint != "" {
-		beaconClient = NewBeaconClient(cfg.BeaconEndpoint, cfg.SlotsInEpoch, cfg.SecondsInSlot)
-	} else {
+	if len(cfg.BeaconEndpoints) == 0 {
 		beaconClient = &NilBeaconClient{}
+	} else if len(cfg.BeaconEndpoints) == 1 {
+		beaconClient = NewBeaconClient(cfg.BeaconEndpoints[0], cfg.SlotsInEpoch, cfg.SecondsInSlot)
+	} else {
+		beaconClient = NewMultiBeaconClient(cfg.BeaconEndpoints, cfg.SlotsInEpoch, cfg.SecondsInSlot)
 	}
 
 	var localRelay *LocalRelay
