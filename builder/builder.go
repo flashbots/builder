@@ -94,6 +94,8 @@ func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRe
 		slot:          0,
 		slotCtx:       slotCtx,
 		slotCtxCancel: slotCtxCancel,
+
+		stop: make(chan struct{}, 1),
 	}
 }
 
@@ -102,7 +104,7 @@ func (b *Builder) Start() error {
 	go func() {
 		c := make(chan types.BuilderPayloadAttributes)
 		go b.beaconClient.SubscribeToPayloadAttributesEvents(c)
-		beacon_loop:
+	beacon_loop:
 		for {
 			select {
 			case <-b.stop:
