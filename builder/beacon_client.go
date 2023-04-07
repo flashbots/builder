@@ -341,14 +341,14 @@ func (b *BeaconClient) SubscribeToPayloadAttributesEvents(payloadAttrC chan type
 				log.Error("could not unmarshal payload_attributes event", "err", err)
 			} else {
 				// convert capella.Withdrawal to types.Withdrawal
-				withdrawals := make([]*types.Withdrawal, len(payloadAttributesResp.Data.PayloadAttributes.Withdrawals))
-				for i, w := range payloadAttributesResp.Data.PayloadAttributes.Withdrawals {
-					withdrawals[i] = &types.Withdrawal{
+				var withdrawals []*types.Withdrawal
+				for _, w := range payloadAttributesResp.Data.PayloadAttributes.Withdrawals {
+					withdrawals = append(withdrawals, &types.Withdrawal{
 						Index:     uint64(w.Index),
 						Validator: uint64(w.ValidatorIndex),
 						Address:   common.Address(w.Address),
 						Amount:    uint64(w.Amount),
-					}
+					})
 				}
 
 				data := types.BuilderPayloadAttributes{
