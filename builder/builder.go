@@ -104,16 +104,29 @@ func (b *Builder) Start() error {
 	go func() {
 		c := make(chan types.BuilderPayloadAttributes)
 		go b.beaconClient.SubscribeToPayloadAttributesEvents(c)
-	beacon_loop:
+
+		currentSlot := uint64(0)
+
 		for {
 			select {
 			case <-b.stop:
-				break beacon_loop
+				return
 			case payloadAttributes := <-c:
-				b.OnPayloadAttribute(&payloadAttributes)
+				// Right now we are building only on a single head. This might change in the future!
+				if payloadAttributes.Slot < currentSlot {
+					continue
+				} else if payloadAttributes.Slot == currentSlot {
+					// Only take into account the first event. With how SSE events are set up, we will only ever
+					// receive multiple events if a block was late, in which case we don't want to build on it anyway.
+					continue
+				} else if payloadAttributes.Slot > currentSlot {
+					currentSlot = payloadAttributes.Slot
+					b.OnPayloadAttribute(&payloadAttributes)
+				}
 			}
 		}
 	}()
+
 	return b.relay.Start()
 }
 
