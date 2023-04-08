@@ -2447,7 +2447,9 @@ func TestSlotCount(t *testing.T) {
 func TestBundleCancellations(t *testing.T) {
 	// Create the pool to test the status retrievals with
 	statedb, _ := state.New(common.Hash{}, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
-	blockchain := &testBlockChain{100, statedb, new(event.Feed)}
+	gasLimit := atomic.Uint64{}
+	gasLimit.Store(uint64(100))
+	blockchain := &testBlockChain{gasLimit, statedb, new(event.Feed)}
 
 	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
 	fetcher := &mockFetcher{make(map[int64]error), make(map[int64][]types.LatestUuidBundle)}
