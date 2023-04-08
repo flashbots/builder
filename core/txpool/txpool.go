@@ -257,6 +257,7 @@ type TxPool struct {
 	scope       event.SubscriptionScope
 	signer      types.Signer
 	mu          sync.RWMutex
+	bmu         sync.RWMutex
 
 	istanbul bool // Fork indicator whether we are in the istanbul stage.
 	eip2718  bool // Fork indicator whether we are using EIP-2718 type transactions.
@@ -361,8 +362,8 @@ type IFetcher interface {
 }
 
 func (pool *TxPool) RegisterBundleFetcher(fetcher IFetcher) {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
+	pool.bmu.Lock()
+	defer pool.bmu.Unlock()
 
 	pool.bundleFetcher = fetcher
 }
@@ -665,8 +666,8 @@ func resolveCancellableBundles(lubCh chan []types.LatestUuidBundle, errCh chan e
 // also prunes bundles that are outdated
 // Returns regular bundles and a function resolving to current cancellable bundles
 func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]types.MevBundle, chan []types.MevBundle) {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
+	pool.bmu.Lock()
+	defer pool.bmu.Unlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	lubCh, errCh := pool.fetchLatestCancellableBundles(ctx, blockNumber)
@@ -719,8 +720,8 @@ func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]t
 
 // AddMevBundles adds a mev bundles to the pool
 func (pool *TxPool) AddMevBundles(mevBundles []types.MevBundle) error {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
+	pool.bmu.Lock()
+	defer pool.bmu.Unlock()
 
 	pool.mevBundles = append(pool.mevBundles, mevBundles...)
 	return nil
@@ -734,8 +735,8 @@ func (pool *TxPool) AddMevBundle(txs types.Transactions, blockNumber *big.Int, r
 	}
 	bundleHash := common.BytesToHash(bundleHasher.Sum(nil))
 
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
+	pool.bmu.Lock()
+	defer pool.bmu.Unlock()
 
 	pool.mevBundles = append(pool.mevBundles, types.MevBundle{
 		Txs:               txs,
