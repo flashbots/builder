@@ -104,16 +104,27 @@ func (b *Builder) Start() error {
 	go func() {
 		c := make(chan types.BuilderPayloadAttributes)
 		go b.beaconClient.SubscribeToPayloadAttributesEvents(c)
-	beacon_loop:
+
+		currentSlot := uint64(0)
+
 		for {
 			select {
 			case <-b.stop:
-				break beacon_loop
+				return
 			case payloadAttributes := <-c:
-				b.OnPayloadAttribute(&payloadAttributes)
+				// Right now we are building only on a single head. This might change in the future!
+				if payloadAttributes.Slot < currentSlot {
+					continue
+				} else if payloadAttributes.Slot == currentSlot {
+					b.OnPayloadAttribute(&payloadAttributes)
+				} else if payloadAttributes.Slot > currentSlot {
+					currentSlot = payloadAttributes.Slot
+					b.OnPayloadAttribute(&payloadAttributes)
+				}
 			}
 		}
 	}()
+
 	return b.relay.Start()
 }
 
@@ -291,17 +302,18 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 	b.slotMu.Lock()
 	defer b.slotMu.Unlock()
 
-	if b.slot != attrs.Slot {
-		if b.slotCtxCancel != nil {
-			b.slotCtxCancel()
-		}
+	// Forcibly cancel previous building job, build on top of reorgable blocks as this is the behaviour relays expect.
+	// This will change in the future
 
-		slotCtx, slotCtxCancel := context.WithTimeout(context.Background(), 12*time.Second)
-		b.slot = attrs.Slot
-		b.slotAttrs = nil
-		b.slotCtx = slotCtx
-		b.slotCtxCancel = slotCtxCancel
+	if b.slotCtxCancel != nil {
+		b.slotCtxCancel()
 	}
+
+	slotCtx, slotCtxCancel := context.WithTimeout(context.Background(), 12*time.Second)
+	b.slot = attrs.Slot
+	b.slotAttrs = nil
+	b.slotCtx = slotCtx
+	b.slotCtxCancel = slotCtxCancel
 
 	for _, currentAttrs := range b.slotAttrs {
 		if attrs.Equal(&currentAttrs) {

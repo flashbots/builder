@@ -125,42 +125,8 @@ func payloadAttributesMatch(l types.BuilderPayloadAttributes, r types.BuilderPay
 }
 
 func (m *MultiBeaconClient) SubscribeToPayloadAttributesEvents(payloadAttrC chan types.BuilderPayloadAttributes) {
-	clientsChan := make(chan types.BuilderPayloadAttributes, len(m.clients))
 	for _, c := range m.clients {
-		go c.SubscribeToPayloadAttributesEvents(clientsChan)
-	}
-
-	currentSlot := uint64(0)
-	currentSlotPayloadAttributes := []types.BuilderPayloadAttributes{}
-
-	for {
-		select {
-		case <-m.closeCh:
-			return
-		case payloadAttrs := <-clientsChan:
-			if payloadAttrs.Slot < currentSlot {
-				continue
-			} else if payloadAttrs.Slot == currentSlot {
-				shouldSkip := false
-				for _, previousPayloadAttrs := range currentSlotPayloadAttributes {
-					if payloadAttributesMatch(previousPayloadAttrs, payloadAttrs) {
-						shouldSkip = true
-						break
-					}
-				}
-				if shouldSkip {
-					continue
-				}
-
-				payloadAttrC <- payloadAttrs
-				currentSlotPayloadAttributes = append(currentSlotPayloadAttributes, payloadAttrs)
-			} else if payloadAttrs.Slot > currentSlot {
-				currentSlot = payloadAttrs.Slot
-				payloadAttrC <- payloadAttrs
-				currentSlotPayloadAttributes = []types.BuilderPayloadAttributes{payloadAttrs}
-			}
-
-		}
+		go c.SubscribeToPayloadAttributesEvents(payloadAttrC)
 	}
 }
 
