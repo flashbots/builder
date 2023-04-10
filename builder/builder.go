@@ -37,13 +37,6 @@ type ValidatorData struct {
 	GasLimit     uint64
 }
 
-type IBeaconClient interface {
-	isValidator(pubkey PubkeyHex) bool
-	getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error)
-	Start() error
-	Stop()
-}
-
 type IRelay interface {
 	SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, vd ValidatorData) error
 	SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
@@ -64,6 +57,7 @@ type Builder struct {
 	eth                  IEthereumService
 	dryRun               bool
 	validator            *blockvalidation.BlockValidationAPI
+	beaconClient         IBeaconClient
 	builderSecretKey     *bls.SecretKey
 	builderPublicKey     boostTypes.PublicKey
 	builderSigningDomain boostTypes.Domain
@@ -75,9 +69,11 @@ type Builder struct {
 	slotAttrs     []types.BuilderPayloadAttributes
 	slotCtx       context.Context
 	slotCtxCancel context.CancelFunc
+
+	stop chan struct{}
 }
 
-func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, validator *blockvalidation.BlockValidationAPI) *Builder {
+func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, validator *blockvalidation.BlockValidationAPI, beaconClient IBeaconClient) *Builder {
 	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
@@ -89,6 +85,7 @@ func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRe
 		eth:                  eth,
 		dryRun:               dryRun,
 		validator:            validator,
+		beaconClient:         beaconClient,
 		builderSecretKey:     sk,
 		builderPublicKey:     pk,
 		builderSigningDomain: builderSigningDomain,
@@ -97,14 +94,42 @@ func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRe
 		slot:          0,
 		slotCtx:       slotCtx,
 		slotCtxCancel: slotCtxCancel,
+
+		stop: make(chan struct{}, 1),
 	}
 }
 
 func (b *Builder) Start() error {
+	// Start regular payload attributes updates
+	go func() {
+		c := make(chan types.BuilderPayloadAttributes)
+		go b.beaconClient.SubscribeToPayloadAttributesEvents(c)
+
+		currentSlot := uint64(0)
+
+		for {
+			select {
+			case <-b.stop:
+				return
+			case payloadAttributes := <-c:
+				// Right now we are building only on a single head. This might change in the future!
+				if payloadAttributes.Slot < currentSlot {
+					continue
+				} else if payloadAttributes.Slot == currentSlot {
+					b.OnPayloadAttribute(&payloadAttributes)
+				} else if payloadAttributes.Slot > currentSlot {
+					currentSlot = payloadAttributes.Slot
+					b.OnPayloadAttribute(&payloadAttributes)
+				}
+			}
+		}
+	}()
+
 	return b.relay.Start()
 }
 
 func (b *Builder) Stop() error {
+	close(b.stop)
 	return nil
 }
 
@@ -277,17 +302,18 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 	b.slotMu.Lock()
 	defer b.slotMu.Unlock()
 
-	if b.slot != attrs.Slot {
-		if b.slotCtxCancel != nil {
-			b.slotCtxCancel()
-		}
+	// Forcibly cancel previous building job, build on top of reorgable blocks as this is the behaviour relays expect.
+	// This will change in the future
 
-		slotCtx, slotCtxCancel := context.WithTimeout(context.Background(), 12*time.Second)
-		b.slot = attrs.Slot
-		b.slotAttrs = nil
-		b.slotCtx = slotCtx
-		b.slotCtxCancel = slotCtxCancel
+	if b.slotCtxCancel != nil {
+		b.slotCtxCancel()
 	}
+
+	slotCtx, slotCtxCancel := context.WithTimeout(context.Background(), 12*time.Second)
+	b.slot = attrs.Slot
+	b.slotAttrs = nil
+	b.slotCtx = slotCtx
+	b.slotCtxCancel = slotCtxCancel
 
 	for _, currentAttrs := range b.slotAttrs {
 		if attrs.Equal(&currentAttrs) {

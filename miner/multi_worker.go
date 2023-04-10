@@ -99,12 +99,12 @@ func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	for _, worker := range w.workers {
 		var err error
 		empty, _, err = worker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, true, nil)
-			if err != nil {
+		if err != nil {
 			log.Error("could not start async block construction", "isFlashbotsWorker", worker.flashbots.isFlashbots, "#bundles", worker.flashbots.maxMergedBundles)
 			continue
-			}
+		}
 		break
-			}
+	}
 
 	if empty == nil {
 		return nil, errors.New("no worker could build an empty block")
@@ -133,7 +133,7 @@ func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 			}
 		}(w)
 	}
-	
+
 	go payload.resolveBestFullPayload(workerPayloads)
 
 	return payload, nil

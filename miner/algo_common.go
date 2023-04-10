@@ -154,7 +154,7 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 
 	receipt, newState, err := applyTransactionWithBlacklist(signer, chData.chainConfig, chData.chain, coinbase,
 		envDiff.gasPool, envDiff.state, header, tx, &header.GasUsed, *chData.chain.GetVMConfig(), chData.blacklist)
-		envDiff.state = newState
+	envDiff.state = newState
 	if err != nil {
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):
