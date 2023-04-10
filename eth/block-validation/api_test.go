@@ -127,7 +127,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	// Test tx from blacklisted address
 	api.accessVerifier = &AccessVerifier{
 		blacklistedAddresses: map[common.Address]struct{}{
-			testAddr: struct{}{},
+			testAddr: {},
 		},
 	}
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "transaction from blacklisted address 0x71562b71999873DB5b286dF957af199Ec94617F7")
@@ -135,7 +135,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	// Test tx to blacklisted address
 	api.accessVerifier = &AccessVerifier{
 		blacklistedAddresses: map[common.Address]struct{}{
-			common.Address{0x16}: struct{}{},
+			{0x16}: {},
 		},
 	}
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "transaction to blacklisted address 0x1600000000000000000000000000000000000000")
@@ -421,8 +421,8 @@ func TestBlacklistLoad(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, av)
 	require.EqualValues(t, av.blacklistedAddresses, map[common.Address]struct{}{
-		common.Address{0x13}: struct{}{},
-		common.Address{0x14}: struct{}{},
+		{0x13}: {},
+		{0x14}: {},
 	})
 
 	require.NoError(t, av.verifyTraces(logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, nil)))
