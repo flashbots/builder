@@ -2447,7 +2447,7 @@ func TestSlotCount(t *testing.T) {
 func TestBundleCancellations(t *testing.T) {
 	// Create the pool to test the status retrievals with
 	statedb, _ := state.New(common.Hash{}, state.NewDatabase(rawdb.NewMemoryDatabase()), nil)
-	blockchain := &testBlockChain{100, statedb, new(event.Feed)}
+	blockchain := newTestBlockChain(100, statedb, new(event.Feed))
 
 	pool := NewTxPool(testTxPoolConfig, params.TestChainConfig, blockchain)
 	fetcher := &mockFetcher{make(map[int64]error), make(map[int64][]types.LatestUuidBundle)}
@@ -2509,7 +2509,7 @@ func TestBundleCancellations(t *testing.T) {
 	require.Equal(t, []types.MevBundle{bundle01_uuid1_signer1}, cr.Value)
 
 	fetcher.resps[1] = []types.LatestUuidBundle{
-		types.LatestUuidBundle{
+		{
 			Uuid:           bundle03_uuid1_signer1.Uuid,
 			SigningAddress: bundle03_uuid1_signer1.SigningAddress,
 			BundleHash:     bundle03_uuid1_signer1.Hash,

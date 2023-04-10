@@ -120,7 +120,14 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	copy(bellatrixForkVersion[:], bellatrixForkVersionBytes[:4])
 	proposerSigningDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeBeaconProposer, bellatrixForkVersion, genesisValidatorsRoot)
 
-	beaconClient := NewBeaconClient(cfg.BeaconEndpoint, cfg.SlotsInEpoch, cfg.SecondsInSlot)
+	var beaconClient IBeaconClient
+	if len(cfg.BeaconEndpoints) == 0 {
+		beaconClient = &NilBeaconClient{}
+	} else if len(cfg.BeaconEndpoints) == 1 {
+		beaconClient = NewBeaconClient(cfg.BeaconEndpoints[0], cfg.SlotsInEpoch, cfg.SecondsInSlot)
+	} else {
+		beaconClient = NewMultiBeaconClient(cfg.BeaconEndpoints, cfg.SlotsInEpoch, cfg.SecondsInSlot)
+	}
 
 	var localRelay *LocalRelay
 	if cfg.EnableLocalRelay {
@@ -196,7 +203,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		return errors.New("incorrect builder API secret key provided")
 	}
 
-	builderBackend := NewBuilder(builderSk, ds, relay, builderSigningDomain, ethereumService, cfg.DryRun, validator)
+	builderBackend := NewBuilder(builderSk, ds, relay, builderSigningDomain, ethereumService, cfg.DryRun, validator, beaconClient)
 	builderService := NewService(cfg.ListenAddr, localRelay, builderBackend)
 
 	stack.RegisterAPIs([]rpc.API{

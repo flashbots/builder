@@ -14,7 +14,7 @@ type Config struct {
 	GenesisForkVersion            string   `toml:",omitempty"`
 	BellatrixForkVersion          string   `toml:",omitempty"`
 	GenesisValidatorsRoot         string   `toml:",omitempty"`
-	BeaconEndpoint                string   `toml:",omitempty"`
+	BeaconEndpoints               []string `toml:",omitempty"`
 	RemoteRelayEndpoint           string   `toml:",omitempty"`
 	SecondaryRemoteRelayEndpoints []string `toml:",omitempty"`
 	ValidationBlocklist           string   `toml:",omitempty"`
@@ -35,7 +35,7 @@ var DefaultConfig = Config{
 	GenesisForkVersion:            "0x00000000",
 	BellatrixForkVersion:          "0x02000000",
 	GenesisValidatorsRoot:         "0x0000000000000000000000000000000000000000000000000000000000000000",
-	BeaconEndpoint:                "http://127.0.0.1:5052",
+	BeaconEndpoints:               []string{"http://127.0.0.1:5052"},
 	RemoteRelayEndpoint:           "",
 	SecondaryRemoteRelayEndpoints: nil,
 	ValidationBlocklist:           "",

@@ -1020,7 +1020,7 @@ func (w *worker) commitBundle(env *environment, txs types.Transactions, interrup
 		if interrupt != nil {
 			if signal := atomic.LoadInt32(interrupt); signal != commitInterruptNone {
 				return signalToErr(signal)
-				}
+			}
 		}
 		// If we don't have enough gas for any further transactions discard the block
 		// since not all bundles of the were applied

@@ -22,8 +22,8 @@ func TestBundleCacheEntry(t *testing.T) {
 		t.Errorf("found bundle in empty cache: %s", successBundle)
 	}
 
-	bundles := []types.MevBundle{types.MevBundle{Hash: failingBundle}, types.MevBundle{Hash: successBundle}}
-	simResult := []*types.SimulatedBundle{nil, &types.SimulatedBundle{OriginalBundle: bundles[1]}}
+	bundles := []types.MevBundle{{Hash: failingBundle}, {Hash: successBundle}}
+	simResult := []*types.SimulatedBundle{nil, {OriginalBundle: bundles[1]}}
 	entry.UpdateSimulatedBundles(simResult, bundles)
 
 	sim, found = entry.GetSimulatedBundle(failingBundle)

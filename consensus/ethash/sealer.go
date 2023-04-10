@@ -340,11 +340,12 @@ func (s *remoteSealer) loop() {
 // makeWork creates a work package for external miner.
 //
 // The work package consists of 5 strings:
-//	result[0], 32 bytes hex encoded current block header pow-hash
-//	result[1], 32 bytes hex encoded seed hash used for DAG
-//	result[2], 32 bytes hex encoded boundary condition ("target"), 2^256/difficulty
-//	result[3], hex encoded block number
-//  result[4], hex encoded profit generated from this block, if present
+//
+//		result[0], 32 bytes hex encoded current block header pow-hash
+//		result[1], 32 bytes hex encoded seed hash used for DAG
+//		result[2], 32 bytes hex encoded boundary condition ("target"), 2^256/difficulty
+//		result[3], hex encoded block number
+//	 result[4], hex encoded profit generated from this block, if present
 func (s *remoteSealer) makeWork(block *types.Block, profit *big.Int) {
 	hash := s.ethash.SealHash(block.Header())
 	s.currentWork[0] = hash.Hex()

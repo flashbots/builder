@@ -778,10 +778,10 @@ var (
 		Value:    "0x0000000000000000000000000000000000000000000000000000000000000000",
 		Category: flags.BuilderCategory,
 	}
-	BuilderBeaconEndpoint = &cli.StringFlag{
-		Name:     "builder.beacon_endpoint",
-		Usage:    "Beacon endpoint to connect to for beacon chain data",
-		EnvVars:  []string{"BUILDER_BEACON_ENDPOINT"},
+	BuilderBeaconEndpoints = &cli.StringFlag{
+		Name:     "builder.beacon_endpoints",
+		Usage:    "Comma separated list of beacon endpoints to connect to for beacon chain data",
+		EnvVars:  []string{"BUILDER_BEACON_ENDPOINTS"},
 		Value:    "http://127.0.0.1:5052",
 		Category: flags.BuilderCategory,
 	}
@@ -1608,7 +1608,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.GenesisForkVersion = ctx.String(BuilderGenesisForkVersion.Name)
 	cfg.BellatrixForkVersion = ctx.String(BuilderBellatrixForkVersion.Name)
 	cfg.GenesisValidatorsRoot = ctx.String(BuilderGenesisValidatorsRoot.Name)
-	cfg.BeaconEndpoint = ctx.String(BuilderBeaconEndpoint.Name)
+	cfg.BeaconEndpoints = strings.Split(ctx.String(BuilderBeaconEndpoints.Name), ",")
 	cfg.RemoteRelayEndpoint = ctx.String(BuilderRemoteRelayEndpoint.Name)
 	cfg.SecondaryRemoteRelayEndpoints = strings.Split(ctx.String(BuilderSecondaryRemoteRelayEndpoints.Name), ",")
 	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
