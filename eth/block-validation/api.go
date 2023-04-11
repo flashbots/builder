@@ -50,7 +50,7 @@ func (a *AccessVerifier) isBlacklisted(addr common.Address) error {
 
 func (a *AccessVerifier) verifyTransactions(signer types.Signer, txs types.Transactions) error {
 	for _, tx := range txs {
-		from, err := signer.Sender(tx)
+		from, err := types.Sender(signer, tx)
 		if err == nil {
 			if _, present := a.blacklistedAddresses[from]; present {
 				return fmt.Errorf("transaction from blacklisted address %s", from.String())
