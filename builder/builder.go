@@ -116,7 +116,8 @@ func (b *Builder) Start() error {
 				if payloadAttributes.Slot < currentSlot {
 					continue
 				} else if payloadAttributes.Slot == currentSlot {
-					b.OnPayloadAttribute(&payloadAttributes)
+					// Ignore all subsequent payloadAttributes until the builder is either ready to build on multiple heads
+					// or CLs only send canonical heads. Expect this behaviour to change.
 				} else if payloadAttributes.Slot > currentSlot {
 					currentSlot = payloadAttributes.Slot
 					b.OnPayloadAttribute(&payloadAttributes)
@@ -302,6 +303,10 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 	b.slotMu.Lock()
 	defer b.slotMu.Unlock()
 
+	if b.slotAttrs != nil && payloadAttributesMatch(b.slotAttrs, attrs) {
+		continue
+	}
+
 	// Forcibly cancel previous building job, build on top of reorgable blocks as this is the behaviour relays expect.
 	// This will change in the future
 
@@ -311,7 +316,7 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 
 	slotCtx, slotCtxCancel := context.WithTimeout(context.Background(), 12*time.Second)
 	b.slot = attrs.Slot
-	b.slotAttrs = nil
+	b.slotAttrs = attrs
 	b.slotCtx = slotCtx
 	b.slotCtxCancel = slotCtxCancel
 
