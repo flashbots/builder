@@ -736,6 +736,11 @@ var (
 		Usage:    "Builder only validates blocks without submission to the relay",
 		Category: flags.BuilderCategory,
 	}
+	BuilderIgnoreLatePayloadAttributes = &cli.BoolFlag{
+		Name:     "builder.ignore_late_payload_attributes",
+		Usage:    "Builder will ignore all but the first payload attributes. Use if your CL sends non-canonical head updates.",
+		Category: flags.BuilderCategory,
+	}
 	BuilderSecretKey = &cli.StringFlag{
 		Name:     "builder.secret_key",
 		Usage:    "Builder key used for signing blocks",
@@ -1602,6 +1607,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.SecondsInSlot = ctx.Uint64(BuilderSecondsInSlot.Name)
 	cfg.DisableBundleFetcher = ctx.IsSet(BuilderDisableBundleFetcher.Name)
 	cfg.DryRun = ctx.IsSet(BuilderDryRun.Name)
+	cfg.IgnoreLatePayloadAttributes = ctx.IsSet(BuilderIgnoreLatePayloadAttributes.Name)
 	cfg.BuilderSecretKey = ctx.String(BuilderSecretKey.Name)
 	cfg.RelaySecretKey = ctx.String(BuilderRelaySecretKey.Name)
 	cfg.ListenAddr = ctx.String(BuilderListenAddr.Name)

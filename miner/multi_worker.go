@@ -130,6 +130,9 @@ func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 			block, fees, err := w.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook)
 			if err == nil {
 				workerPayload.update(block, fees, time.Since(start))
+			} else {
+				log.Error("Error while sealing block", "err", err)
+				workerPayload.Cancel()
 			}
 		}(w)
 	}

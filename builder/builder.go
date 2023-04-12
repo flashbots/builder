@@ -52,46 +52,46 @@ type IBuilder interface {
 }
 
 type Builder struct {
-	ds                   flashbotsextra.IDatabaseService
-	relay                IRelay
-	eth                  IEthereumService
-	dryRun               bool
-	validator            *blockvalidation.BlockValidationAPI
-	beaconClient         IBeaconClient
-	builderSecretKey     *bls.SecretKey
-	builderPublicKey     boostTypes.PublicKey
-	builderSigningDomain boostTypes.Domain
+	ds                          flashbotsextra.IDatabaseService
+	relay                       IRelay
+	eth                         IEthereumService
+	dryRun                      bool
+	ignoreLatePayloadAttributes bool
+	validator                   *blockvalidation.BlockValidationAPI
+	beaconClient                IBeaconClient
+	builderSecretKey            *bls.SecretKey
+	builderPublicKey            boostTypes.PublicKey
+	builderSigningDomain        boostTypes.Domain
 
 	limiter *rate.Limiter
 
 	slotMu        sync.Mutex
-	slot          uint64
-	slotAttrs     []types.BuilderPayloadAttributes
+	slotAttrs     types.BuilderPayloadAttributes
 	slotCtx       context.Context
 	slotCtxCancel context.CancelFunc
 
 	stop chan struct{}
 }
 
-func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, validator *blockvalidation.BlockValidationAPI, beaconClient IBeaconClient) *Builder {
+func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, ignoreLatePayloadAttributes bool, validator *blockvalidation.BlockValidationAPI, beaconClient IBeaconClient) *Builder {
 	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
 
 	slotCtx, slotCtxCancel := context.WithCancel(context.Background())
 	return &Builder{
-		ds:                   ds,
-		relay:                relay,
-		eth:                  eth,
-		dryRun:               dryRun,
-		validator:            validator,
-		beaconClient:         beaconClient,
-		builderSecretKey:     sk,
-		builderPublicKey:     pk,
-		builderSigningDomain: builderSigningDomain,
+		ds:                          ds,
+		relay:                       relay,
+		eth:                         eth,
+		dryRun:                      dryRun,
+		ignoreLatePayloadAttributes: ignoreLatePayloadAttributes,
+		validator:                   validator,
+		beaconClient:                beaconClient,
+		builderSecretKey:            sk,
+		builderPublicKey:            pk,
+		builderSigningDomain:        builderSigningDomain,
 
 		limiter:       rate.NewLimiter(rate.Every(time.Millisecond), 510),
-		slot:          0,
 		slotCtx:       slotCtx,
 		slotCtxCancel: slotCtxCancel,
 
@@ -116,7 +116,10 @@ func (b *Builder) Start() error {
 				if payloadAttributes.Slot < currentSlot {
 					continue
 				} else if payloadAttributes.Slot == currentSlot {
-					b.OnPayloadAttribute(&payloadAttributes)
+					// Subsequent sse events should only be canonical!
+					if !b.ignoreLatePayloadAttributes {
+						b.OnPayloadAttribute(&payloadAttributes)
+					}
 				} else if payloadAttributes.Slot > currentSlot {
 					currentSlot = payloadAttributes.Slot
 					b.OnPayloadAttribute(&payloadAttributes)
@@ -302,26 +305,19 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 	b.slotMu.Lock()
 	defer b.slotMu.Unlock()
 
-	// Forcibly cancel previous building job, build on top of reorgable blocks as this is the behaviour relays expect.
-	// This will change in the future
+	if attrs.Equal(&b.slotAttrs) {
+		log.Debug("ignoring known payload attribute", "slot", attrs.Slot, "hash", attrs.HeadHash)
+		return nil
+	}
 
 	if b.slotCtxCancel != nil {
 		b.slotCtxCancel()
 	}
 
 	slotCtx, slotCtxCancel := context.WithTimeout(context.Background(), 12*time.Second)
-	b.slot = attrs.Slot
-	b.slotAttrs = nil
+	b.slotAttrs = *attrs
 	b.slotCtx = slotCtx
 	b.slotCtxCancel = slotCtxCancel
-
-	for _, currentAttrs := range b.slotAttrs {
-		if attrs.Equal(&currentAttrs) {
-			log.Debug("ignoring known payload attribute", "slot", attrs.Slot, "hash", attrs.HeadHash)
-			return nil
-		}
-	}
-	b.slotAttrs = append(b.slotAttrs, *attrs)
 
 	go b.runBuildingJob(b.slotCtx, proposerPubkey, vd, attrs)
 	return nil
