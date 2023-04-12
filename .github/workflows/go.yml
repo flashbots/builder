@@ -11,15 +11,40 @@ env:
 
 jobs:
 
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Go
+        uses: actions/setup-go@v3
+        with:
+          go-version: ^1.20
+        id: go
+
+      - name: Check out code into the Go module directory
+        uses: actions/checkout@v2
+
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.51.2
+
+      - name: Lint
+        run: make lint
+
+      - name: Ensure go mod tidy runs without changes
+        run: |
+          go mod tidy
+          git diff-index HEAD
+          git diff-index --quiet HEAD
+
   build:
     name: Build
     runs-on: ubuntu-latest
     steps:
 
     - name: Set up Go 1.x
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v3
       with:
-        go-version: ^1.13
+        go-version: ^1.20
       id: go
 
     - name: Check out code into the Go module directory
@@ -38,9 +63,9 @@ jobs:
     steps:
 
     - name: Set up Go 1.x
-      uses: actions/setup-go@v2
+      uses: actions/setup-go@v3
       with:
-        go-version: ^1.13
+        go-version: ^1.20
       id: go
 
     - name: Use Node.js 12.x

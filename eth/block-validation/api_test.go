@@ -3,7 +3,6 @@ package blockvalidation
 import (
 	"encoding/json"
 	"errors"
-	"io/ioutil"
 	"math/big"
 	"os"
 	"testing"
@@ -211,22 +210,6 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	}
 	withdrawalsRoot := types.DeriveSha(types.Withdrawals(withdrawals), trie.NewStackTrie(nil))
 
-	blockRequest := &BuilderBlockValidationRequestV2{
-		SubmitBlockRequest: capellaapi.SubmitBlockRequest{
-			Signature:        phase0.BLSSignature{},
-			Message:          &apiv1.BidTrace{},
-			ExecutionPayload: &capella.ExecutionPayload{},
-		},
-		WithdrawalsRoot: withdrawalsRoot,
-	}
-	// blockRequest.ExecutionPayload.Withdrawals = WithdrawalToBlockRequestWithdrawal(withdrawals)
-	// require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "withdrawals before shanghai")
-
-	// blockRequest.ExecutionPayload.Timestamp -= 1
-	// blockRequest.ExecutionPayload.Withdrawals = WithdrawalToBlockRequestWithdrawal(withdrawals[:1])
-	// updatePayloadHashV2(t, blockRequest)
-	// require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "withdrawals mismatch")
-
 	execData, err := assembleBlock(api, parent.Hash(), &engine.PayloadAttributes{
 		Timestamp:             parent.Time() + 5,
 		Withdrawals:           withdrawals,
@@ -242,7 +225,7 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	proposerAddr := bellatrix.ExecutionAddress{}
 	copy(proposerAddr[:], testValidatorAddr.Bytes())
 
-	blockRequest = &BuilderBlockValidationRequestV2{
+	blockRequest := &BuilderBlockValidationRequestV2{
 		SubmitBlockRequest: capellaapi.SubmitBlockRequest{
 			Signature: phase0.BLSSignature{},
 			Message: &apiv1.BidTrace{
@@ -392,7 +375,7 @@ func startEthService(t *testing.T, genesis *core.Genesis, blocks []*types.Block)
 func assembleBlock(api *BlockValidationAPI, parentHash common.Hash, params *engine.PayloadAttributes) (*engine.ExecutableData, error) {
 	args := &miner.BuildPayloadArgs{
 		Parent:       parentHash,
-		Timestamp:    uint64(params.Timestamp),
+		Timestamp:    params.Timestamp,
 		FeeRecipient: params.SuggestedFeeRecipient,
 		GasLimit:     params.GasLimit,
 		Random:       params.Random,
@@ -423,7 +406,7 @@ func TestBlacklistLoad(t *testing.T) {
 	ba := BlacklistedAddresses{common.Address{0x13}, common.Address{0x14}}
 	bytes, err := json.MarshalIndent(ba, "", " ")
 	require.NoError(t, err)
-	err = ioutil.WriteFile(file.Name(), bytes, 0644)
+	err = os.WriteFile(file.Name(), bytes, 0644)
 	require.NoError(t, err)
 
 	av, err = NewAccessVerifierFromFile(file.Name())

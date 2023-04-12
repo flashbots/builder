@@ -18,9 +18,10 @@ package miner
 
 import (
 	"crypto/ecdsa"
+	"crypto/rand"
 	"errors"
 	"math/big"
-	"math/rand"
+	mrnd "math/rand"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -778,7 +779,7 @@ func testBundles(t *testing.T) {
 		return len(task.receipts) == 0
 	}
 
-	rand.Seed(10)
+	mrnd.New(mrnd.NewSource(10))
 
 	for i := 0; i < 2; i++ {
 		commonTxs := []*types.Transaction{
@@ -803,15 +804,15 @@ func testBundles(t *testing.T) {
 
 		// common transactions in 10% of the bundles, randomly
 		for i := 0; i < nBundles/10; i++ {
-			randomCommonIndex := rand.Intn(len(commonTxs))
-			randomBundleIndex := rand.Intn(nBundles)
+			randomCommonIndex := mrnd.Intn(len(commonTxs))
+			randomBundleIndex := mrnd.Intn(nBundles)
 			bundles[randomBundleIndex].Txs = append(bundles[randomBundleIndex].Txs, commonTxs[randomCommonIndex])
 		}
 
 		// additional lower profit transactions in 10% of the bundles, randomly
 		for _, extraKey := range extraKeys {
 			tx := b.newRandomTx(false, testBankAddress, 1, extraKey, 0, big.NewInt(20*params.InitialBaseFee))
-			randomBundleIndex := rand.Intn(nBundles)
+			randomBundleIndex := mrnd.Intn(nBundles)
 			bundles[randomBundleIndex].Txs = append(bundles[randomBundleIndex].Txs, tx)
 		}
 

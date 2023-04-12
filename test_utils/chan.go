@@ -15,6 +15,4 @@ func RequireChan[V any](ch chan V, timeout time.Duration) ChanResult[V] {
 	case <-time.After(timeout):
 		return ChanResult[V]{v, true}
 	}
-
-	return ChanResult[V]{v, true}
 }
