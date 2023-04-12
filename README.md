@@ -38,8 +38,9 @@ $ geth --help
     --builder                      (default: false)
           Enable the builder
 
-    --builder.beacon_endpoint value (default: "http://127.0.0.1:5052")
-          Beacon endpoint to connect to for beacon chain data [$BUILDER_BEACON_ENDPOINT]
+    --builder.beacon_endpoints value (default: "http://127.0.0.1:5052")
+          Comma separated list of beacon endpoints to connect to for beacon chain data
+          [$BUILDER_BEACON_ENDPOINTS]
 
     --builder.bellatrix_fork_version value (default: "0x02000000")
           Bellatrix fork version. [$BUILDER_BELLATRIX_FORK_VERSION]
@@ -52,6 +53,10 @@ $ geth --help
 
     --builder.genesis_validators_root value (default: "0x0000000000000000000000000000000000000000000000000000000000000000")
           Genesis validators root of the network. [$BUILDER_GENESIS_VALIDATORS_ROOT]
+
+    --builder.ignore_late_payload_attributes (default: false)
+          Builder will ignore all but the first payload attributes. Use if your CL sends
+          non-canonical head updates.
 
     --builder.listen_addr value    (default: ":28545")
           Listening address for builder endpoint [$BUILDER_LISTEN_ADDR]
@@ -74,11 +79,17 @@ $ geth --help
           missing from the primary remote relay, and to push blocks for registrations
           missing from or matching the primary [$BUILDER_SECONDARY_REMOTE_RELAY_ENDPOINTS]
 
+    --builder.seconds_in_slot value (default: 12)
+          Set the number of seconds in a slot in the local relay
+
     --builder.secret_key value     (default: "0x2fc12ae741f29701f8e30f5de6350766c020cb80768a0ff01e6838ffd2431e11")
           Builder key used for signing blocks [$BUILDER_SECRET_KEY]
 
-    --builder.validation_blacklist value (default: "")
-          Path to file containing blacklisted addresses, json-encoded list of strings.
+    --builder.slots_in_epoch value (default: 32)
+          Set the number of slots in an epoch in the local relay
+
+    --builder.validation_blacklist value
+          Path to file containing blacklisted addresses, json-encoded list of strings
 
     --builder.validator_checks     (default: false)
           Enable the validator checks

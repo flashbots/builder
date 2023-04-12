@@ -109,11 +109,10 @@ func (m *MultiBeaconClient) getProposerForNextSlot(requestedSlot uint64) (Pubkey
 
 func payloadAttributesMatch(l types.BuilderPayloadAttributes, r types.BuilderPayloadAttributes) bool {
 	if l.Timestamp != r.Timestamp ||
-		l.Random != r.Random ||
-		l.SuggestedFeeRecipient != r.SuggestedFeeRecipient ||
 		l.Slot != r.Slot ||
-		l.HeadHash != r.HeadHash ||
-		l.GasLimit != r.GasLimit {
+		l.GasLimit != r.GasLimit ||
+		l.Random != r.Random ||
+		l.HeadHash != r.HeadHash {
 		return false
 	}
 
