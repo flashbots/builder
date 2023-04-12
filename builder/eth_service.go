@@ -88,7 +88,6 @@ func (s *EthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, seal
 		log.Error("timeout waiting for block", "parent hash", attrs.HeadHash, "slot", attrs.Slot)
 		return errors.New("timeout waiting for block result")
 	}
-
 }
 
 func (s *EthereumService) GetBlockByHash(hash common.Hash) *types.Block {

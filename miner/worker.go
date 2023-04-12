@@ -84,7 +84,6 @@ const (
 
 var (
 	errCouldNotApplyTransaction   = errors.New("could not apply transaction")
-	errBundleInterrupted          = errors.New("interrupt while applying bundles")
 	errBlockInterruptedByNewHead  = errors.New("new head arrived while building block")
 	errBlockInterruptedByRecommit = errors.New("recommit interrupt while building block")
 	errBlocklistViolation         = errors.New("blocklist violation")

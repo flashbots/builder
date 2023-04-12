@@ -17,7 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/r3labs/sse"
-	"golang.org/x/exp/slices"
 )
 
 type IBeaconClient interface {
@@ -33,9 +32,7 @@ type testBeaconClient struct {
 	slot      uint64
 }
 
-func (b *testBeaconClient) Stop() {
-	return
-}
+func (b *testBeaconClient) Stop() {}
 
 func (b *testBeaconClient) isValidator(pubkey PubkeyHex) bool {
 	return true
@@ -105,22 +102,6 @@ func (m *MultiBeaconClient) getProposerForNextSlot(requestedSlot uint64) (Pubkey
 		return pk, nil
 	}
 	return PubkeyHex(""), allErrs
-}
-
-func payloadAttributesMatch(l types.BuilderPayloadAttributes, r types.BuilderPayloadAttributes) bool {
-	if l.Timestamp != r.Timestamp ||
-		l.Slot != r.Slot ||
-		l.GasLimit != r.GasLimit ||
-		l.Random != r.Random ||
-		l.HeadHash != r.HeadHash {
-		return false
-	}
-
-	if !slices.Equal(l.Withdrawals, r.Withdrawals) {
-		return false
-	}
-
-	return true
 }
 
 func (m *MultiBeaconClient) SubscribeToPayloadAttributesEvents(payloadAttrC chan types.BuilderPayloadAttributes) {
@@ -224,7 +205,7 @@ func (b *BeaconClient) UpdateValidatorMapForever() {
 	// more frequently to avoid missing updates on errors
 	timer := time.NewTimer(retryDelay)
 	defer timer.Stop()
-	for true {
+	for {
 		select {
 		case <-b.ctx.Done():
 			return
