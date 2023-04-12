@@ -165,6 +165,7 @@ var (
 		utils.BuilderSlotsInEpoch,
 		utils.BuilderDisableBundleFetcher,
 		utils.BuilderDryRun,
+		utils.BuilderIgnoreLatePayloadAttributes,
 		utils.BuilderSecretKey,
 		utils.BuilderRelaySecretKey,
 		utils.BuilderListenAddr,
