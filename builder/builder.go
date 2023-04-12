@@ -303,22 +303,17 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 	b.slotMu.Lock()
 	defer b.slotMu.Unlock()
 
-	if b.slotAttrs != nil && payloadAttributesMatch(b.slotAttrs, attrs) {
-		continue
+	if b.slot < attrs.Slot {
+		if b.slotCtxCancel != nil {
+			b.slotCtxCancel()
+		}
+
+		slotCtx, slotCtxCancel := context.WithTimeout(context.Background(), 12*time.Second)
+		b.slot = attrs.Slot
+		b.slotAttrs = nil
+		b.slotCtx = slotCtx
+		b.slotCtxCancel = slotCtxCancel
 	}
-
-	// Forcibly cancel previous building job, build on top of reorgable blocks as this is the behaviour relays expect.
-	// This will change in the future
-
-	if b.slotCtxCancel != nil {
-		b.slotCtxCancel()
-	}
-
-	slotCtx, slotCtxCancel := context.WithTimeout(context.Background(), 12*time.Second)
-	b.slot = attrs.Slot
-	b.slotAttrs = attrs
-	b.slotCtx = slotCtx
-	b.slotCtxCancel = slotCtxCancel
 
 	for _, currentAttrs := range b.slotAttrs {
 		if attrs.Equal(&currentAttrs) {
