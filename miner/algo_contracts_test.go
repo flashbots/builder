@@ -30,7 +30,7 @@ var (
 	// 0x0b  CALLER       clr bal 0 0 0 0 0      0x33
 	// 0x0c  GAS          gas clr bal 0 0 0 0 0  0x5a
 	// 0x0d  CALL         .                      0xf1
-	contractSendBalance = parseCode("0x47600557fe5b5959595947335af100")
+	// contractSendBalance = parseCode("0x47600557fe5b5959595947335af100")
 )
 
 // parseCode converts a hex bytecode to a byte slice, or panics if the hex

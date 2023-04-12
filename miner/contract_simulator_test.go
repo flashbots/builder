@@ -20,7 +20,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -35,10 +34,6 @@ var (
 
 	bigEther = big.NewInt(params.Ether)
 )
-
-func enableLogging() {
-	log.Root().SetHandler(log.LvlFilterHandler(log.LvlDebug, log.StreamHandler(os.Stderr, log.TerminalFormat(true))))
-}
 
 func deployAllContracts(t *testing.T, key *ecdsa.PrivateKey, gasPrice *big.Int) []*types.Transaction {
 	allContractsData, err := os.ReadFile("testdata/allcontracts.signeddata")
@@ -162,7 +157,7 @@ func TestSimulatorState(t *testing.T) {
 	testAddress1Key, _ := crypto.GenerateKey()
 	testAddress1 := crypto.PubkeyToAddress(testAddress1Key.PublicKey)
 
-	rand.Seed(10)
+	rand.New(rand.NewSource(10))
 
 	deploymentTxs := deployAllContracts(t, deployerKey, b.chain.CurrentHeader().BaseFee)
 
@@ -178,7 +173,7 @@ func TestSimulatorState(t *testing.T) {
 			nonceModFor.Set(b.chain.CurrentHeader().Number)
 		}
 
-		cm, _ := nonceMod[addr]
+		cm := nonceMod[addr]
 		nonceMod[addr] = cm + 1
 		return b.txPool.Nonce(addr) + cm
 	}
@@ -232,7 +227,6 @@ func TestSimulatorState(t *testing.T) {
 	approveTxs = append(approveTxs, adminApproveTxDai)
 
 	for _, spender := range []TestParticipant{testParticipants.users[0], testParticipants.searchers[0]} {
-
 		mintTx := prepareContractCallTx(daiContract, deployerKey, "mint", spender.address, new(big.Int).Mul(bigEther, big.NewInt(50000)))
 		approveTxs = append(approveTxs, mintTx)
 
@@ -257,6 +251,7 @@ func TestSimulatorState(t *testing.T) {
 	require.NoError(t, err)
 
 	backrunTx, err := types.SignTx(types.NewTransaction(getNonce(testParticipants.searchers[0].address), atomicSwapContract.address, new(big.Int), 9000000, getBaseFee(), backrunTxData), types.HomesteadSigner{}, testParticipants.searchers[0].key)
+	require.NoError(t, err)
 
 	targetBlockNumber := new(big.Int).Set(b.chain.CurrentHeader().Number)
 	targetBlockNumber.Add(targetBlockNumber, big.NewInt(1))

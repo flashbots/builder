@@ -145,7 +145,7 @@ There are two parts of the builder.
 
 Main logic of the builder is in the `builder.go` file.
 
-Builder is driven by the modified consensus client that calls `OnPayloadAttribute` indicating that block should be produced.
+Builder is driven by the consensus client SSE events that sends payload attribute events, triggering the `OnPayloadAttribute` call.
 After requesting additional validator data from the relay builder starts building job with `runBuildingJob`.
 Building job continuously makes a request to the `miner` with the correct parameters and submits produced block.
 
