@@ -15,7 +15,7 @@ import (
 func TestDatabaseBlockInsertion(t *testing.T) {
 	dsn := os.Getenv("FLASHBOTS_TEST_POSTGRES_DSN")
 	if dsn == "" {
-		return
+		t.Skip()
 	}
 
 	ds, err := NewDatabaseService(dsn)
@@ -106,11 +106,27 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 	var bundle4Id uint64
 	ds.db.Get(&bundle4Id, "insert into bundles (bundle_hash, param_signed_txs, param_block_number, param_timestamp, received_timestamp, param_reverting_tx_hashes, coinbase_diff, total_gas_used, state_block_number, gas_fees, eth_sent_to_coinbase) values (:bundle_hash, :param_signed_txs, :param_block_number, :param_timestamp, :received_timestamp, :param_reverting_tx_hashes, :coinbase_diff, :total_gas_used, :state_block_number, :gas_fees, :eth_sent_to_coinbase) on conflict (bundle_hash, param_block_number) do nothing returning id", SimulatedBundleToDbBundle(&simBundle4))
 
+	usedSbundle := types.UsedSBundle{
+		Bundle: &types.SBundle{
+			Inclusion: types.BundleInclusion{
+				BlockNumber:    5,
+				MaxBlockNumber: 6,
+			},
+			Body: []types.BundleBody{
+				{
+					Tx: types.NewTransaction(uint64(53), common.Address{0x63}, big.NewInt(111), uint64(169), big.NewInt(435), []byte{})},
+			},
+		},
+		Success: true,
+	}
+
 	bidTrace := &boostTypes.BidTrace{}
 
 	ocAt := time.Now().Add(-time.Hour).UTC()
 	sealedAt := time.Now().Add(-30 * time.Minute).UTC()
-	ds.ConsumeBuiltBlock(block, blockProfit, ocAt, sealedAt, []types.SimulatedBundle{simBundle1, simBundle2}, []types.SimulatedBundle{simBundle1, simBundle2, simBundle3, simBundle4}, bidTrace)
+	ds.ConsumeBuiltBlock(block, blockProfit, ocAt, sealedAt,
+		[]types.SimulatedBundle{simBundle1, simBundle2}, []types.SimulatedBundle{simBundle1, simBundle2, simBundle3, simBundle4},
+		[]types.UsedSBundle{usedSbundle}, bidTrace)
 
 	var dbBlock BuiltBlock
 	require.NoError(t, ds.db.Get(&dbBlock, "select block_id, block_number, profit, slot, hash, gas_limit, gas_used, base_fee, parent_hash, timestamp, timestamp_datetime, orders_closed_at, sealed_at from built_blocks where hash = '0x9cc3ee47d091fea38c0187049cae56abe4e642eeb06c4832f06ec59f5dbce7ab'"))
@@ -148,4 +164,12 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 	require.NoError(t, ds.db.Select(&allBundles, "select b.bundle_hash as bundle_hash from built_blocks_all_bundles bbb inner join bundles b on b.id = bbb.bundle_id where bbb.block_id = $1 order by b.param_timestamp", dbBlock.BlockId))
 	require.Len(t, allBundles, 4)
 	require.Equal(t, []string{simBundle1.OriginalBundle.Hash.String(), simBundle2.OriginalBundle.Hash.String(), simBundle3.OriginalBundle.Hash.String(), simBundle4.OriginalBundle.Hash.String()}, allBundles)
+
+	var usedSbundles []DbUsedSBundle
+	require.NoError(t, ds.db.Select(&usedSbundles, "select hash, inserted from sbundle_builder_used where block_id = $1", dbBlock.BlockId))
+	require.Len(t, usedSbundles, 1)
+	require.Equal(t, DbUsedSBundle{
+		Hash:     usedSbundle.Bundle.Hash().Bytes(),
+		Inserted: usedSbundle.Success,
+	}, usedSbundles[0])
 }

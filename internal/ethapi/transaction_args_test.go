@@ -221,6 +221,10 @@ func (b *backendMock) SendBundle(ctx context.Context, txs types.Transactions, bl
 	return nil
 }
 
+func (b *backendMock) SendSBundle(ctx context.Context, sbundle *types.SBundle) error {
+	return nil
+}
+
 func newBackendMock() *backendMock {
 	config := &params.ChainConfig{
 		ChainID:             big.NewInt(42),

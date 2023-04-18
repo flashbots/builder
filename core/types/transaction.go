@@ -476,6 +476,7 @@ func (s TxByNonce) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
 type _Order interface {
 	AsTx() *Transaction
 	AsBundle() *SimulatedBundle
+	AsSBundle() *SimSBundle
 }
 
 type _TxOrder struct {
@@ -484,6 +485,7 @@ type _TxOrder struct {
 
 func (o _TxOrder) AsTx() *Transaction         { return o.tx }
 func (o _TxOrder) AsBundle() *SimulatedBundle { return nil }
+func (o _TxOrder) AsSBundle() *SimSBundle     { return nil }
 
 type _BundleOrder struct {
 	bundle *SimulatedBundle
@@ -491,6 +493,15 @@ type _BundleOrder struct {
 
 func (o _BundleOrder) AsTx() *Transaction         { return nil }
 func (o _BundleOrder) AsBundle() *SimulatedBundle { return o.bundle }
+func (o _BundleOrder) AsSBundle() *SimSBundle     { return nil }
+
+type _SBundleOrder struct {
+	sbundle *SimSBundle
+}
+
+func (o _SBundleOrder) AsTx() *Transaction         { return nil }
+func (o _SBundleOrder) AsBundle() *SimulatedBundle { return nil }
+func (o _SBundleOrder) AsSBundle() *SimSBundle     { return o.sbundle }
 
 // TxWithMinerFee wraps a transaction with its gas price or effective miner gasTipCap
 type TxWithMinerFee struct {
@@ -504,6 +515,10 @@ func (t *TxWithMinerFee) Tx() *Transaction {
 
 func (t *TxWithMinerFee) Bundle() *SimulatedBundle {
 	return t.order.AsBundle()
+}
+
+func (t *TxWithMinerFee) SBundle() *SimSBundle {
+	return t.order.AsSBundle()
 }
 
 // NewTxWithMinerFee creates a wrapped transaction, calculating the effective
@@ -525,6 +540,15 @@ func NewBundleWithMinerFee(bundle *SimulatedBundle, baseFee *big.Int) (*TxWithMi
 	minerFee := bundle.MevGasPrice
 	return &TxWithMinerFee{
 		order:    _BundleOrder{bundle},
+		minerFee: minerFee,
+	}, nil
+}
+
+// NewSBundleWithMinerFee creates a wrapped bundle.
+func NewSBundleWithMinerFee(sbundle *SimSBundle, baseFee *big.Int) (*TxWithMinerFee, error) {
+	minerFee := sbundle.MevGasPrice
+	return &TxWithMinerFee{
+		order:    _SBundleOrder{sbundle},
 		minerFee: minerFee,
 	}, nil
 }
@@ -581,9 +605,18 @@ type TransactionsByPriceAndNonce struct {
 //
 // Note, the input map is reowned so the caller should not interact any more with
 // if after providing it to the constructor.
-func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transactions, bundles []SimulatedBundle, baseFee *big.Int) *TransactionsByPriceAndNonce {
+func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transactions, bundles []SimulatedBundle, sbundles []*SimSBundle, baseFee *big.Int) *TransactionsByPriceAndNonce {
 	// Initialize a price and received time based heap with the head transactions
-	heads := make(TxByPriceAndTime, 0, len(txs)+len(bundles))
+	heads := make(TxByPriceAndTime, 0, len(txs)+len(bundles)+len(sbundles))
+
+	for i := range sbundles {
+		wrapped, err := NewSBundleWithMinerFee(sbundles[i], baseFee)
+		if err != nil {
+			continue
+		}
+		heads = append(heads, wrapped)
+	}
+
 	for i := range bundles {
 		wrapped, err := NewBundleWithMinerFee(&bundles[i], baseFee)
 		if err != nil {
