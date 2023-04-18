@@ -290,6 +290,10 @@ func (b *EthAPIBackend) SendSBundle(ctx context.Context, sbundle *types.SBundle)
 	return b.eth.txPool.AddSBundle(sbundle)
 }
 
+func (b *EthAPIBackend) CancelSBundles(ctx context.Context, hashes []common.Hash) {
+	b.eth.txPool.CancelSBundles(hashes)
+}
+
 func (b *EthAPIBackend) GetPoolTransactions() (types.Transactions, error) {
 	pending := b.eth.txPool.Pending(false)
 	var txs types.Transactions

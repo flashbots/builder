@@ -31,6 +31,10 @@ type SBundlePool struct {
 	bundles map[common.Hash]*types.SBundle
 	byBlock map[uint64][]*types.SBundle
 
+	// bundles that were cancelled and their max valid block
+	cancelled         map[common.Hash]struct{}
+	cancelledMaxBlock map[uint64][]common.Hash
+
 	signer types.Signer
 
 	// data from tx_pool that is constantly updated
@@ -43,9 +47,11 @@ type SBundlePool struct {
 
 func NewSBundlePool(signer types.Signer) *SBundlePool {
 	return &SBundlePool{
-		bundles: make(map[common.Hash]*types.SBundle),
-		byBlock: make(map[uint64][]*types.SBundle),
-		signer:  signer,
+		bundles:           make(map[common.Hash]*types.SBundle),
+		byBlock:           make(map[uint64][]*types.SBundle),
+		cancelled:         make(map[common.Hash]struct{}),
+		cancelledMaxBlock: make(map[uint64][]common.Hash),
+		signer:            signer,
 	}
 }
 
@@ -95,7 +101,27 @@ func (p *SBundlePool) GetSBundles(nextBlock uint64) []*types.SBundle {
 			delete(p.byBlock, b)
 		}
 	}
-	return p.byBlock[nextBlock]
+
+	// remove expired cancelled bundles
+	for b, el := range p.cancelledMaxBlock {
+		if b < nextBlock {
+			for _, hash := range el {
+				delete(p.cancelled, hash)
+			}
+			delete(p.cancelledMaxBlock, b)
+		}
+	}
+
+	// filter cancelled bundles and dependent bundles
+	var res []*types.SBundle
+	for _, bundle := range p.byBlock[nextBlock] {
+		if isBundleCancelled(bundle, p.cancelled) {
+			continue
+		}
+		res = append(res, bundle)
+	}
+
+	return res
 }
 
 func (p *SBundlePool) validateSBundle(level int, b *types.SBundle) error {
@@ -193,4 +219,31 @@ func (p *SBundlePool) validateTx(tx *types.Transaction) error {
 		return ErrInvalidSender
 	}
 	return nil
+}
+
+func (b *SBundlePool) Cancel(hashes []common.Hash) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	for _, hash := range hashes {
+		if bundle, ok := b.bundles[hash]; ok {
+			maxBlock := bundle.Inclusion.MaxBlockNumber
+			b.cancelled[hash] = struct{}{}
+			b.cancelledMaxBlock[maxBlock] = append(b.cancelledMaxBlock[maxBlock], hash)
+		}
+	}
+}
+
+func isBundleCancelled(bundle *types.SBundle, cancelled map[common.Hash]struct{}) bool {
+	if _, ok := cancelled[bundle.Hash()]; ok {
+		return true
+	}
+	for _, el := range bundle.Body {
+		if el.Bundle != nil {
+			if isBundleCancelled(el.Bundle, cancelled) {
+				return true
+			}
+		}
+	}
+	return false
 }

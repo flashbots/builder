@@ -78,6 +78,7 @@ type Backend interface {
 	SendTx(ctx context.Context, signedTx *types.Transaction, private bool) error
 	SendBundle(ctx context.Context, txs types.Transactions, blockNumber rpc.BlockNumber, uuid uuid.UUID, signingAddress common.Address, minTimestamp uint64, maxTimestamp uint64, revertingTxHashes []common.Hash) error
 	SendSBundle(ctx context.Context, sbundle *types.SBundle) error
+	CancelSBundles(ctx context.Context, hashes []common.Hash)
 	GetTransaction(ctx context.Context, txHash common.Hash) (*types.Transaction, common.Hash, uint64, uint64, error)
 	GetPoolTransactions() (types.Transactions, error)
 	GetPoolTransaction(txHash common.Hash) *types.Transaction

@@ -756,6 +756,10 @@ func (pool *TxPool) AddSBundle(bundle *types.SBundle) error {
 	return pool.sbundles.Add(bundle)
 }
 
+func (pool *TxPool) CancelSBundles(hashes []common.Hash) {
+	pool.sbundles.Cancel(hashes)
+}
+
 func (pool *TxPool) GetSBundles(block *big.Int) []*types.SBundle {
 	return pool.sbundles.GetSBundles(block.Uint64())
 }

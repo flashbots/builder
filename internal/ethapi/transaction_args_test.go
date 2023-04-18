@@ -225,6 +225,9 @@ func (b *backendMock) SendSBundle(ctx context.Context, sbundle *types.SBundle) e
 	return nil
 }
 
+func (b *backendMock) CancelSBundles(ctx context.Context, hashes []common.Hash) {
+}
+
 func newBackendMock() *backendMock {
 	config := &params.ChainConfig{
 		ChainID:             big.NewInt(42),

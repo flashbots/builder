@@ -210,3 +210,8 @@ func (api *MevAPI) SimBundle(ctx context.Context, args SendMevBundleArgs) (*SimM
 
 	return result, nil
 }
+
+func (api *MevAPI) CancelBundleByHash(ctx context.Context, hash common.Hash) error {
+	go api.b.CancelSBundles(ctx, []common.Hash{hash})
+	return nil
+}
