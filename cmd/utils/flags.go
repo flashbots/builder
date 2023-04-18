@@ -797,6 +797,13 @@ var (
 		Value:    "",
 		Category: flags.BuilderCategory,
 	}
+	BuilderRemotePrimevEndpoint = &cli.StringFlag{
+		Name:     "builder.remote_primev_endpoint",
+		Usage:    "Primev endpoint to connect your builder to boost module",
+		EnvVars:  []string{"BUILDER_REMOTE_PRIMEV_ENDPOINT"},
+		Value:    "",
+		Category: flags.BuilderCategory,
+	}
 	BuilderSecondaryRemoteRelayEndpoints = &cli.StringFlag{
 		Name:     "builder.secondary_remote_relay_endpoints",
 		Usage:    "Comma separated relay endpoints to connect to for validator registration data missing from the primary remote relay, and to push blocks for registrations missing from or matching the primary",
@@ -1616,6 +1623,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.GenesisValidatorsRoot = ctx.String(BuilderGenesisValidatorsRoot.Name)
 	cfg.BeaconEndpoints = strings.Split(ctx.String(BuilderBeaconEndpoints.Name), ",")
 	cfg.RemoteRelayEndpoint = ctx.String(BuilderRemoteRelayEndpoint.Name)
+	cfg.RemotePrimevEndpoint = ctx.String(BuilderRemotePrimevEndpoint.Name)
 	cfg.SecondaryRemoteRelayEndpoints = strings.Split(ctx.String(BuilderSecondaryRemoteRelayEndpoints.Name), ",")
 	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
 }

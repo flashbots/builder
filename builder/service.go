@@ -146,20 +146,21 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 
 	var relay IRelay
 	if cfg.RemoteRelayEndpoint != "" {
-		relay = NewRemoteRelay(cfg.RemoteRelayEndpoint, localRelay)
+		relay = NewRemoteRelay(cfg.RemoteRelayEndpoint, cfg.RemotePrimevEndpoint, localRelay)
 	} else if localRelay != nil {
 		relay = localRelay
 	} else {
 		return errors.New("neither local nor remote relay specified")
 	}
 
-	if len(cfg.SecondaryRemoteRelayEndpoints) > 0 && !(len(cfg.SecondaryRemoteRelayEndpoints) == 1 && cfg.SecondaryRemoteRelayEndpoints[0] == "") {
-		secondaryRelays := make([]IRelay, len(cfg.SecondaryRemoteRelayEndpoints))
-		for i, endpoint := range cfg.SecondaryRemoteRelayEndpoints {
-			secondaryRelays[i] = NewRemoteRelay(endpoint, nil)
-		}
-		relay = NewRemoteRelayAggregator(relay, secondaryRelays)
-	}
+	// [TODO] : re-enable multiple relay endpoints
+	// if len(cfg.SecondaryRemoteRelayEndpoints) > 0 && !(len(cfg.SecondaryRemoteRelayEndpoints) == 1 && cfg.SecondaryRemoteRelayEndpoints[0] == "") {
+	// 	secondaryRelays := make([]IRelay, len(cfg.SecondaryRemoteRelayEndpoints))
+	// 	for i, endpoint := range cfg.SecondaryRemoteRelayEndpoints {
+	// 		secondaryRelays[i] = NewRemoteRelay(endpoint, nil)
+	// 	}
+	// 	relay = NewRemoteRelayAggregator(relay, secondaryRelays)
+	// }
 
 	var validator *blockvalidation.BlockValidationAPI
 	if cfg.DryRun {

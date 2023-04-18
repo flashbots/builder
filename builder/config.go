@@ -17,6 +17,7 @@ type Config struct {
 	GenesisValidatorsRoot         string   `toml:",omitempty"`
 	BeaconEndpoints               []string `toml:",omitempty"`
 	RemoteRelayEndpoint           string   `toml:",omitempty"`
+	RemotePrimevEndpoint          string   `toml:",omitempty"`
 	SecondaryRemoteRelayEndpoints []string `toml:",omitempty"`
 	ValidationBlocklist           string   `toml:",omitempty"`
 }
@@ -39,6 +40,7 @@ var DefaultConfig = Config{
 	GenesisValidatorsRoot:         "0x0000000000000000000000000000000000000000000000000000000000000000",
 	BeaconEndpoints:               []string{"http://127.0.0.1:5052"},
 	RemoteRelayEndpoint:           "",
+	RemotePrimevEndpoint:          "",
 	SecondaryRemoteRelayEndpoints: nil,
 	ValidationBlocklist:           "",
 }

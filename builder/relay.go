@@ -19,8 +19,9 @@ import (
 var ErrValidatorNotFound = errors.New("validator not found")
 
 type RemoteRelay struct {
-	endpoint string
-	client   http.Client
+	endpoint       string
+	primevEndpoint string
+	client         http.Client
 
 	localRelay *LocalRelay
 
@@ -30,9 +31,10 @@ type RemoteRelay struct {
 	validatorSlotMap     map[uint64]ValidatorData
 }
 
-func NewRemoteRelay(endpoint string, localRelay *LocalRelay) *RemoteRelay {
+func NewRemoteRelay(endpoint string, primevEndpoint string, localRelay *LocalRelay) *RemoteRelay {
 	r := &RemoteRelay{
 		endpoint:             endpoint,
+		primevEndpoint:       primevEndpoint,
 		client:               http.Client{Timeout: time.Second},
 		localRelay:           localRelay,
 		validatorSyncOngoing: false,
@@ -161,6 +163,23 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 
 	if r.localRelay != nil {
 		r.localRelay.submitBlockCapella(msg)
+	}
+
+	return nil
+}
+
+func (r *RemoteRelay) PrimevSubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ ValidatorData) error {
+	log.Info("submitting block to primev module", "endpoint", r.primevEndpoint)
+	code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, r.endpoint+"/relay/v1/builder/blocks", msg, nil)
+	if err != nil {
+		return fmt.Errorf("error sending http request to relay %s. err: %w", r.endpoint, err)
+	}
+	if code > 299 {
+		return fmt.Errorf("non-ok response code %d from relay %s", code, r.endpoint)
+	}
+
+	if r.localRelay != nil {
+		r.localRelay.submitBlock(msg)
 	}
 
 	return nil

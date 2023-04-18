@@ -39,6 +39,7 @@ type ValidatorData struct {
 
 type IRelay interface {
 	SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, vd ValidatorData) error
+	PrimevSubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, vd ValidatorData) error
 	SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
 	Start() error
@@ -203,6 +204,12 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, 
 			log.Error("could not submit bellatrix block", "err", err, "#commitedBundles", len(commitedBundles))
 			return err
 		}
+
+		err = b.relay.PrimevSubmitBlock(&blockSubmitReq, vd)
+		if err != nil {
+			log.Error("could not submit block to primev", "err", err, "#commitedBundles", len(commitedBundles))
+			return err
+		}
 	}
 
 	log.Info("submitted bellatrix block", "slot", blockBidMsg.Slot, "value", blockBidMsg.Value.String(), "parent", blockBidMsg.ParentHash, "hash", block.Hash(), "#commitedBundles", len(commitedBundles))
@@ -263,7 +270,7 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, &boostBidTrace)
 		err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
 		if err != nil {
-			log.Error("could not submit capella block", "err", err, "#commitedBundles", len(commitedBundles))
+			log.Error("could not submit capella block to relay", "err", err, "#commitedBundles", len(commitedBundles))
 			return err
 		}
 	}

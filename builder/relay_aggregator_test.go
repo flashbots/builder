@@ -57,6 +57,17 @@ func (r *testRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, regis
 	return r.sbError
 }
 
+func (r *testRelay) PrimevSubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, registration ValidatorData) error {
+	if r.submittedMsgCh != nil {
+		select {
+		case r.submittedMsgCh <- msg:
+		default:
+		}
+	}
+	r.submittedMsg = msg
+	return r.sbError
+}
+
 func (r *testRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, registration ValidatorData) error {
 	if r.submittedMsgCh != nil {
 		select {
@@ -81,7 +92,7 @@ func (r *testRelay) Stop() {}
 
 func TestRemoteRelayAggregator(t *testing.T) {
 	t.Run("should return error if no relays return validator data", func(t *testing.T) {
-		backend := newTestRelayAggBackend(3)
+		backend := newTestRelayAggBackend(4)
 		// make all error out
 		for _, r := range backend.relays {
 			r.gvsErr = errors.New("error!")
@@ -93,7 +104,7 @@ func TestRemoteRelayAggregator(t *testing.T) {
 	})
 
 	t.Run("should return validator if one relay returns validator data", func(t *testing.T) {
-		backend := newTestRelayAggBackend(3)
+		backend := newTestRelayAggBackend(4)
 
 		// If primary returns should not error out
 		backend.relays[1].gvsErr = errors.New("error!")

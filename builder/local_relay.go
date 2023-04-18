@@ -110,6 +110,12 @@ func (r *LocalRelay) submitBlockCapella(msg *capella.SubmitBlockRequest) error {
 	return nil
 }
 
+func (r *LocalRelay) PrimevSubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ ValidatorData) error {
+	// [TODO] : fix local relay
+	log.Info("primev doesnt work with local relay", "block", msg.ExecutionPayload.BlockHash.String())
+	return r.submitBlock(msg)
+}
+
 func (r *LocalRelay) submitBlock(msg *boostTypes.BuilderSubmitBlockRequest) error {
 	payloadHeader, err := boostTypes.PayloadToPayloadHeader(msg.ExecutionPayload)
 	if err != nil {

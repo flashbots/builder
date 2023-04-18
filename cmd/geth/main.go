@@ -174,6 +174,7 @@ var (
 		utils.BuilderGenesisValidatorsRoot,
 		utils.BuilderBeaconEndpoints,
 		utils.BuilderRemoteRelayEndpoint,
+		utils.BuilderRemotePrimevEndpoint,
 		utils.BuilderSecondaryRemoteRelayEndpoints,
 	}
 
