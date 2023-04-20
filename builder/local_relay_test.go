@@ -60,7 +60,6 @@ func testRequest(t *testing.T, localRelay *LocalRelay, method string, path strin
 
 func TestValidatorRegistration(t *testing.T) {
 	_, relay, _ := newTestBackend(t, nil, nil, nil)
-	log.Error("rsk", "sk", hexutil.Encode(relay.relaySecretKey.Serialize()))
 
 	v := NewRandomValidator()
 	payload, err := prepareRegistrationMessage(t, relay.builderSigningDomain, v)
