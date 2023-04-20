@@ -45,7 +45,15 @@ func NewSimBundleResult() SimBundleResult {
 	}
 }
 
-func SimBundle(chainConfig *params.ChainConfig, chain *BlockChain, gp *GasPool, statedb *state.StateDB, header *types.Header, b *types.SBundle, logs bool) (SimBundleResult, error) {
+// SimBundle simulates a bundle and returns the result
+// Arguments are the same as in ApplyTransaction with the same change semantics:
+// - statedb is modified
+// - header is not modified
+// - gp is modified
+// - usedGas is modified (by txs that were applied)
+// Payout transactions will not be applied to the state.
+// GasUsed in return will include the gas that might be used by the payout txs.
+func SimBundle(config *params.ChainConfig, bc *BlockChain, author *common.Address, gp *GasPool, statedb *state.StateDB, header *types.Header, b *types.SBundle, txIdx int, usedGas *uint64, cfg vm.Config, logs bool) (SimBundleResult, error) {
 	res := NewSimBundleResult()
 
 	currBlock := header.Number.Uint64()
@@ -70,8 +78,9 @@ func SimBundle(chainConfig *params.ChainConfig, chain *BlockChain, gp *GasPool, 
 		coinbaseBefore = statedb.GetBalance(header.Coinbase)
 
 		if el.Tx != nil {
-			vmconfig := vm.Config{}
-			receipt, err := ApplyTransaction(chainConfig, chain, &header.Coinbase, gp, statedb, header, el.Tx, &header.GasUsed, vmconfig, nil)
+			statedb.SetTxContext(el.Tx.Hash(), txIdx)
+			txIdx++
+			receipt, err := ApplyTransaction(config, bc, author, gp, statedb, header, el.Tx, usedGas, cfg, nil)
 			if err != nil {
 				return res, err
 			}
@@ -83,7 +92,7 @@ func SimBundle(chainConfig *params.ChainConfig, chain *BlockChain, gp *GasPool, 
 				res.BodyLogs = append(res.BodyLogs, SimBundleBodyLogs{TxLogs: receipt.Logs})
 			}
 		} else if el.Bundle != nil {
-			innerRes, err := SimBundle(chainConfig, chain, gp, statedb, header, el.Bundle, logs)
+			innerRes, err := SimBundle(config, bc, author, gp, statedb, header, el.Bundle, txIdx, usedGas, cfg, logs)
 			if err != nil {
 				return res, err
 			}
@@ -105,7 +114,7 @@ func SimBundle(chainConfig *params.ChainConfig, chain *BlockChain, gp *GasPool, 
 	}
 
 	// estimate payout value and subtract from total profit
-	signer := types.MakeSigner(chainConfig, header.Number)
+	signer := types.MakeSigner(config, header.Number)
 	for i, el := range refundPercents {
 		if !refundIdx[i] {
 			continue

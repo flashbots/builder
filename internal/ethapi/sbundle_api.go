@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -194,7 +195,8 @@ func (api *MevAPI) SimBundle(ctx context.Context, args SendMevBundleArgs) (*SimM
 	gp := new(core.GasPool).AddGas(header.GasLimit)
 
 	result := &SimMevBundleResponse{}
-	bundleRes, err := core.SimBundle(api.b.ChainConfig(), api.chain, gp, state, &header, &bundle, true)
+	tmpGasUsed := uint64(0)
+	bundleRes, err := core.SimBundle(api.b.ChainConfig(), api.chain, &header.Coinbase, gp, state, &header, &bundle, 0, &tmpGasUsed, vm.Config{}, true)
 	if err != nil {
 		result.Success = false
 		result.Error = err.Error()

@@ -1835,7 +1835,15 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, sb
 
 			gp := new(core.GasPool).AddGas(env.header.GasLimit)
 
-			simRes, err := core.SimBundle(w.chainConfig, w.chain, gp, state, env.header, sbundle, false)
+			tmpGasUsed := uint64(0)
+			config := *w.chain.GetVMConfig()
+			var tracer *logger.AccountTouchTracer
+			if len(w.blockList) != 0 {
+				tracer = logger.NewAccountTouchTracer()
+				config.Tracer = tracer
+				config.Debug = true
+			}
+			simRes, err := core.SimBundle(w.chainConfig, w.chain, &env.coinbase, gp, state, env.header, sbundle, 0, &tmpGasUsed, config, false)
 			if metrics.EnabledBuilder {
 				simulationMeter.Mark(1)
 			}
@@ -1845,6 +1853,13 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, sb
 					failedBundleSimulationTimer.UpdateSince(start)
 				}
 				return
+			}
+			if len(w.blockList) != 0 {
+				for _, address := range tracer.TouchedAddresses() {
+					if _, in := w.blockList[address]; in {
+						return
+					}
+				}
 			}
 
 			result := &types.SimSBundle{
