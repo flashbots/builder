@@ -132,14 +132,13 @@ func (payload *Payload) resolveBestFullPayload(payloads []*Payload) {
 				p.lock.Unlock()
 				continue
 			}
-
-			if payload.full == nil || payload.fullFees.Cmp(p.fullFees) < 0 {
-				log.Trace("best payload updated", "id", p.id, "blockHash", p.full.Hash())
-				payload.full = p.full
-				payload.fullFees = p.fullFees
-			}
-			p.lock.Unlock()
 		}
+		if payload.full == nil || payload.fullFees.Cmp(p.fullFees) < 0 {
+			log.Trace("best payload updated", "id", p.id, "blockHash", p.full.Hash())
+			payload.full = p.full
+			payload.fullFees = p.fullFees
+		}
+		p.lock.Unlock()
 	}
 
 	// Since we are not expecting any updates, close the payload already
