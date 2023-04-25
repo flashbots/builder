@@ -797,6 +797,13 @@ var (
 		Value:    "",
 		Category: flags.BuilderCategory,
 	}
+	BuilderRemoteRelayWSEndpoints = &cli.StringFlag{
+		Name:     "builder.remote_relay_ws_endpoints",
+		Usage:    "Comma spearated relay endpoints to submit blocks using a websocket",
+		EnvVars:  []string{"BUILDER_REMOTE_RELAY_WS_ENDPOINT"},
+		Value:    "",
+		Category: flags.BuilderCategory,
+	}
 	BuilderSecondaryRemoteRelayEndpoints = &cli.StringFlag{
 		Name:     "builder.secondary_remote_relay_endpoints",
 		Usage:    "Comma separated relay endpoints to connect to for validator registration data missing from the primary remote relay, and to push blocks for registrations missing from or matching the primary",
@@ -1618,6 +1625,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.RemoteRelayEndpoint = ctx.String(BuilderRemoteRelayEndpoint.Name)
 	cfg.SecondaryRemoteRelayEndpoints = strings.Split(ctx.String(BuilderSecondaryRemoteRelayEndpoints.Name), ",")
 	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
+	cfg.RemoteRelayWSEndpoints = strings.Split(ctx.String(BuilderRemoteRelayWSEndpoints.Name), ",")
 }
 
 // SetNodeConfig applies node-related command line flags to the config.

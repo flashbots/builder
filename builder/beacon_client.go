@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -92,15 +93,19 @@ func (m *MultiBeaconClient) isValidator(pubkey PubkeyHex) bool {
 
 func (m *MultiBeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error) {
 	var allErrs error
+	var errorStrings []string
 	for _, c := range m.clients {
 		pk, err := c.getProposerForNextSlot(requestedSlot)
 		if err != nil {
-			allErrs = errors.Join(allErrs, err)
+			errorStrings = append(errorStrings, err.Error())
 			continue
 		}
 
 		return pk, nil
 	}
+
+	allErrs = fmt.Errorf("errors %v", strings.Join(errorStrings, ", "))
+
 	return PubkeyHex(""), allErrs
 }
 
@@ -112,12 +117,15 @@ func (m *MultiBeaconClient) SubscribeToPayloadAttributesEvents(payloadAttrC chan
 
 func (m *MultiBeaconClient) Start() error {
 	var allErrs error
+	var errorStrings []string
 	for _, c := range m.clients {
 		err := c.Start()
 		if err != nil {
-			allErrs = errors.Join(allErrs, err)
+			errorStrings = append(errorStrings, err.Error())
 		}
 	}
+
+	allErrs = fmt.Errorf("errors %v", strings.Join(errorStrings, ", "))
 	return allErrs
 }
 

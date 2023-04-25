@@ -2,6 +2,7 @@ package builder
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 	"github.com/flashbots/mev-boost/server"
+	"github.com/gorilla/websocket"
 )
 
 var ErrValidatorNotFound = errors.New("validator not found")
@@ -28,9 +30,12 @@ type RemoteRelay struct {
 	validatorSyncOngoing bool
 	lastRequestedSlot    uint64
 	validatorSlotMap     map[uint64]ValidatorData
+
+	bidSubmissionChan chan *[]byte
+	websocketEnabled  bool
 }
 
-func NewRemoteRelay(endpoint string, localRelay *LocalRelay) *RemoteRelay {
+func NewRemoteRelay(endpoint string, localRelay *LocalRelay, enableWS bool) *RemoteRelay {
 	r := &RemoteRelay{
 		endpoint:             endpoint,
 		client:               http.Client{Timeout: time.Second},
@@ -38,12 +43,26 @@ func NewRemoteRelay(endpoint string, localRelay *LocalRelay) *RemoteRelay {
 		validatorSyncOngoing: false,
 		lastRequestedSlot:    0,
 		validatorSlotMap:     make(map[uint64]ValidatorData),
+
+		bidSubmissionChan: make(chan *[]byte),
+		websocketEnabled:  enableWS,
+	}
+
+	if r.websocketEnabled {
+		conn, err := r.ConnectToWebsocket()
+		if err != nil {
+			log.Error("could not connect to websocket")
+			return nil
+		}
+		go r.maintainConnection(conn)
+		return r
 	}
 
 	err := r.updateValidatorsMap(0, 3)
 	if err != nil {
 		log.Error("could not connect to remote relay, continuing anyway", "err", err)
 	}
+
 	return r
 }
 
@@ -150,6 +169,16 @@ func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ V
 }
 
 func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData) error {
+
+	if r.websocketEnabled {
+		payloadBytes, err := json.Marshal(msg)
+		if err != nil {
+			return err
+		}
+		r.bidSubmissionChan <- &payloadBytes
+		return nil
+	}
+
 	log.Info("submitting block to remote relay", "endpoint", r.endpoint)
 	code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, r.endpoint+"/relay/v1/builder/blocks", msg, nil)
 	if err != nil {
@@ -197,4 +226,80 @@ func (r *RemoteRelay) getSlotValidatorMapFromRelay() (map[uint64]ValidatorData, 
 	}
 
 	return res, nil
+}
+
+func (r *RemoteRelay) ConnectToWebsocket() (*websocket.Conn, error) {
+
+	wsURL := fmt.Sprintf("%s/blxr/ws", r.endpoint)
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil) // requires blxr's http auth header
+	if err != nil {
+		log.Info("Could not connect to relay websocket", "url", wsURL, "err", err)
+		return conn, err
+	}
+
+	return conn, nil
+}
+
+func (r *RemoteRelay) maintainConnection(conn *websocket.Conn) {
+
+	// if the connection closes optionally just reconnect and maintain
+
+	// defer func() {
+	// 	time.Sleep(15 * time.Second)
+	// 	conn, err := r.ConnectToWebsocket()
+	// 	if err != nil {
+	// 		log.Error("could not connect to webocket")
+	// 		return
+	// 	}
+	// 	go r.maintainConnection(conn)
+	// }()
+
+	conn.SetCloseHandler(func(code int, text string) error {
+		log.Warn("connection closed with code and message", "code", code, "message", text)
+		return nil
+	})
+
+	ticker := time.NewTicker(15 * time.Second)
+
+	for {
+		select {
+		case <-ticker.C:
+
+			// send ping
+			if err := conn.WriteMessage(websocket.PingMessage, []byte("ping")); err != nil {
+				log.Error("failed to ping websocket", "error", err.Error())
+				return
+			}
+
+			// read message
+			_, res, err := conn.ReadMessage()
+			if err != nil {
+				log.Error("failed to read message from websocket", "error", err.Error())
+				return
+			}
+
+			log.Info("message received from websocket", "message", string(res))
+
+		case bid := <-r.bidSubmissionChan:
+
+			// reset ticker, no need to ping if we're already writing a message
+			ticker.Reset(15 * time.Second)
+
+			// send bid
+			if err := conn.WriteMessage(websocket.TextMessage, *bid); err != nil {
+				log.Error("failed write bid to socket", "error", err.Error())
+				return
+			}
+
+			// read message
+			_, res, err := conn.ReadMessage()
+			if err != nil {
+				log.Error("failed to read message from websocket", "error", err.Error())
+				return
+			}
+
+			log.Info("message received from websocket", "message", string(res))
+		}
+
+	}
 }

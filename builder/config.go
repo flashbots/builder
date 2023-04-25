@@ -19,6 +19,8 @@ type Config struct {
 	RemoteRelayEndpoint           string   `toml:",omitempty"`
 	SecondaryRemoteRelayEndpoints []string `toml:",omitempty"`
 	ValidationBlocklist           string   `toml:",omitempty"`
+
+	RemoteRelayWSEndpoints []string `toml:",omitempty"`
 }
 
 // DefaultConfig is the default config for the builder.
@@ -41,4 +43,6 @@ var DefaultConfig = Config{
 	RemoteRelayEndpoint:           "",
 	SecondaryRemoteRelayEndpoints: nil,
 	ValidationBlocklist:           "",
+
+	RemoteRelayWSEndpoints: nil,
 }

@@ -146,7 +146,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 
 	var relay IRelay
 	if cfg.RemoteRelayEndpoint != "" {
-		relay = NewRemoteRelay(cfg.RemoteRelayEndpoint, localRelay)
+		relay = NewRemoteRelay(cfg.RemoteRelayEndpoint, localRelay, false)
 	} else if localRelay != nil {
 		relay = localRelay
 	} else {
@@ -156,9 +156,17 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	if len(cfg.SecondaryRemoteRelayEndpoints) > 0 && !(len(cfg.SecondaryRemoteRelayEndpoints) == 1 && cfg.SecondaryRemoteRelayEndpoints[0] == "") {
 		secondaryRelays := make([]IRelay, len(cfg.SecondaryRemoteRelayEndpoints))
 		for i, endpoint := range cfg.SecondaryRemoteRelayEndpoints {
-			secondaryRelays[i] = NewRemoteRelay(endpoint, nil)
+			secondaryRelays[i] = NewRemoteRelay(endpoint, nil, false)
 		}
 		relay = NewRemoteRelayAggregator(relay, secondaryRelays)
+	}
+
+	if len(cfg.RemoteRelayWSEndpoints) > 0 && !(len(cfg.RemoteRelayWSEndpoints) == 1 && cfg.RemoteRelayWSEndpoints[0] == "") {
+		websocketRelays := make([]IRelay, len(cfg.RemoteRelayWSEndpoints))
+		for i, endpoint := range cfg.RemoteRelayWSEndpoints {
+			websocketRelays[i] = NewRemoteRelay(endpoint, nil, true)
+		}
+		relay = NewRemoteRelayAggregator(relay, websocketRelays)
 	}
 
 	var validator *blockvalidation.BlockValidationAPI
