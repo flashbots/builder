@@ -230,8 +230,11 @@ func (r *RemoteRelay) getSlotValidatorMapFromRelay() (map[uint64]ValidatorData, 
 
 func (r *RemoteRelay) ConnectToWebsocket() (*websocket.Conn, error) {
 
+	header := http.Header{}
+	header.Set("Authorization", "<YOUR-AUTHORIZATION-HEADER>")
+
 	wsURL := fmt.Sprintf("%s/blxr/ws", r.endpoint)
-	conn, _, err := websocket.DefaultDialer.Dial(wsURL, nil) // requires blxr's http auth header
+	conn, _, err := websocket.DefaultDialer.Dial(wsURL, header)
 	if err != nil {
 		log.Info("Could not connect to relay websocket", "url", wsURL, "err", err)
 		return conn, err
