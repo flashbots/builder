@@ -29,6 +29,10 @@ import (
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
 
+const (
+	RateLimitInterval = 500 * time.Millisecond
+)
+
 type PubkeyHex string
 
 type ValidatorData struct {
@@ -91,7 +95,7 @@ func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRe
 		builderPublicKey:            pk,
 		builderSigningDomain:        builderSigningDomain,
 
-		limiter:       rate.NewLimiter(rate.Every(time.Millisecond), 510),
+		limiter:       rate.NewLimiter(rate.Every(RateLimitInterval), 10),
 		slotCtx:       slotCtx,
 		slotCtxCancel: slotCtxCancel,
 
@@ -118,11 +122,21 @@ func (b *Builder) Start() error {
 				} else if payloadAttributes.Slot == currentSlot {
 					// Subsequent sse events should only be canonical!
 					if !b.ignoreLatePayloadAttributes {
-						b.OnPayloadAttribute(&payloadAttributes)
+						err := b.OnPayloadAttribute(&payloadAttributes)
+						log.Error("error with builder processing on payload attribute",
+							"latestSlot", currentSlot,
+							"processedSlot", payloadAttributes.Slot,
+							"headHash", payloadAttributes.HeadHash.String(),
+							"error", err)
 					}
 				} else if payloadAttributes.Slot > currentSlot {
 					currentSlot = payloadAttributes.Slot
-					b.OnPayloadAttribute(&payloadAttributes)
+					err := b.OnPayloadAttribute(&payloadAttributes)
+					log.Error("error with builder processing on payload attribute",
+						"latestSlot", currentSlot,
+						"processedSlot", payloadAttributes.Slot,
+						"headHash", payloadAttributes.HeadHash.String(),
+						"error", err)
 				}
 			}
 		}
