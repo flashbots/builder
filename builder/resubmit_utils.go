@@ -16,10 +16,10 @@ func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal ch
 			return
 		case <-updateSignal:
 			var res *rate.Reservation
-			if submitTime != nil {
-				res = limiter.ReserveN(*submitTime, 1)
-			} else {
+			if submitTime == nil {
 				res = limiter.Reserve()
+			} else {
+				res = limiter.ReserveN(*submitTime, 1)
 			}
 
 			if !res.OK() {
