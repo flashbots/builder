@@ -77,10 +77,16 @@ type Builder struct {
 	stop chan struct{}
 }
 
-func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, ignoreLatePayloadAttributes bool, validator *blockvalidation.BlockValidationAPI, beaconClient IBeaconClient) *Builder {
+func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain,
+	eth IEthereumService, dryRun bool, ignoreLatePayloadAttributes bool, validator *blockvalidation.BlockValidationAPI,
+	beaconClient IBeaconClient, limiter *rate.Limiter) *Builder {
 	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
+
+	if limiter == nil {
+		limiter = rate.NewLimiter(rate.Every(RateLimitInterval), 10)
+	}
 
 	slotCtx, slotCtxCancel := context.WithCancel(context.Background())
 	return &Builder{
@@ -95,7 +101,7 @@ func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRe
 		builderPublicKey:            pk,
 		builderSigningDomain:        builderSigningDomain,
 
-		limiter:       rate.NewLimiter(rate.Every(RateLimitInterval), 10),
+		limiter:       limiter,
 		slotCtx:       slotCtx,
 		slotCtxCancel: slotCtxCancel,
 
@@ -381,8 +387,13 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 		queueMu.Unlock()
 	}
 
+	// Avoid submitting early into a given slot. For example if slots have 12 second interval, submissions should
+	// not begin until 8 seconds into the slot.
+	slotTime := time.UnixMilli(int64(attrs.Timestamp))
+	submitTime := slotTime.Add(-4 * time.Second)
+
 	// Empties queue, submits the best block for current job with rate limit (global for all jobs)
-	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock)
+	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock, submitTime)
 
 	// Populates queue with submissions that increase block profit
 	blockHook := func(block *types.Block, blockValue *big.Int, ordersCloseTime time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle) {

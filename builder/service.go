@@ -5,6 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
+	"time"
+
+	"golang.org/x/time/rate"
 
 	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
 
@@ -173,6 +177,34 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		validator = blockvalidation.NewBlockValidationAPI(backend, accessVerifier)
 	}
 
+	var (
+		limiter *rate.Limiter
+		burst   = 10
+		// FLASHBOTS_BUILDER_RATE_LIMIT_DURATION will accept valid time.Duration values.
+		// A duration string is a possibly signed sequence of
+		// decimal numbers, each with optional fraction and a unit suffix,
+		// such as "300ms", "-1.5h" or "2h45m".
+		// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
+		builderRateLimit  = os.Getenv("FLASHBOTS_BUILDER_RATE_LIMIT_DURATION")
+		builderBurstLimit = os.Getenv("FLASHBOTS_BUILDER_BURST_LIMIT")
+	)
+	if builderRateLimit != "" {
+		d, err := time.ParseDuration(builderRateLimit)
+		if err != nil {
+			return fmt.Errorf("error parsing builder rate limit - %v", err)
+		}
+
+		if builderBurstLimit != "" {
+			b, err := strconv.Atoi(builderBurstLimit)
+			if err != nil {
+				return fmt.Errorf("error parsing builder burst limit - %v", err)
+			}
+			burst = b
+		}
+
+		limiter = rate.NewLimiter(rate.Every(d), burst)
+	}
+
 	// TODO: move to proper flags
 	var ds flashbotsextra.IDatabaseService
 	dbDSN := os.Getenv("FLASHBOTS_POSTGRES_DSN")
@@ -203,7 +235,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		return errors.New("incorrect builder API secret key provided")
 	}
 
-	builderBackend := NewBuilder(builderSk, ds, relay, builderSigningDomain, ethereumService, cfg.DryRun, cfg.IgnoreLatePayloadAttributes, validator, beaconClient)
+	builderBackend := NewBuilder(builderSk, ds, relay, builderSigningDomain, ethereumService, cfg.DryRun, cfg.IgnoreLatePayloadAttributes, validator, beaconClient, limiter)
 	builderService := NewService(cfg.ListenAddr, localRelay, builderBackend)
 
 	stack.RegisterAPIs([]rpc.API{

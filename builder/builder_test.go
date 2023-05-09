@@ -73,7 +73,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 
 	testEthService := &testEthereumService{synced: true, testExecutableData: testExecutableData, testBlock: testBlock, testBlockValue: big.NewInt(10)}
 
-	builder := NewBuilder(sk, flashbotsextra.NilDbService{}, &testRelay, bDomain, testEthService, false, false, nil, &testBeacon)
+	builder := NewBuilder(sk, flashbotsextra.NilDbService{}, &testRelay, bDomain, testEthService, false, false, nil, &testBeacon, nil)
 	builder.Start()
 	defer builder.Stop()
 

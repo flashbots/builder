@@ -43,7 +43,7 @@ func TestResubmitUtils(t *testing.T) {
 			subAll = append(subAll, submission{time.Now(), subBest})
 			subLast = subBest
 		}
-	})
+	}, time.Now())
 
 	runRetryLoop(ctx, resubmitInterval, func() {
 		subMu.Lock()
