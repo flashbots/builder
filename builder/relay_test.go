@@ -45,7 +45,7 @@ func TestRemoteRelay(t *testing.T) {
 	}
 
 	srv := httptest.NewServer(r)
-	relay := NewRemoteRelay(srv.URL, nil)
+	relay := NewRemoteRelay(srv.URL, RelayConfig{Endpoint: srv.URL, SszEnabled: false}, nil)
 	relay.validatorsLock.RLock()
 	vd, found := relay.validatorSlotMap[123]
 	relay.validatorsLock.RUnlock()

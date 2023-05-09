@@ -804,6 +804,13 @@ var (
 		Value:    "",
 		Category: flags.BuilderCategory,
 	}
+	BuilderRelayConfigFile = &cli.StringFlag{
+		Name:     "builder.relay_config_file",
+		Usage:    "Path to JSON file with relay configuration",
+		EnvVars:  []string{"BUILDER_RELAY_CONFIG_LIST"},
+		Value:    "",
+		Category: flags.BuilderCategory,
+	}
 	// RPC settings
 	IPCDisabledFlag = &cli.BoolFlag{
 		Name:     "ipcdisable",
@@ -1618,6 +1625,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.RemoteRelayEndpoint = ctx.String(BuilderRemoteRelayEndpoint.Name)
 	cfg.SecondaryRemoteRelayEndpoints = strings.Split(ctx.String(BuilderSecondaryRemoteRelayEndpoints.Name), ",")
 	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
+	cfg.RelayConfigFile = ctx.String(BuilderRelayConfigFile.Name)
 }
 
 // SetNodeConfig applies node-related command line flags to the config.

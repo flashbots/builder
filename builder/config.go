@@ -19,6 +19,7 @@ type Config struct {
 	RemoteRelayEndpoint           string   `toml:",omitempty"`
 	SecondaryRemoteRelayEndpoints []string `toml:",omitempty"`
 	ValidationBlocklist           string   `toml:",omitempty"`
+	RelayConfigFile               string   `toml:",omitempty"`
 }
 
 // DefaultConfig is the default config for the builder.
@@ -41,4 +42,10 @@ var DefaultConfig = Config{
 	RemoteRelayEndpoint:           "",
 	SecondaryRemoteRelayEndpoints: nil,
 	ValidationBlocklist:           "",
+	RelayConfigFile:               "",
+}
+
+type RelayConfig struct {
+	Endpoint   string `json:"endpoint"`
+	SszEnabled bool   `json:"ssz_enabled"`
 }

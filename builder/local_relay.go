@@ -105,6 +105,10 @@ func (r *LocalRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Valid
 	return r.submitBlockCapella(msg)
 }
 
+func (r *LocalRelay) Config() RelayConfig {
+	return RelayConfig{}
+}
+
 // TODO: local relay support for capella
 func (r *LocalRelay) submitBlockCapella(msg *capella.SubmitBlockRequest) error {
 	return nil

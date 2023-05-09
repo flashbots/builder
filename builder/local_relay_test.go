@@ -32,7 +32,18 @@ func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *
 	beaconClient := &testBeaconClient{validator: validator}
 	localRelay := NewLocalRelay(sk, beaconClient, bDomain, cDomain, ForkData{}, true)
 	ethService := &testEthereumService{synced: true, testExecutableData: forkchoiceData, testBlock: block, testBlockValue: blockValue}
-	backend := NewBuilder(sk, flashbotsextra.NilDbService{}, localRelay, bDomain, ethService, false, false, nil, beaconClient)
+	builderArgs := BuilderArgs{
+		sk:                          sk,
+		ds:                          flashbotsextra.NilDbService{},
+		relay:                       localRelay,
+		builderSigningDomain:        bDomain,
+		eth:                         ethService,
+		dryRun:                      false,
+		ignoreLatePayloadAttributes: false,
+		validator:                   nil,
+		beaconClient:                beaconClient,
+	}
+	backend := NewBuilder(builderArgs)
 	// service := NewService("127.0.0.1:31545", backend)
 
 	backend.limiter = rate.NewLimiter(rate.Inf, 0)

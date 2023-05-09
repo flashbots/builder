@@ -21,6 +21,7 @@ var ErrValidatorNotFound = errors.New("validator not found")
 type RemoteRelay struct {
 	endpoint string
 	client   http.Client
+	config   RelayConfig
 
 	localRelay *LocalRelay
 
@@ -30,7 +31,7 @@ type RemoteRelay struct {
 	validatorSlotMap     map[uint64]ValidatorData
 }
 
-func NewRemoteRelay(endpoint string, localRelay *LocalRelay) *RemoteRelay {
+func NewRemoteRelay(endpoint string, config RelayConfig, localRelay *LocalRelay) *RemoteRelay {
 	r := &RemoteRelay{
 		endpoint:             endpoint,
 		client:               http.Client{Timeout: time.Second},
@@ -38,6 +39,7 @@ func NewRemoteRelay(endpoint string, localRelay *LocalRelay) *RemoteRelay {
 		validatorSyncOngoing: false,
 		lastRequestedSlot:    0,
 		validatorSlotMap:     make(map[uint64]ValidatorData),
+		config:               config,
 	}
 
 	err := r.updateValidatorsMap(0, 3)
@@ -151,7 +153,20 @@ func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ V
 
 func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to remote relay", "endpoint", r.endpoint)
-	code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, r.endpoint+"/relay/v1/builder/blocks", msg, nil)
+	var code int
+	var err error
+
+	if r.config.SszEnabled {
+		bodyBytes, err := msg.MarshalSSZ()
+		if err != nil {
+			return fmt.Errorf("error marshaling ssz: %w", err)
+		}
+		log.Debug("submitting block to remote relay", "endpoint", r.endpoint)
+		code, err = SendSSZRequest(context.TODO(), *http.DefaultClient, http.MethodPost, r.endpoint+"/relay/v1/builder/blocks", bodyBytes)
+	} else {
+		code, err = server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, r.endpoint+"/relay/v1/builder/blocks", msg, nil)
+	}
+
 	if err != nil {
 		return fmt.Errorf("error sending http request to relay %s. err: %w", r.endpoint, err)
 	}
@@ -197,4 +212,8 @@ func (r *RemoteRelay) getSlotValidatorMapFromRelay() (map[uint64]ValidatorData, 
 	}
 
 	return res, nil
+}
+
+func (r *RemoteRelay) Config() RelayConfig {
+	return r.config
 }

@@ -1,6 +1,7 @@
 package builder
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -74,6 +75,16 @@ func getRouter(localRelay *LocalRelay) http.Handler {
 	return loggedRouter
 }
 
+func getRelayConfig(relayConfigs map[string]RelayConfig, endpoint string) RelayConfig {
+	if relayConfig, ok := relayConfigs[endpoint]; ok {
+		return relayConfig
+	}
+	return RelayConfig{
+		Endpoint:   endpoint,
+		SszEnabled: false,
+	}
+}
+
 func NewService(listenAddr string, localRelay *LocalRelay, builder IBuilder) *Service {
 	var srv *http.Server
 	if localRelay != nil {
@@ -144,9 +155,27 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		localRelay = NewLocalRelay(relaySk, beaconClient, builderSigningDomain, proposerSigningDomain, ForkData{cfg.GenesisForkVersion, cfg.BellatrixForkVersion, cfg.GenesisValidatorsRoot}, cfg.EnableValidatorChecks)
 	}
 
+	relayConfigs := make(map[string]RelayConfig)
+	if cfg.RelayConfigFile != "" {
+		bytes, err := os.ReadFile(cfg.RelayConfigFile)
+		if err != nil {
+			log.Info("Failed to read relay config file, will use default settings", "err", err)
+		} else {
+			var configs []RelayConfig
+			if err := json.Unmarshal(bytes, &configs); err != nil {
+				log.Info("Failed to unmarshal relay config, will use default settings", "err", err)
+			} else {
+				for _, config := range configs {
+					relayConfigs[config.Endpoint] = config
+				}
+			}
+		}
+	}
+
 	var relay IRelay
 	if cfg.RemoteRelayEndpoint != "" {
-		relay = NewRemoteRelay(cfg.RemoteRelayEndpoint, localRelay)
+		relayConfig := getRelayConfig(relayConfigs, cfg.RemoteRelayEndpoint)
+		relay = NewRemoteRelay(cfg.RemoteRelayEndpoint, relayConfig, localRelay)
 	} else if localRelay != nil {
 		relay = localRelay
 	} else {
@@ -156,7 +185,8 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	if len(cfg.SecondaryRemoteRelayEndpoints) > 0 && !(len(cfg.SecondaryRemoteRelayEndpoints) == 1 && cfg.SecondaryRemoteRelayEndpoints[0] == "") {
 		secondaryRelays := make([]IRelay, len(cfg.SecondaryRemoteRelayEndpoints))
 		for i, endpoint := range cfg.SecondaryRemoteRelayEndpoints {
-			secondaryRelays[i] = NewRemoteRelay(endpoint, nil)
+			relayConfig := getRelayConfig(relayConfigs, endpoint)
+			secondaryRelays[i] = NewRemoteRelay(endpoint, relayConfig, nil)
 		}
 		relay = NewRemoteRelayAggregator(relay, secondaryRelays)
 	}
@@ -203,7 +233,19 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		return errors.New("incorrect builder API secret key provided")
 	}
 
-	builderBackend := NewBuilder(builderSk, ds, relay, builderSigningDomain, ethereumService, cfg.DryRun, cfg.IgnoreLatePayloadAttributes, validator, beaconClient)
+	builderArgs := BuilderArgs{
+		sk:                          builderSk,
+		ds:                          ds,
+		relay:                       relay,
+		builderSigningDomain:        builderSigningDomain,
+		eth:                         ethereumService,
+		dryRun:                      cfg.DryRun,
+		ignoreLatePayloadAttributes: cfg.IgnoreLatePayloadAttributes,
+		validator:                   validator,
+		beaconClient:                beaconClient,
+	}
+
+	builderBackend := NewBuilder(builderArgs)
 	builderService := NewService(cfg.ListenAddr, localRelay, builderBackend)
 
 	stack.RegisterAPIs([]rpc.API{

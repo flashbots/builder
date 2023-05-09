@@ -41,6 +41,7 @@ type IRelay interface {
 	SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, vd ValidatorData) error
 	SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
+	Config() RelayConfig
 	Start() error
 	Stop()
 }
@@ -73,23 +74,35 @@ type Builder struct {
 	stop chan struct{}
 }
 
-func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain, eth IEthereumService, dryRun bool, ignoreLatePayloadAttributes bool, validator *blockvalidation.BlockValidationAPI, beaconClient IBeaconClient) *Builder {
-	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
+type BuilderArgs struct {
+	sk                          *bls.SecretKey
+	ds                          flashbotsextra.IDatabaseService
+	relay                       IRelay
+	builderSigningDomain        boostTypes.Domain
+	eth                         IEthereumService
+	dryRun                      bool
+	ignoreLatePayloadAttributes bool
+	validator                   *blockvalidation.BlockValidationAPI
+	beaconClient                IBeaconClient
+}
+
+func NewBuilder(args BuilderArgs) *Builder {
+	pkBytes := bls.PublicKeyFromSecretKey(args.sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
 
 	slotCtx, slotCtxCancel := context.WithCancel(context.Background())
 	return &Builder{
-		ds:                          ds,
-		relay:                       relay,
-		eth:                         eth,
-		dryRun:                      dryRun,
-		ignoreLatePayloadAttributes: ignoreLatePayloadAttributes,
-		validator:                   validator,
-		beaconClient:                beaconClient,
-		builderSecretKey:            sk,
+		ds:                          args.ds,
+		relay:                       args.relay,
+		eth:                         args.eth,
+		dryRun:                      args.dryRun,
+		ignoreLatePayloadAttributes: args.ignoreLatePayloadAttributes,
+		validator:                   args.validator,
+		beaconClient:                args.beaconClient,
+		builderSecretKey:            args.sk,
 		builderPublicKey:            pk,
-		builderSigningDomain:        builderSigningDomain,
+		builderSigningDomain:        args.builderSigningDomain,
 
 		limiter:       rate.NewLimiter(rate.Every(time.Millisecond), 510),
 		slotCtx:       slotCtx,
