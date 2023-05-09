@@ -153,8 +153,6 @@ func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ V
 
 func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to remote relay", "endpoint", r.endpoint)
-	var code int
-	var err error
 
 	if r.config.SszEnabled {
 		bodyBytes, err := msg.MarshalSSZ()
@@ -162,16 +160,23 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 			return fmt.Errorf("error marshaling ssz: %w", err)
 		}
 		log.Debug("submitting block to remote relay", "endpoint", r.endpoint)
-		code, err = SendSSZRequest(context.TODO(), *http.DefaultClient, http.MethodPost, r.endpoint+"/relay/v1/builder/blocks", bodyBytes)
-	} else {
-		code, err = server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, r.endpoint+"/relay/v1/builder/blocks", msg, nil)
-	}
+		code, err := SendSSZRequest(context.TODO(), *http.DefaultClient, http.MethodPost, r.endpoint+"/relay/v1/builder/blocks", bodyBytes)
 
-	if err != nil {
-		return fmt.Errorf("error sending http request to relay %s. err: %w", r.endpoint, err)
-	}
-	if code > 299 {
-		return fmt.Errorf("non-ok response code %d from relay %s", code, r.endpoint)
+		if err != nil {
+			return fmt.Errorf("error sending http request to relay %s. err: %w", r.endpoint, err)
+		}
+		if code > 299 {
+			return fmt.Errorf("non-ok response code %d from relay %s", code, r.endpoint)
+		}
+	} else {
+		code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, r.endpoint+"/relay/v1/builder/blocks", msg, nil)
+
+		if err != nil {
+			return fmt.Errorf("error sending http request to relay %s. err: %w", r.endpoint, err)
+		}
+		if code > 299 {
+			return fmt.Errorf("non-ok response code %d from relay %s", code, r.endpoint)
+		}
 	}
 
 	if r.localRelay != nil {

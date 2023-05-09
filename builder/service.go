@@ -159,16 +159,17 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	if cfg.RelayConfigFile != "" {
 		bytes, err := os.ReadFile(cfg.RelayConfigFile)
 		if err != nil {
-			log.Info("Failed to read relay config file, will use default settings", "err", err)
-		} else {
-			var configs []RelayConfig
-			if err := json.Unmarshal(bytes, &configs); err != nil {
-				log.Info("Failed to unmarshal relay config, will use default settings", "err", err)
-			} else {
-				for _, config := range configs {
-					relayConfigs[config.Endpoint] = config
-				}
-			}
+			log.Info("Failed to read relay config file", "err", err)
+			return fmt.Errorf("Failed to read relay config file %w", err)
+		}
+		var configs []RelayConfig
+		if err := json.Unmarshal(bytes, &configs); err != nil {
+			log.Info("Failed to unmarshal relay config", "err", err)
+			return fmt.Errorf("Failed to unmarshal relay config %w", err)
+		}
+
+		for _, config := range configs {
+			relayConfigs[config.Endpoint] = config
 		}
 	}
 

@@ -51,7 +51,7 @@ func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *
 	return backend, localRelay, validator
 }
 
-func testRequest(t *testing.T, localRelay *LocalRelay, method string, path string, payload any) *httptest.ResponseRecorder {
+func testRequest(t *testing.T, localRelay *LocalRelay, method, path string, payload any) *httptest.ResponseRecorder {
 	var req *http.Request
 	var err error
 
