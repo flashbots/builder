@@ -175,6 +175,7 @@ var (
 		utils.BuilderBeaconEndpoints,
 		utils.BuilderRemoteRelayEndpoint,
 		utils.BuilderSecondaryRemoteRelayEndpoints,
+		utils.BuilderRelayConfigFile,
 	}
 
 	rpcFlags = []cli.Flag{
