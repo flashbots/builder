@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	RateLimitInterval = 500 * time.Millisecond
+	RateLimitIntervalDefault = 500 * time.Millisecond
 )
 
 type PubkeyHex string
@@ -85,7 +85,7 @@ func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRe
 	pk.FromSlice(pkBytes)
 
 	if limiter == nil {
-		limiter = rate.NewLimiter(rate.Every(RateLimitInterval), 10)
+		limiter = rate.NewLimiter(rate.Every(RateLimitIntervalDefault), 10)
 	}
 
 	slotCtx, slotCtxCancel := context.WithCancel(context.Background())
