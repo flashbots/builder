@@ -9,13 +9,19 @@ import (
 )
 
 // runResubmitLoop checks for update signal and calls submit respecting provided rate limiter and context
-func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal chan struct{}, submit func(), submitTime time.Time) {
+func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal chan struct{}, submit func(), submitTime *time.Time) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-updateSignal:
-			res := limiter.ReserveN(submitTime, 1)
+			var res *rate.Reservation
+			if submitTime != nil {
+				res = limiter.ReserveN(*submitTime, 1)
+			} else {
+				res = limiter.Reserve()
+			}
+
 			if !res.OK() {
 				log.Warn("resubmit loop failed to make limiter reservation")
 				return
