@@ -139,7 +139,7 @@ func (r *RemoteRelay) Stop() {}
 
 func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to remote relay", "endpoint", r.endpoint)
-	endpoint := r.endpoint+"/relay/v1/builder/blocks"
+	endpoint := r.endpoint + "/relay/v1/builder/blocks"
 	if r.cancellationsEnabled {
 		endpoint = endpoint + "?cancellations=true"
 	}
@@ -160,8 +160,8 @@ func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ V
 
 func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to remote relay", "endpoint", r.endpoint)
-	
-	endpoint := r.endpoint+"/relay/v1/builder/blocks"
+
+	endpoint := r.endpoint + "/relay/v1/builder/blocks"
 	if r.cancellationsEnabled {
 		endpoint = endpoint + "?cancellations=true"
 	}
@@ -172,7 +172,7 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 			return fmt.Errorf("error marshaling ssz: %w", err)
 		}
 		log.Debug("submitting block to remote relay", "endpoint", r.endpoint)
-		code, err := SendSSZRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, bodyBytes)
+		code, err := SendSSZRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, bodyBytes, r.config.GzipEnabled)
 
 		if err != nil {
 			return fmt.Errorf("error sending http request to relay %s. err: %w", r.endpoint, err)

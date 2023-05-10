@@ -44,10 +44,11 @@ var DefaultConfig = Config{
 	SecondaryRemoteRelayEndpoints: nil,
 	ValidationBlocklist:           "",
 	RelayConfigFile:               "",
-	EnableCancellations: 		 false,
+	EnableCancellations:           false,
 }
 
 type RelayConfig struct {
-	Endpoint   string `json:"endpoint"`
-	SszEnabled bool   `json:"ssz_enabled"`
+	Endpoint    string `json:"endpoint"`
+	SszEnabled  bool   `json:"ssz_enabled"`
+	GzipEnabled bool   `json:"gzip_enabled"`
 }

@@ -106,6 +106,7 @@ func (r *LocalRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Valid
 }
 
 func (r *LocalRelay) Config() RelayConfig {
+	// local relay does not need config as it is submitting to its own internal endpoint
 	return RelayConfig{}
 }
 

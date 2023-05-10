@@ -74,6 +74,7 @@ type Builder struct {
 	stop chan struct{}
 }
 
+// BuilderArgs is a struct that contains all the arguments needed to create a new Builder
 type BuilderArgs struct {
 	sk                          *bls.SecretKey
 	ds                          flashbotsextra.IDatabaseService

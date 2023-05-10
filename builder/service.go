@@ -80,8 +80,9 @@ func getRelayConfig(relayConfigs map[string]RelayConfig, endpoint string) RelayC
 		return relayConfig
 	}
 	return RelayConfig{
-		Endpoint:   endpoint,
-		SszEnabled: false,
+		Endpoint:    endpoint,
+		SszEnabled:  false,
+		GzipEnabled: false,
 	}
 }
 
