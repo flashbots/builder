@@ -20,6 +20,7 @@ type Config struct {
 	SecondaryRemoteRelayEndpoints []string `toml:",omitempty"`
 	ValidationBlocklist           string   `toml:",omitempty"`
 	RelayConfigFile               string   `toml:",omitempty"`
+	EnableCancellations           bool     `toml:",omitempty"`
 }
 
 // DefaultConfig is the default config for the builder.
@@ -43,6 +44,7 @@ var DefaultConfig = Config{
 	SecondaryRemoteRelayEndpoints: nil,
 	ValidationBlocklist:           "",
 	RelayConfigFile:               "",
+	EnableCancellations: 		 false,
 }
 
 type RelayConfig struct {

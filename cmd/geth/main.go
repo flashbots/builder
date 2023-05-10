@@ -176,6 +176,7 @@ var (
 		utils.BuilderRemoteRelayEndpoint,
 		utils.BuilderSecondaryRemoteRelayEndpoints,
 		utils.BuilderRelayConfigFile,
+		utils.BuilderEnableCancellations,
 	}
 
 	rpcFlags = []cli.Flag{

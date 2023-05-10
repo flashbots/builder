@@ -176,7 +176,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	var relay IRelay
 	if cfg.RemoteRelayEndpoint != "" {
 		relayConfig := getRelayConfig(relayConfigs, cfg.RemoteRelayEndpoint)
-		relay = NewRemoteRelay(cfg.RemoteRelayEndpoint, relayConfig, localRelay)
+		relay = NewRemoteRelay(cfg.RemoteRelayEndpoint, relayConfig, localRelay, cfg.EnableCancellations)
 	} else if localRelay != nil {
 		relay = localRelay
 	} else {
@@ -187,7 +187,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		secondaryRelays := make([]IRelay, len(cfg.SecondaryRemoteRelayEndpoints))
 		for i, endpoint := range cfg.SecondaryRemoteRelayEndpoints {
 			relayConfig := getRelayConfig(relayConfigs, endpoint)
-			secondaryRelays[i] = NewRemoteRelay(endpoint, relayConfig, nil)
+			secondaryRelays[i] = NewRemoteRelay(endpoint, relayConfig, nil, cfg.EnableCancellations)
 		}
 		relay = NewRemoteRelayAggregator(relay, secondaryRelays)
 	}
