@@ -19,9 +19,8 @@ import (
 var ErrValidatorNotFound = errors.New("validator not found")
 
 type RemoteRelay struct {
-	endpoint string
-	client   http.Client
-	config   RelayConfig
+	client http.Client
+	config RelayConfig
 
 	localRelay *LocalRelay
 
@@ -33,9 +32,8 @@ type RemoteRelay struct {
 	validatorSlotMap     map[uint64]ValidatorData
 }
 
-func NewRemoteRelay(endpoint string, config RelayConfig, localRelay *LocalRelay, cancellationsEnabled bool) *RemoteRelay {
+func NewRemoteRelay(config RelayConfig, localRelay *LocalRelay, cancellationsEnabled bool) *RemoteRelay {
 	r := &RemoteRelay{
-		endpoint:             endpoint,
 		client:               http.Client{Timeout: time.Second},
 		localRelay:           localRelay,
 		cancellationsEnabled: cancellationsEnabled,
@@ -138,17 +136,17 @@ func (r *RemoteRelay) Start() error {
 func (r *RemoteRelay) Stop() {}
 
 func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ ValidatorData) error {
-	log.Info("submitting block to remote relay", "endpoint", r.endpoint)
-	endpoint := r.endpoint + "/relay/v1/builder/blocks"
+	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
+	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"
 	if r.cancellationsEnabled {
 		endpoint = endpoint + "?cancellations=true"
 	}
 	code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg, nil)
 	if err != nil {
-		return fmt.Errorf("error sending http request to relay %s. err: %w", r.endpoint, err)
+		return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
 	}
 	if code > 299 {
-		return fmt.Errorf("non-ok response code %d from relay %s", code, r.endpoint)
+		return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
 	}
 
 	if r.localRelay != nil {
@@ -159,9 +157,9 @@ func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ V
 }
 
 func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData) error {
-	log.Info("submitting block to remote relay", "endpoint", r.endpoint)
+	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
 
-	endpoint := r.endpoint + "/relay/v1/builder/blocks"
+	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"
 	if r.cancellationsEnabled {
 		endpoint = endpoint + "?cancellations=true"
 	}
@@ -171,23 +169,23 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 		if err != nil {
 			return fmt.Errorf("error marshaling ssz: %w", err)
 		}
-		log.Debug("submitting block to remote relay", "endpoint", r.endpoint)
+		log.Debug("submitting block to remote relay", "endpoint", r.config.Endpoint)
 		code, err := SendSSZRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, bodyBytes, r.config.GzipEnabled)
 
 		if err != nil {
-			return fmt.Errorf("error sending http request to relay %s. err: %w", r.endpoint, err)
+			return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
 		}
 		if code > 299 {
-			return fmt.Errorf("non-ok response code %d from relay %s", code, r.endpoint)
+			return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
 		}
 	} else {
 		code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg, nil)
 
 		if err != nil {
-			return fmt.Errorf("error sending http request to relay %s. err: %w", r.endpoint, err)
+			return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
 		}
 		if code > 299 {
-			return fmt.Errorf("non-ok response code %d from relay %s", code, r.endpoint)
+			return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
 		}
 	}
 
@@ -200,7 +198,7 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 
 func (r *RemoteRelay) getSlotValidatorMapFromRelay() (map[uint64]ValidatorData, error) {
 	var dst GetValidatorRelayResponse
-	code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodGet, r.endpoint+"/relay/v1/builder/validators", nil, &dst)
+	code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodGet, r.config.Endpoint+"/relay/v1/builder/validators", nil, &dst)
 	if err != nil {
 		return nil, err
 	}

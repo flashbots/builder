@@ -19,7 +19,6 @@ type Config struct {
 	RemoteRelayEndpoint           string   `toml:",omitempty"`
 	SecondaryRemoteRelayEndpoints []string `toml:",omitempty"`
 	ValidationBlocklist           string   `toml:",omitempty"`
-	RelayConfigFile               string   `toml:",omitempty"`
 	EnableCancellations           bool     `toml:",omitempty"`
 }
 
@@ -43,12 +42,12 @@ var DefaultConfig = Config{
 	RemoteRelayEndpoint:           "",
 	SecondaryRemoteRelayEndpoints: nil,
 	ValidationBlocklist:           "",
-	RelayConfigFile:               "",
 	EnableCancellations:           false,
 }
 
+// RelayConfig is the config for a single remote relay.
 type RelayConfig struct {
-	Endpoint    string `json:"endpoint"`
-	SszEnabled  bool   `json:"ssz_enabled"`
-	GzipEnabled bool   `json:"gzip_enabled"`
+	Endpoint    string
+	SszEnabled  bool
+	GzipEnabled bool
 }

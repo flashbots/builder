@@ -1,11 +1,12 @@
 package builder
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 
 	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
 
@@ -75,15 +76,35 @@ func getRouter(localRelay *LocalRelay) http.Handler {
 	return loggedRouter
 }
 
-func getRelayConfig(relayConfigs map[string]RelayConfig, endpoint string) RelayConfig {
-	if relayConfig, ok := relayConfigs[endpoint]; ok {
-		return relayConfig
+func getRelayConfig(endpoint string) (RelayConfig, error) {
+	configs := strings.Split(endpoint, ";")
+	if len(configs) == 0 {
+		return RelayConfig{}, fmt.Errorf("empty relay endpoint %s", endpoint)
+	}
+	relayUrl := configs[0]
+	// relay endpoint is configurated in the format URL;ssz=<value>;gzip=<value>
+	// if any of them are missing, we default the config value to false
+	var sszEnabled, gzipEnabled bool
+	var err error
+
+	for _, config := range configs {
+		if strings.HasPrefix(config, "ssz=") {
+			sszEnabled, err = strconv.ParseBool(config[4:])
+			if err != nil {
+				log.Info("invalid ssz config for relay", "endpoint", endpoint, "err", err)
+			}
+		} else if strings.HasPrefix(config, "gzip=") {
+			gzipEnabled, err = strconv.ParseBool(config[5:])
+			if err != nil {
+				log.Info("invalid gzip config for relay", "endpoint", endpoint, "err", err)
+			}
+		}
 	}
 	return RelayConfig{
-		Endpoint:    endpoint,
-		SszEnabled:  false,
-		GzipEnabled: false,
-	}
+		Endpoint:    relayUrl,
+		SszEnabled:  sszEnabled,
+		GzipEnabled: gzipEnabled,
+	}, nil
 }
 
 func NewService(listenAddr string, localRelay *LocalRelay, builder IBuilder) *Service {
@@ -156,28 +177,13 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		localRelay = NewLocalRelay(relaySk, beaconClient, builderSigningDomain, proposerSigningDomain, ForkData{cfg.GenesisForkVersion, cfg.BellatrixForkVersion, cfg.GenesisValidatorsRoot}, cfg.EnableValidatorChecks)
 	}
 
-	relayConfigs := make(map[string]RelayConfig)
-	if cfg.RelayConfigFile != "" {
-		bytes, err := os.ReadFile(cfg.RelayConfigFile)
-		if err != nil {
-			log.Info("Failed to read relay config file", "err", err)
-			return fmt.Errorf("Failed to read relay config file %w", err)
-		}
-		var configs []RelayConfig
-		if err := json.Unmarshal(bytes, &configs); err != nil {
-			log.Info("Failed to unmarshal relay config", "err", err)
-			return fmt.Errorf("Failed to unmarshal relay config %w", err)
-		}
-
-		for _, config := range configs {
-			relayConfigs[config.Endpoint] = config
-		}
-	}
-
 	var relay IRelay
 	if cfg.RemoteRelayEndpoint != "" {
-		relayConfig := getRelayConfig(relayConfigs, cfg.RemoteRelayEndpoint)
-		relay = NewRemoteRelay(cfg.RemoteRelayEndpoint, relayConfig, localRelay, cfg.EnableCancellations)
+		relayConfig, err := getRelayConfig(cfg.RemoteRelayEndpoint)
+		if err != nil {
+			return fmt.Errorf("invalid remote relay endpoint: %w", err)
+		}
+		relay = NewRemoteRelay(relayConfig, localRelay, cfg.EnableCancellations)
 	} else if localRelay != nil {
 		relay = localRelay
 	} else {
@@ -187,8 +193,11 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	if len(cfg.SecondaryRemoteRelayEndpoints) > 0 && !(len(cfg.SecondaryRemoteRelayEndpoints) == 1 && cfg.SecondaryRemoteRelayEndpoints[0] == "") {
 		secondaryRelays := make([]IRelay, len(cfg.SecondaryRemoteRelayEndpoints))
 		for i, endpoint := range cfg.SecondaryRemoteRelayEndpoints {
-			relayConfig := getRelayConfig(relayConfigs, endpoint)
-			secondaryRelays[i] = NewRemoteRelay(endpoint, relayConfig, nil, cfg.EnableCancellations)
+			relayConfig, err := getRelayConfig(endpoint)
+			if err != nil {
+				return fmt.Errorf("invalid secondary remote relay endpoint: %w", err)
+			}
+			secondaryRelays[i] = NewRemoteRelay(relayConfig, nil, cfg.EnableCancellations)
 		}
 		relay = NewRemoteRelayAggregator(relay, secondaryRelays)
 	}

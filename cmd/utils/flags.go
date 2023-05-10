@@ -804,13 +804,6 @@ var (
 		Value:    "",
 		Category: flags.BuilderCategory,
 	}
-	BuilderRelayConfigFile = &cli.StringFlag{
-		Name:     "builder.relay_config_file",
-		Usage:    "Path to JSON file with relay configuration",
-		EnvVars:  []string{"BUILDER_RELAY_CONFIG_FILE"},
-		Value:    "",
-		Category: flags.BuilderCategory,
-	}
 	BuilderEnableCancellations = &cli.BoolFlag{
 		Name:     "builder.cancellations",
 		Usage:    "Enable cancellations for the builder",
@@ -1630,7 +1623,6 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.RemoteRelayEndpoint = ctx.String(BuilderRemoteRelayEndpoint.Name)
 	cfg.SecondaryRemoteRelayEndpoints = strings.Split(ctx.String(BuilderSecondaryRemoteRelayEndpoints.Name), ",")
 	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
-	cfg.RelayConfigFile = ctx.String(BuilderRelayConfigFile.Name)
 	cfg.EnableCancellations = ctx.IsSet(BuilderEnableCancellations.Name)
 }
 
