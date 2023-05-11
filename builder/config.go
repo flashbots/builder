@@ -19,6 +19,8 @@ type Config struct {
 	RemoteRelayEndpoint           string   `toml:",omitempty"`
 	SecondaryRemoteRelayEndpoints []string `toml:",omitempty"`
 	ValidationBlocklist           string   `toml:",omitempty"`
+	BuilderRateLimitDuration      string   `toml:",omitempty"`
+	BuilderRateLimitMaxBurst      int      `toml:",omitempty"`
 }
 
 // DefaultConfig is the default config for the builder.
@@ -41,4 +43,6 @@ var DefaultConfig = Config{
 	RemoteRelayEndpoint:           "",
 	SecondaryRemoteRelayEndpoints: nil,
 	ValidationBlocklist:           "",
+	BuilderRateLimitDuration:      RateLimitIntervalDefault.String(),
+	BuilderRateLimitMaxBurst:      RateLimitBurstDefault,
 }

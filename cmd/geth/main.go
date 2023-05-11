@@ -175,6 +175,8 @@ var (
 		utils.BuilderBeaconEndpoints,
 		utils.BuilderRemoteRelayEndpoint,
 		utils.BuilderSecondaryRemoteRelayEndpoints,
+		utils.BuilderRateLimitDuration,
+		utils.BuilderRateLimitMaxBurst,
 	}
 
 	rpcFlags = []cli.Flag{

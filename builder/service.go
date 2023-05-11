@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strconv"
 	"time"
 
 	"golang.org/x/time/rate"
@@ -177,33 +176,13 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		validator = blockvalidation.NewBlockValidationAPI(backend, accessVerifier)
 	}
 
-	var (
-		limiter *rate.Limiter
-		burst   = 10
-		// FLASHBOTS_BUILDER_RATE_LIMIT_DURATION will accept valid time.Duration values.
-		// A duration string is a possibly signed sequence of
-		// decimal numbers, each with optional fraction and a unit suffix,
-		// such as "300ms", "-1.5h" or "2h45m".
-		// Valid time units are "ns", "us" (or "µs"), "ms", "s", "m", "h".
-		builderRateLimit  = os.Getenv("FLASHBOTS_BUILDER_RATE_LIMIT_DURATION")
-		builderBurstLimit = os.Getenv("FLASHBOTS_BUILDER_BURST_LIMIT")
-	)
-	if builderRateLimit != "" {
-		d, err := time.ParseDuration(builderRateLimit)
-		if err != nil {
-			return fmt.Errorf("error parsing builder rate limit - %v", err)
-		}
-
-		if builderBurstLimit != "" {
-			b, err := strconv.Atoi(builderBurstLimit)
-			if err != nil {
-				return fmt.Errorf("error parsing builder burst limit - %v", err)
-			}
-			burst = b
-		}
-
-		limiter = rate.NewLimiter(rate.Every(d), burst)
+	// Set up builder rate limiter based on environment variables or CLI flags.
+	// Builder rate limit parameters are flags.BuilderRateLimitDuration and flags.BuilderRateLimitMaxBurst
+	duration, err := time.ParseDuration(cfg.BuilderRateLimitDuration)
+	if err != nil {
+		return fmt.Errorf("error parsing builder rate limit duration - %w", err)
 	}
+	limiter := rate.NewLimiter(rate.Every(duration), cfg.BuilderRateLimitMaxBurst)
 
 	// TODO: move to proper flags
 	var ds flashbotsextra.IDatabaseService

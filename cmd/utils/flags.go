@@ -804,6 +804,33 @@ var (
 		Value:    "",
 		Category: flags.BuilderCategory,
 	}
+
+	// Builder rate limit settings
+
+	// BuilderRateLimitDuration determines rate limit of events processed by builder.
+	// Input is the time interval between events, which is converted to a rate.Limit
+	// which represents the number of events per second.
+	BuilderRateLimitDuration = &cli.StringFlag{
+		Name: "builder.rate_limit_duration",
+		Usage: "Determines rate limit of events processed by builder; a duration string is a possibly signed sequence " +
+			"of decimal numbers, each with optional fraction and a unit suffix, such as \"300ms\", \"-1.5h\" or \"2h45m\"",
+		EnvVars:  []string{"FLASHBOTS_BUILDER_RATE_LIMIT_DURATION"},
+		Value:    builder.RateLimitIntervalDefault.String(),
+		Category: flags.BuilderCategory,
+	}
+
+	// BuilderRateLimitMaxBurst determines the maximum number of events a builder can handle at any given point in time.
+	// The burst value can be thought of as a bucket of size b, initially full and refilled at rate r per second.
+	// b is defined by BuilderRateLimitMaxBurst and r is defined by BuilderRateLimitDuration.
+	// Additional details can be found on rate.Limiter documentation: https://pkg.go.dev/golang.org/x/time/rate#Limiter
+	BuilderRateLimitMaxBurst = &cli.IntFlag{
+		Name:     "builder.rate_limit_max_burst",
+		Usage:    "Determines the maximum number of burst events the builder can accomodate at any given point in time.",
+		EnvVars:  []string{"FLASHBOTS_BUILDER_RATE_LIMIT_MAX_BURST"},
+		Value:    builder.RateLimitBurstDefault,
+		Category: flags.BuilderCategory,
+	}
+
 	// RPC settings
 	IPCDisabledFlag = &cli.BoolFlag{
 		Name:     "ipcdisable",
@@ -1598,7 +1625,7 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 	}
 }
 
-// SetBuilderConfig applies node-related command line flags to the config.
+// SetBuilderConfig applies node-related command line flags to the builder config.
 func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.Enabled = ctx.IsSet(BuilderEnabled.Name)
 	cfg.EnableValidatorChecks = ctx.IsSet(BuilderEnableValidatorChecks.Name)
@@ -1618,6 +1645,8 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.RemoteRelayEndpoint = ctx.String(BuilderRemoteRelayEndpoint.Name)
 	cfg.SecondaryRemoteRelayEndpoints = strings.Split(ctx.String(BuilderSecondaryRemoteRelayEndpoints.Name), ",")
 	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
+	cfg.BuilderRateLimitDuration = ctx.String(BuilderRateLimitDuration.Name)
+	cfg.BuilderRateLimitMaxBurst = ctx.Int(BuilderRateLimitMaxBurst.Name)
 }
 
 // SetNodeConfig applies node-related command line flags to the config.
