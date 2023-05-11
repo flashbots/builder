@@ -8,22 +8,19 @@ import (
 	"strconv"
 	"strings"
 
-	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth"
+	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
 	"github.com/ethereum/go-ethereum/flashbotsextra"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/gorilla/mux"
-
 	"github.com/flashbots/go-boost-utils/bls"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
-
 	"github.com/flashbots/go-utils/httplogger"
+	"github.com/gorilla/mux"
 )
 
 const (

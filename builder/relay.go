@@ -171,7 +171,6 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 		}
 		log.Debug("submitting block to remote relay", "endpoint", r.config.Endpoint)
 		code, err := SendSSZRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, bodyBytes, r.config.GzipEnabled)
-
 		if err != nil {
 			return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
 		}
@@ -180,7 +179,6 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 		}
 	} else {
 		code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg, nil)
-
 		if err != nil {
 			return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
 		}
