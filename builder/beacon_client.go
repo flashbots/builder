@@ -37,6 +37,7 @@ func (b *testBeaconClient) Stop() {}
 func (b *testBeaconClient) isValidator(pubkey PubkeyHex) bool {
 	return true
 }
+
 func (b *testBeaconClient) getProposerForNextSlot(requestedSlot uint64) (PubkeyHex, error) {
 	return PubkeyHex(hexutil.Encode(b.validator.Pk)), nil
 }
@@ -68,7 +69,7 @@ type MultiBeaconClient struct {
 	closeCh chan struct{}
 }
 
-func NewMultiBeaconClient(endpoints []string, slotsInEpoch uint64, secondsInSlot uint64) *MultiBeaconClient {
+func NewMultiBeaconClient(endpoints []string, slotsInEpoch, secondsInSlot uint64) *MultiBeaconClient {
 	clients := []*BeaconClient{}
 	for _, endpoint := range endpoints {
 		client := NewBeaconClient(endpoint, slotsInEpoch, secondsInSlot)
@@ -141,7 +142,7 @@ type BeaconClient struct {
 	cancelFn context.CancelFunc
 }
 
-func NewBeaconClient(endpoint string, slotsInEpoch uint64, secondsInSlot uint64) *BeaconClient {
+func NewBeaconClient(endpoint string, slotsInEpoch, secondsInSlot uint64) *BeaconClient {
 	ctx, cancelFn := context.WithCancel(context.Background())
 	return &BeaconClient{
 		endpoint:        endpoint,

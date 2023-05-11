@@ -10,8 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/time/rate"
-
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -21,6 +19,7 @@ import (
 	"github.com/flashbots/go-boost-utils/bls"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/time/rate"
 )
 
 func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *types.Block, blockValue *big.Int) (*Builder, *LocalRelay, *ValidatorPrivateData) {
@@ -32,7 +31,18 @@ func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *
 	beaconClient := &testBeaconClient{validator: validator}
 	localRelay := NewLocalRelay(sk, beaconClient, bDomain, cDomain, ForkData{}, true)
 	ethService := &testEthereumService{synced: true, testExecutableData: forkchoiceData, testBlock: block, testBlockValue: blockValue}
-	backend := NewBuilder(sk, flashbotsextra.NilDbService{}, localRelay, bDomain, ethService, false, false, nil, beaconClient)
+	builderArgs := BuilderArgs{
+		sk:                          sk,
+		ds:                          flashbotsextra.NilDbService{},
+		relay:                       localRelay,
+		builderSigningDomain:        bDomain,
+		eth:                         ethService,
+		dryRun:                      false,
+		ignoreLatePayloadAttributes: false,
+		validator:                   nil,
+		beaconClient:                beaconClient,
+	}
+	backend := NewBuilder(builderArgs)
 	// service := NewService("127.0.0.1:31545", backend)
 
 	backend.limiter = rate.NewLimiter(rate.Inf, 0)
@@ -40,7 +50,7 @@ func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *
 	return backend, localRelay, validator
 }
 
-func testRequest(t *testing.T, localRelay *LocalRelay, method string, path string, payload any) *httptest.ResponseRecorder {
+func testRequest(t *testing.T, localRelay *LocalRelay, method, path string, payload any) *httptest.ResponseRecorder {
 	var req *http.Request
 	var err error
 

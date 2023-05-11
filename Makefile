@@ -22,6 +22,12 @@ test: all
 lint: ## Run linters.
 	$(GORUN) build/ci.go lint
 
+fmt:
+	gofmt -s -w .
+	gofumpt -extra -w .
+	gci write .
+	go mod tidy
+
 clean:
 	env GO111MODULE=on go clean -cache
 	rm -fr build/_workspace/pkg/ $(GOBIN)/*
