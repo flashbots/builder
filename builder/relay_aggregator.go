@@ -163,3 +163,7 @@ func (r *RemoteRelayAggregator) updateRelayRegistrations(nextSlot uint64, regist
 		r.registrationsCache[relayRegistration.vd] = append(r.registrationsCache[relayRegistration.vd], r.relays[relayRegistration.relayI])
 	}
 }
+
+func (r *RemoteRelayAggregator) Config() RelayConfig {
+	return RelayConfig{}
+}

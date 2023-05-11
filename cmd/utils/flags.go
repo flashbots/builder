@@ -804,6 +804,11 @@ var (
 		Value:    "",
 		Category: flags.BuilderCategory,
 	}
+	BuilderEnableCancellations = &cli.BoolFlag{
+		Name:     "builder.cancellations",
+		Usage:    "Enable cancellations for the builder",
+		Category: flags.BuilderCategory,
+	}
 	// RPC settings
 	IPCDisabledFlag = &cli.BoolFlag{
 		Name:     "ipcdisable",
@@ -1618,6 +1623,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.RemoteRelayEndpoint = ctx.String(BuilderRemoteRelayEndpoint.Name)
 	cfg.SecondaryRemoteRelayEndpoints = strings.Split(ctx.String(BuilderSecondaryRemoteRelayEndpoints.Name), ",")
 	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
+	cfg.EnableCancellations = ctx.IsSet(BuilderEnableCancellations.Name)
 }
 
 // SetNodeConfig applies node-related command line flags to the config.

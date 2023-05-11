@@ -55,7 +55,7 @@ type LocalRelay struct {
 	fd            ForkData
 }
 
-func NewLocalRelay(sk *bls.SecretKey, beaconClient IBeaconClient, builderSigningDomain boostTypes.Domain, proposerSigningDomain boostTypes.Domain, fd ForkData, enableBeaconChecks bool) *LocalRelay {
+func NewLocalRelay(sk *bls.SecretKey, beaconClient IBeaconClient, builderSigningDomain, proposerSigningDomain boostTypes.Domain, fd ForkData, enableBeaconChecks bool) *LocalRelay {
 	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
@@ -103,6 +103,11 @@ func (r *LocalRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Valid
 	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
 
 	return r.submitBlockCapella(msg)
+}
+
+func (r *LocalRelay) Config() RelayConfig {
+	// local relay does not need config as it is submitting to its own internal endpoint
+	return RelayConfig{}
 }
 
 // TODO: local relay support for capella
@@ -406,6 +411,6 @@ func (r *LocalRelay) handleStatus(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func ExecutionPayloadHeaderEqual(l *boostTypes.ExecutionPayloadHeader, r *boostTypes.ExecutionPayloadHeader) bool {
+func ExecutionPayloadHeaderEqual(l, r *boostTypes.ExecutionPayloadHeader) bool {
 	return l.ParentHash == r.ParentHash && l.FeeRecipient == r.FeeRecipient && l.StateRoot == r.StateRoot && l.ReceiptsRoot == r.ReceiptsRoot && l.LogsBloom == r.LogsBloom && l.Random == r.Random && l.BlockNumber == r.BlockNumber && l.GasLimit == r.GasLimit && l.GasUsed == r.GasUsed && l.Timestamp == r.Timestamp && l.BaseFeePerGas == r.BaseFeePerGas && bytes.Equal(l.ExtraData, r.ExtraData) && l.BlockHash == r.BlockHash && l.TransactionsRoot == r.TransactionsRoot
 }

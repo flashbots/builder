@@ -5,23 +5,22 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-
-	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
+	"strconv"
+	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth"
+	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
 	"github.com/ethereum/go-ethereum/flashbotsextra"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/gorilla/mux"
-
 	"github.com/flashbots/go-boost-utils/bls"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
-
 	"github.com/flashbots/go-utils/httplogger"
+	"github.com/gorilla/mux"
 )
 
 const (
@@ -72,6 +71,37 @@ func getRouter(localRelay *LocalRelay) http.Handler {
 	// Add logging and return router
 	loggedRouter := httplogger.LoggingMiddleware(router)
 	return loggedRouter
+}
+
+func getRelayConfig(endpoint string) (RelayConfig, error) {
+	configs := strings.Split(endpoint, ";")
+	if len(configs) == 0 {
+		return RelayConfig{}, fmt.Errorf("empty relay endpoint %s", endpoint)
+	}
+	relayUrl := configs[0]
+	// relay endpoint is configurated in the format URL;ssz=<value>;gzip=<value>
+	// if any of them are missing, we default the config value to false
+	var sszEnabled, gzipEnabled bool
+	var err error
+
+	for _, config := range configs {
+		if strings.HasPrefix(config, "ssz=") {
+			sszEnabled, err = strconv.ParseBool(config[4:])
+			if err != nil {
+				log.Info("invalid ssz config for relay", "endpoint", endpoint, "err", err)
+			}
+		} else if strings.HasPrefix(config, "gzip=") {
+			gzipEnabled, err = strconv.ParseBool(config[5:])
+			if err != nil {
+				log.Info("invalid gzip config for relay", "endpoint", endpoint, "err", err)
+			}
+		}
+	}
+	return RelayConfig{
+		Endpoint:    relayUrl,
+		SszEnabled:  sszEnabled,
+		GzipEnabled: gzipEnabled,
+	}, nil
 }
 
 func NewService(listenAddr string, localRelay *LocalRelay, builder IBuilder) *Service {
@@ -146,7 +176,11 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 
 	var relay IRelay
 	if cfg.RemoteRelayEndpoint != "" {
-		relay = NewRemoteRelay(cfg.RemoteRelayEndpoint, localRelay)
+		relayConfig, err := getRelayConfig(cfg.RemoteRelayEndpoint)
+		if err != nil {
+			return fmt.Errorf("invalid remote relay endpoint: %w", err)
+		}
+		relay = NewRemoteRelay(relayConfig, localRelay, cfg.EnableCancellations)
 	} else if localRelay != nil {
 		relay = localRelay
 	} else {
@@ -156,7 +190,11 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	if len(cfg.SecondaryRemoteRelayEndpoints) > 0 && !(len(cfg.SecondaryRemoteRelayEndpoints) == 1 && cfg.SecondaryRemoteRelayEndpoints[0] == "") {
 		secondaryRelays := make([]IRelay, len(cfg.SecondaryRemoteRelayEndpoints))
 		for i, endpoint := range cfg.SecondaryRemoteRelayEndpoints {
-			secondaryRelays[i] = NewRemoteRelay(endpoint, nil)
+			relayConfig, err := getRelayConfig(endpoint)
+			if err != nil {
+				return fmt.Errorf("invalid secondary remote relay endpoint: %w", err)
+			}
+			secondaryRelays[i] = NewRemoteRelay(relayConfig, nil, cfg.EnableCancellations)
 		}
 		relay = NewRemoteRelayAggregator(relay, secondaryRelays)
 	}
@@ -203,7 +241,19 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		return errors.New("incorrect builder API secret key provided")
 	}
 
-	builderBackend := NewBuilder(builderSk, ds, relay, builderSigningDomain, ethereumService, cfg.DryRun, cfg.IgnoreLatePayloadAttributes, validator, beaconClient)
+	builderArgs := BuilderArgs{
+		sk:                          builderSk,
+		ds:                          ds,
+		relay:                       relay,
+		builderSigningDomain:        builderSigningDomain,
+		eth:                         ethereumService,
+		dryRun:                      cfg.DryRun,
+		ignoreLatePayloadAttributes: cfg.IgnoreLatePayloadAttributes,
+		validator:                   validator,
+		beaconClient:                beaconClient,
+	}
+
+	builderBackend := NewBuilder(builderArgs)
 	builderService := NewService(cfg.ListenAddr, localRelay, builderBackend)
 
 	stack.RegisterAPIs([]rpc.API{
