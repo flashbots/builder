@@ -55,6 +55,42 @@ type MevBundleBody struct {
 	CanRevert bool               `json:"canRevert,omitempty"`
 }
 
+func ParseSBundleArgs(args *SendMevBundleArgs) (bundle types.SBundle, err error) {
+	return parseBundleInner(0, args)
+}
+
+func ConvertSBundleToArgs(bundle *types.SBundle) (args SendMevBundleArgs, err error) {
+	args.Version = "v0.1"
+	args.Inclusion.BlockNumber = hexutil.Uint64(bundle.Inclusion.BlockNumber)
+	if bundle.Inclusion.MaxBlockNumber != bundle.Inclusion.BlockNumber {
+		args.Inclusion.MaxBlock = hexutil.Uint64(bundle.Inclusion.MaxBlockNumber)
+	}
+	for _, el := range bundle.Body {
+		if el.Tx != nil {
+			txBytes, err := el.Tx.MarshalBinary()
+			if err != nil {
+				return args, err
+			}
+			args.Body = append(args.Body, MevBundleBody{
+				Tx:        (*hexutil.Bytes)(&txBytes),
+				CanRevert: el.CanRevert,
+			})
+		}
+		if el.Bundle != nil {
+			innerArgs, err := ConvertSBundleToArgs(el.Bundle)
+			if err != nil {
+				return args, err
+			}
+			args.Body = append(args.Body, MevBundleBody{
+				Bundle: &innerArgs,
+			})
+		}
+	}
+	args.Validity.Refund = bundle.Validity.Refund
+	args.Validity.RefundConfig = bundle.Validity.RefundConfig
+	return args, nil
+}
+
 func parseBundleInner(level int, args *SendMevBundleArgs) (bundle types.SBundle, err error) {
 	if level > maxDepth {
 		return bundle, ErrMaxDepth
@@ -154,7 +190,7 @@ func (api *MevAPI) SimBundle(ctx context.Context, args SendMevBundleArgs) (*SimM
 	ctx, cancel = context.WithTimeout(ctx, simTimeout)
 	defer cancel()
 
-	bundle, err := parseBundleInner(0, &args)
+	bundle, err := ParseSBundleArgs(&args)
 	if err != nil {
 		return nil, err
 	}
