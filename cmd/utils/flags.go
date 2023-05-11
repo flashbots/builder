@@ -825,7 +825,7 @@ var (
 	// Additional details can be found on rate.Limiter documentation: https://pkg.go.dev/golang.org/x/time/rate#Limiter
 	BuilderRateLimitMaxBurst = &cli.IntFlag{
 		Name:     "builder.rate_limit_max_burst",
-		Usage:    "Determines the maximum number of burst events the builder can accomodate at any given point in time.",
+		Usage:    "Determines the maximum number of burst events the builder can accommodate at any given point in time.",
 		EnvVars:  []string{"FLASHBOTS_BUILDER_RATE_LIMIT_MAX_BURST"},
 		Value:    builder.RateLimitBurstDefault,
 		Category: flags.BuilderCategory,

@@ -119,7 +119,7 @@ BUILDER_TX_SIGNING_KEY - private key of the builder used to sign payment transac
 FLASHBOTS_BUILDER_RATE_LIMIT_DURATION - determines rate limit of events processed by builder; a duration string is a 
 possibly signed sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "-1.5h" or "2h45m".
 
-FLASHBOTS_BUILDER_RATE_LIMIT_MAX_BURST - determines the maximum number of events the builder can accomodate at any point in time
+FLASHBOTS_BUILDER_RATE_LIMIT_MAX_BURST - determines the maximum number of events the builder can accommodate at any point in time
 ```
 
 ## Metrics
