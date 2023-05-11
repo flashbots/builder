@@ -19,7 +19,16 @@ func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal ch
 			if submitTime == nil {
 				res = limiter.Reserve()
 			} else {
-				res = limiter.ReserveN(*submitTime, 1)
+				now := time.Now()
+				sleepTime := submitTime.UTC().UnixMilli() - now.UTC().UnixMilli()
+				log.Debug("resubmit loop",
+					"now-sec", now.UTC().Unix(),
+					"slot", ctx.Value(key("slot")),
+					"slot-sec", submitTime.Add(4*time.Second).Unix(),
+					"delta-now-from-slot-ms", submitTime.Add(4*time.Second).Sub(now).Milliseconds(),
+					"block-time-sec", ctx.Value(key("timestamp")))
+				time.Sleep(time.Duration(sleepTime) * time.Millisecond)
+				res = limiter.Reserve()
 			}
 
 			if !res.OK() {

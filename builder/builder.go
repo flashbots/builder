@@ -168,7 +168,7 @@ func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersC
 		}
 	}
 
-	log.Info("submitted block", "slot", attrs.Slot, "value", blockValue.String(), "parent", block.ParentHash, "hash", block.Hash(), "#commitedBundles", len(commitedBundles))
+	log.Info("submitted block", "slot", attrs.Slot, "value", blockValue.String(), "parent", block.ParentHash, "hash", block.Hash(), "#commitedBundles", len(commitedBundles), "blockTimestamp", uint64(attrs.Timestamp))
 
 	return nil
 }
@@ -353,6 +353,8 @@ type blockQueueEntry struct {
 	allBundles      []types.SimulatedBundle
 }
 
+type key string
+
 func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) {
 	ctx, cancel := context.WithTimeout(slotCtx, 12*time.Second)
 	defer cancel()
@@ -372,7 +374,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 		queueBestEntry         blockQueueEntry
 	)
 
-	log.Debug("runBuildingJob", "slot", attrs.Slot, "parent", attrs.HeadHash)
+	log.Debug("runBuildingJob", "slot", attrs.Slot, "parent", attrs.HeadHash, "payloadTimestamp", uint64(attrs.Timestamp))
 
 	submitBestBlock := func() {
 		queueMu.Lock()
@@ -390,9 +392,11 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 
 	// Avoid submitting early into a given slot. For example if slots have 12 second interval, submissions should
 	// not begin until 8 seconds into the slot.
-	slotTime := time.UnixMilli(int64(attrs.Timestamp))
+	slotTime := time.Unix(int64(attrs.Timestamp), 0).UTC()
 	submitTime := slotTime.Add(-4 * time.Second)
 
+	ctx = context.WithValue(ctx, key("slot"), attrs.Slot)
+	ctx = context.WithValue(ctx, key("timestamp"), uint64(attrs.Timestamp))
 	// Empties queue, submits the best block for current job with rate limit (global for all jobs)
 	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock, &submitTime)
 
