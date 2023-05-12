@@ -38,7 +38,7 @@ func genUserTx(nonce uint64, shouldFail bool) *types.Transaction {
 			ChainID:   big.NewInt(1),
 			Nonce:     nonce,
 			GasTipCap: big.NewInt(params.GWei),
-			GasFeeCap: new(big.Int).Add(testSuite.BaseFee.ToInt(), big.NewInt(params.GWei)),
+			GasFeeCap: new(big.Int).Add(testSuite.Header.BaseFee, big.NewInt(params.GWei)),
 			Gas:       25000,
 			To:        &contractAddress,
 			Value:     big.NewInt(0),
@@ -50,7 +50,7 @@ func genUserTx(nonce uint64, shouldFail bool) *types.Transaction {
 			ChainID:   big.NewInt(1),
 			Nonce:     nonce,
 			GasTipCap: big.NewInt(params.GWei),
-			GasFeeCap: new(big.Int).Add(testSuite.BaseFee.ToInt(), big.NewInt(params.GWei)),
+			GasFeeCap: new(big.Int).Add(testSuite.Header.BaseFee, big.NewInt(params.GWei)),
 			Gas:       21000,
 			To:        &userAddress,
 			Value:     big.NewInt(0),
@@ -64,7 +64,7 @@ func genBackrunTx(nonce uint64) (*types.Transaction, *big.Int) {
 		ChainID:   big.NewInt(1),
 		Nonce:     nonce,
 		GasTipCap: big.NewInt(params.GWei),
-		GasFeeCap: new(big.Int).Add(testSuite.BaseFee.ToInt(), big.NewInt(params.GWei)),
+		GasFeeCap: new(big.Int).Add(testSuite.Header.BaseFee, big.NewInt(params.GWei)),
 		Gas:       35000,
 		To:        &contractAddress,
 		Value:     big.NewInt(params.Ether / 10),
@@ -90,9 +90,7 @@ type SBundleTestCase struct {
 
 type SBundleTestSuite struct {
 	GenesisAlloc core.GenesisAlloc `json:"genesisAlloc"`
-	BlockNumber  uint64            `json:"blockNumber"`
-	GasLimit     uint64            `json:"gasLimit"`
-	BaseFee      *hexutil.Big      `json:"baseFee"`
+	Header       *types.Header     `json:"header"`
 	Tests        []SBundleTestCase `json:"tests"`
 }
 
@@ -103,9 +101,12 @@ func generateTests() {
 	testSuite.GenesisAlloc[contractAddress] = core.GenesisAccount{Balance: new(big.Int), Code: contractCode}
 	testSuite.GenesisAlloc[builderAddress] = core.GenesisAccount{Balance: new(big.Int)}
 
-	testSuite.BlockNumber = 1
-	testSuite.GasLimit = 30_000_000
-	testSuite.BaseFee = (*hexutil.Big)(big.NewInt(200 * params.GWei))
+	testSuite.Header = &types.Header{
+		Number:   big.NewInt(1),
+		GasLimit: 30_000_000,
+		BaseFee:  big.NewInt(200 * params.GWei),
+		Coinbase: builderAddress,
+	}
 
 	pushSimpleBundleTest()
 	pushBundleWithRevertingTx()
@@ -146,8 +147,8 @@ func pushSimpleBundleTest() {
 	// Bundle with 1 tx that should succeed
 	bundle := &types.SBundle{
 		Inclusion: types.BundleInclusion{
-			BlockNumber:    testSuite.BlockNumber,
-			MaxBlockNumber: testSuite.BlockNumber,
+			BlockNumber:    testSuite.Header.Number.Uint64(),
+			MaxBlockNumber: testSuite.Header.Number.Uint64(),
 		},
 		Body: []types.BundleBody{
 			{
@@ -162,8 +163,8 @@ func pushBundleWithRevertingTx() {
 	// bundle with 2 txs, one that reverts and one that succeeds
 	bundle := &types.SBundle{
 		Inclusion: types.BundleInclusion{
-			BlockNumber:    testSuite.BlockNumber,
-			MaxBlockNumber: testSuite.BlockNumber,
+			BlockNumber:    testSuite.Header.Number.Uint64(),
+			MaxBlockNumber: testSuite.Header.Number.Uint64(),
 		},
 		Body: []types.BundleBody{
 			{
@@ -180,8 +181,8 @@ func pushBundleWithRevertingTx() {
 func pushBundleWithInvalidTx() {
 	bundle := &types.SBundle{
 		Inclusion: types.BundleInclusion{
-			BlockNumber:    testSuite.BlockNumber,
-			MaxBlockNumber: testSuite.BlockNumber,
+			BlockNumber:    testSuite.Header.Number.Uint64(),
+			MaxBlockNumber: testSuite.Header.Number.Uint64(),
 		},
 		Body: []types.BundleBody{
 			{
@@ -198,8 +199,8 @@ func pushBundleWithInvalidTx() {
 func pushBundleWithRevertingTxThatCanRevert() {
 	bundle := &types.SBundle{
 		Inclusion: types.BundleInclusion{
-			BlockNumber:    testSuite.BlockNumber,
-			MaxBlockNumber: testSuite.BlockNumber,
+			BlockNumber:    testSuite.Header.Number.Uint64(),
+			MaxBlockNumber: testSuite.Header.Number.Uint64(),
 		},
 		Body: []types.BundleBody{
 			{
@@ -217,8 +218,8 @@ func pushBundleWithRevertingTxThatCanRevert() {
 func pushBundleWithInvalidTxThatCanRevert() {
 	bundle := &types.SBundle{
 		Inclusion: types.BundleInclusion{
-			BlockNumber:    testSuite.BlockNumber,
-			MaxBlockNumber: testSuite.BlockNumber,
+			BlockNumber:    testSuite.Header.Number.Uint64(),
+			MaxBlockNumber: testSuite.Header.Number.Uint64(),
 		},
 		Body: []types.BundleBody{
 			{
@@ -237,8 +238,8 @@ func pushBackrunOfTx() {
 	backrun, backrunValue := genBackrunTx(0)
 	bundle := &types.SBundle{
 		Inclusion: types.BundleInclusion{
-			BlockNumber:    testSuite.BlockNumber,
-			MaxBlockNumber: testSuite.BlockNumber,
+			BlockNumber:    testSuite.Header.Number.Uint64(),
+			MaxBlockNumber: testSuite.Header.Number.Uint64(),
 		},
 		Body: []types.BundleBody{
 			{
@@ -269,8 +270,8 @@ func pushBackrunOfTx() {
 func pushBackrunOfBundle() {
 	userBundle := &types.SBundle{
 		Inclusion: types.BundleInclusion{
-			BlockNumber:    testSuite.BlockNumber,
-			MaxBlockNumber: testSuite.BlockNumber,
+			BlockNumber:    testSuite.Header.Number.Uint64(),
+			MaxBlockNumber: testSuite.Header.Number.Uint64(),
 		},
 		Body: []types.BundleBody{
 			{
@@ -285,8 +286,8 @@ func pushBackrunOfBundle() {
 	backrun, backrunValue := genBackrunTx(0)
 	bundle := &types.SBundle{
 		Inclusion: types.BundleInclusion{
-			BlockNumber:    testSuite.BlockNumber,
-			MaxBlockNumber: testSuite.BlockNumber,
+			BlockNumber:    testSuite.Header.Number.Uint64(),
+			MaxBlockNumber: testSuite.Header.Number.Uint64(),
 		},
 		Body: []types.BundleBody{
 			{
@@ -317,8 +318,8 @@ func pushBackrunOfBundle() {
 func pushBackrunOfBundleWithRefundConfig() {
 	userBundle := &types.SBundle{
 		Inclusion: types.BundleInclusion{
-			BlockNumber:    testSuite.BlockNumber,
-			MaxBlockNumber: testSuite.BlockNumber,
+			BlockNumber:    testSuite.Header.Number.Uint64(),
+			MaxBlockNumber: testSuite.Header.Number.Uint64(),
 		},
 		Body: []types.BundleBody{
 			{
@@ -345,8 +346,8 @@ func pushBackrunOfBundleWithRefundConfig() {
 	backrun, backrunValue := genBackrunTx(0)
 	bundle := &types.SBundle{
 		Inclusion: types.BundleInclusion{
-			BlockNumber:    testSuite.BlockNumber,
-			MaxBlockNumber: testSuite.BlockNumber,
+			BlockNumber:    testSuite.Header.Number.Uint64(),
+			MaxBlockNumber: testSuite.Header.Number.Uint64(),
 		},
 		Body: []types.BundleBody{
 			{
@@ -379,8 +380,8 @@ func pushDoubleBackrunOfBundleWithRefundConfig() {
 	backrun1, backrun1Value := genBackrunTx(0)
 	backrun1Bundle := &types.SBundle{
 		Inclusion: types.BundleInclusion{
-			BlockNumber:    testSuite.BlockNumber,
-			MaxBlockNumber: testSuite.BlockNumber,
+			BlockNumber:    testSuite.Header.Number.Uint64(),
+			MaxBlockNumber: testSuite.Header.Number.Uint64(),
 		},
 		Body: []types.BundleBody{
 			{
@@ -406,8 +407,8 @@ func pushDoubleBackrunOfBundleWithRefundConfig() {
 	backrun2, backrun2Value := genBackrunTx(1)
 	bundle := &types.SBundle{
 		Inclusion: types.BundleInclusion{
-			BlockNumber:    testSuite.BlockNumber,
-			MaxBlockNumber: testSuite.BlockNumber,
+			BlockNumber:    testSuite.Header.Number.Uint64(),
+			MaxBlockNumber: testSuite.Header.Number.Uint64(),
 		},
 		Body: []types.BundleBody{
 			{
@@ -452,7 +453,7 @@ func TestSBundles(t *testing.T) {
 				config          = params.TestChainConfig
 				signer          = types.LatestSigner(config)
 				statedb, chData = genTestSetupWithAlloc(config, testSuite.GenesisAlloc)
-				env             = newEnvironment(chData, statedb, builderAddress, testSuite.GasLimit, testSuite.BaseFee.ToInt())
+				env             = newEnvironment(chData, statedb, testSuite.Header.Coinbase, testSuite.Header.GasLimit, testSuite.Header.BaseFee)
 				envDiff         = newEnvironmentDiff(env)
 
 				expectedKickbackValues    = make([]*big.Int, 0, len(tt.ExtractedRefunds))
@@ -461,7 +462,7 @@ func TestSBundles(t *testing.T) {
 			for _, refund := range tt.ExtractedRefunds {
 				refundBeforSplit := common.PercentOf(refund.Value.ToInt(), refund.Percent)
 
-				fees := new(big.Int).Mul(testSuite.BaseFee.ToInt(), core.SbundlePayoutMaxCost)
+				fees := new(big.Int).Mul(testSuite.Header.BaseFee, core.SbundlePayoutMaxCost)
 				fees.Mul(fees, big.NewInt(int64(len(refund.RefundSplit))))
 				for recipient, split := range refund.RefundSplit {
 					value := new(big.Int).Sub(refundBeforSplit, fees)

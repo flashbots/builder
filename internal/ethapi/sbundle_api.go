@@ -45,7 +45,7 @@ type SendMevBundleArgs struct {
 
 type MevBundleInclusion struct {
 	BlockNumber hexutil.Uint64 `json:"block"`
-	MaxBlock    hexutil.Uint64 `json:"maxBlock"`
+	MaxBlock    hexutil.Uint64 `json:"maxBlock,omitempty"`
 }
 
 type MevBundleBody struct {
