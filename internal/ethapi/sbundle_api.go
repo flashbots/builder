@@ -3,6 +3,7 @@ package ethapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"time"
 
@@ -15,9 +16,10 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
-const maxDepth = 1
+const maxDepth = 5
 const maxBodySize = 50
-const simTimeout = time.Second * 5
+const defaultSimTimeout = time.Second * 5
+const maxSimTimeout = time.Second * 30
 
 var (
 	ErrMaxDepth         = errors.New("max depth reached")
@@ -175,19 +177,38 @@ func (api *MevAPI) SendBundle(ctx context.Context, args SendMevBundleArgs) error
 }
 
 type SimMevBundleResponse struct {
-	Success           bool                     `json:"success"`
-	Error             string                   `json:"error,omitempty"`
-	StateBlock        hexutil.Uint64           `json:"stateBlock"`
-	EffectiveGasPrice hexutil.Big              `json:"effectiveGasPrice"`
-	Profit            hexutil.Big              `json:"profit"`
-	RefundableValue   hexutil.Big              `json:"refundableValue"`
-	GasUsed           hexutil.Uint64           `json:"gasUsed"`
-	BodyLogs          []core.SimBundleBodyLogs `json:"logs,omitempty"`
+	Success         bool                     `json:"success"`
+	Error           string                   `json:"error,omitempty"`
+	StateBlock      hexutil.Uint64           `json:"stateBlock"`
+	MevGasPrice     hexutil.Big              `json:"mevGasPrice"`
+	Profit          hexutil.Big              `json:"profit"`
+	RefundableValue hexutil.Big              `json:"refundableValue"`
+	GasUsed         hexutil.Uint64           `json:"gasUsed"`
+	BodyLogs        []core.SimBundleBodyLogs `json:"logs,omitempty"`
 }
 
-func (api *MevAPI) SimBundle(ctx context.Context, args SendMevBundleArgs) (*SimMevBundleResponse, error) {
+type SimMevBundleAuxArgs struct {
+	ParentBlock *rpc.BlockNumberOrHash `json:"parentBlock"`
+	// override the default values for the block header
+	BlockNumber *hexutil.Big    `json:"blockNumber"`
+	Coinbase    *common.Address `json:"coinbase"`
+	Timestamp   *hexutil.Uint64 `json:"timestamp"`
+	GasLimit    *hexutil.Uint64 `json:"gasLimit"`
+	BaseFee     *hexutil.Big    `json:"baseFee"`
+	Timeout     *int64          `json:"timeout"`
+}
+
+func (api *MevAPI) SimBundle(ctx context.Context, args SendMevBundleArgs, aux SimMevBundleAuxArgs) (*SimMevBundleResponse, error) {
 	var cancel context.CancelFunc
-	ctx, cancel = context.WithTimeout(ctx, simTimeout)
+
+	timeout := defaultSimTimeout
+	if aux.Timeout != nil {
+		timeout = time.Duration(*aux.Timeout) * time.Millisecond
+		if timeout > maxSimTimeout {
+			timeout = maxSimTimeout
+		}
+	}
+	ctx, cancel = context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	bundle, err := ParseSBundleArgs(&args)
@@ -195,44 +216,49 @@ func (api *MevAPI) SimBundle(ctx context.Context, args SendMevBundleArgs) (*SimM
 		return nil, err
 	}
 
-	currHeader := api.b.CurrentHeader()
-	if currHeader == nil {
-		return nil, errors.New("no current header")
+	var parentBlock rpc.BlockNumberOrHash
+	if aux.ParentBlock != nil {
+		parentBlock = *aux.ParentBlock
+	} else {
+		parentBlock = rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	}
 
-	stateBlock := currHeader.Number.Uint64()
-
-	nextBlock := stateBlock + 1
-	minBlock := bundle.Inclusion.BlockNumber
-	maxBlock := bundle.Inclusion.MaxBlockNumber
-	if minBlock > nextBlock {
-		return nil, errors.New("min stateBlock is in the future")
-	}
-	if maxBlock < nextBlock {
-		// select past stateBlock
-		stateBlock = maxBlock - 1
-		nextBlock = maxBlock
-	}
-
-	state, parent, err := api.b.StateAndHeaderByNumber(ctx, rpc.BlockNumber(stateBlock))
+	statedb, parentHeader, err := api.b.StateAndHeaderByNumberOrHash(ctx, parentBlock)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get parent block header: %w", err)
 	}
+
 	header := types.Header{
-		ParentHash: parent.Hash(),
-		Number:     new(big.Int).SetUint64(nextBlock),
-		GasLimit:   parent.GasLimit,
-		Time:       parent.Time + 12,
-		Difficulty: new(big.Int).Set(parent.Difficulty),
-		Coinbase:   parent.Coinbase,
-		BaseFee:    misc.CalcBaseFee(api.b.ChainConfig(), parent),
+		ParentHash: parentHeader.Hash(),
+		Number:     new(big.Int).Add(parentHeader.Number, common.Big1),
+		GasLimit:   parentHeader.GasLimit,
+		Time:       parentHeader.Time + 12,
+		Difficulty: new(big.Int).Set(parentHeader.Difficulty),
+		Coinbase:   parentHeader.Coinbase,
+		BaseFee:    misc.CalcBaseFee(api.b.ChainConfig(), parentHeader),
+	}
+
+	if aux.BlockNumber != nil {
+		header.Number.Set(aux.BlockNumber.ToInt())
+	}
+	if aux.Coinbase != nil {
+		header.Coinbase = *aux.Coinbase
+	}
+	if aux.Timestamp != nil {
+		header.Time = uint64(*aux.Timestamp)
+	}
+	if aux.GasLimit != nil {
+		header.GasLimit = uint64(*aux.GasLimit)
+	}
+	if aux.BaseFee != nil {
+		header.BaseFee = aux.BaseFee.ToInt()
 	}
 
 	gp := new(core.GasPool).AddGas(header.GasLimit)
 
 	result := &SimMevBundleResponse{}
 	tmpGasUsed := uint64(0)
-	bundleRes, err := core.SimBundle(api.b.ChainConfig(), api.chain, &header.Coinbase, gp, state, &header, &bundle, 0, &tmpGasUsed, vm.Config{}, true)
+	bundleRes, err := core.SimBundle(api.b.ChainConfig(), api.chain, &header.Coinbase, gp, statedb, &header, &bundle, 0, &tmpGasUsed, vm.Config{}, true)
 	if err != nil {
 		result.Success = false
 		result.Error = err.Error()
@@ -240,8 +266,8 @@ func (api *MevAPI) SimBundle(ctx context.Context, args SendMevBundleArgs) (*SimM
 		result.Success = true
 		result.BodyLogs = bundleRes.BodyLogs
 	}
-	result.StateBlock = hexutil.Uint64(stateBlock)
-	result.EffectiveGasPrice = hexutil.Big(*bundleRes.MevGasPrice)
+	result.StateBlock = hexutil.Uint64(parentHeader.Number.Uint64())
+	result.MevGasPrice = hexutil.Big(*bundleRes.MevGasPrice)
 	result.Profit = hexutil.Big(*bundleRes.TotalProfit)
 	result.RefundableValue = hexutil.Big(*bundleRes.RefundableValue)
 	result.GasUsed = hexutil.Uint64(bundleRes.GasUsed)
