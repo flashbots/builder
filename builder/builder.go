@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	RateLimitIntervalDefault                     = 500 * time.Millisecond
-	RateLimitBurstDefault                        = 10
-	RateLimitResubmitIntervalMillisecondsDefault = 500 * time.Millisecond
+	RateLimitIntervalDefault                 = 500 * time.Millisecond
+	RateLimitBurstDefault                    = 10
+	BlockResubmitIntervalMillisecondsDefault = 500 * time.Millisecond
 
 	SubmissionDelaySecondsDefault = 4 * time.Second
 )
@@ -82,16 +82,16 @@ type Builder struct {
 
 // BuilderArgs is a struct that contains all the arguments needed to create a new Builder
 type BuilderArgs struct {
-	sk                          *bls.SecretKey
-	ds                          flashbotsextra.IDatabaseService
-	relay                       IRelay
-	builderSigningDomain        boostTypes.Domain
-	builderResubmitInterval     time.Duration
-	eth                         IEthereumService
-	dryRun                      bool
-	ignoreLatePayloadAttributes bool
-	validator                   *blockvalidation.BlockValidationAPI
-	beaconClient                IBeaconClient
+	sk                           *bls.SecretKey
+	ds                           flashbotsextra.IDatabaseService
+	relay                        IRelay
+	builderSigningDomain         boostTypes.Domain
+	builderBlockResubmitInterval time.Duration
+	eth                          IEthereumService
+	dryRun                       bool
+	ignoreLatePayloadAttributes  bool
+	validator                    *blockvalidation.BlockValidationAPI
+	beaconClient                 IBeaconClient
 
 	limiter *rate.Limiter
 }
@@ -105,8 +105,8 @@ func NewBuilder(args BuilderArgs) *Builder {
 		args.limiter = rate.NewLimiter(rate.Every(RateLimitIntervalDefault), RateLimitBurstDefault)
 	}
 
-	if args.builderResubmitInterval == 0 {
-		args.builderResubmitInterval = RateLimitResubmitIntervalMillisecondsDefault
+	if args.builderBlockResubmitInterval == 0 {
+		args.builderBlockResubmitInterval = BlockResubmitIntervalMillisecondsDefault
 	}
 
 	slotCtx, slotCtxCancel := context.WithCancel(context.Background())
@@ -121,7 +121,7 @@ func NewBuilder(args BuilderArgs) *Builder {
 		builderSecretKey:            args.sk,
 		builderPublicKey:            pk,
 		builderSigningDomain:        args.builderSigningDomain,
-		builderResubmitInterval:     args.builderResubmitInterval,
+		builderResubmitInterval:     args.builderBlockResubmitInterval,
 
 		limiter:       args.limiter,
 		slotCtx:       slotCtx,
@@ -448,9 +448,12 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 		}
 	}
 
-	// resubmits block builder requests every RateLimitResubmitInterval
-	runRetryLoop(ctx, RateLimitResubmitIntervalMillisecondsDefault, func() {
-		log.Debug("retrying BuildBlock", "slot", attrs.Slot, "parent", attrs.HeadHash)
+	// resubmits block builder requests every builderBlockResubmitInterval
+	runRetryLoop(ctx, b.builderResubmitInterval, func() {
+		log.Debug("retrying BuildBlock",
+			"slot", attrs.Slot,
+			"parent", attrs.HeadHash,
+			"resubmit-interval", b.builderResubmitInterval.String())
 		err := b.eth.BuildBlock(attrs, blockHook)
 		if err != nil {
 			log.Warn("Failed to build block", "err", err)

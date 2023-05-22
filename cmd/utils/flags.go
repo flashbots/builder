@@ -831,6 +831,15 @@ var (
 		Category: flags.BuilderCategory,
 	}
 
+	// BuilderBlockResubmitInterval determines the interval at which builder will resubmit block submissions.
+	BuilderBlockResubmitInterval = &cli.StringFlag{
+		Name:     "builder.block_resubmit_interval",
+		Usage:    "Determines the interval at which builder will resubmit block submissions",
+		EnvVars:  []string{"FLASHBOTS_BUILDER_RATE_LIMIT_RESUBMIT_INTERVAL"},
+		Value:    builder.BlockResubmitIntervalMillisecondsDefault.String(),
+		Category: flags.BuilderCategory,
+	}
+
 	BuilderEnableCancellations = &cli.BoolFlag{
 		Name:     "builder.cancellations",
 		Usage:    "Enable cancellations for the builder",

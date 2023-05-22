@@ -222,6 +222,17 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	}
 	limiter := rate.NewLimiter(rate.Every(duration), cfg.BuilderRateLimitMaxBurst)
 
+	var builderRateLimitInterval time.Duration
+	if cfg.BuilderRateLimitResubmitInterval != "" {
+		d, err := time.ParseDuration(cfg.BuilderRateLimitResubmitInterval)
+		if err != nil {
+			return fmt.Errorf("error parsing builder rate limit resubmit interval - %v", err)
+		}
+		builderRateLimitInterval = d
+	} else {
+		builderRateLimitInterval = RateLimitIntervalDefault
+	}
+
 	// TODO: move to proper flags
 	var ds flashbotsextra.IDatabaseService
 	dbDSN := os.Getenv("FLASHBOTS_POSTGRES_DSN")
@@ -253,16 +264,17 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	}
 
 	builderArgs := BuilderArgs{
-		sk:                          builderSk,
-		ds:                          ds,
-		relay:                       relay,
-		builderSigningDomain:        builderSigningDomain,
-		eth:                         ethereumService,
-		dryRun:                      cfg.DryRun,
-		ignoreLatePayloadAttributes: cfg.IgnoreLatePayloadAttributes,
-		validator:                   validator,
-		beaconClient:                beaconClient,
-		limiter:                     limiter,
+		sk:                           builderSk,
+		ds:                           ds,
+		relay:                        relay,
+		builderSigningDomain:         builderSigningDomain,
+		builderBlockResubmitInterval: builderRateLimitInterval,
+		eth:                          ethereumService,
+		dryRun:                       cfg.DryRun,
+		ignoreLatePayloadAttributes:  cfg.IgnoreLatePayloadAttributes,
+		validator:                    validator,
+		beaconClient:                 beaconClient,
+		limiter:                      limiter,
 	}
 
 	builderBackend := NewBuilder(builderArgs)
