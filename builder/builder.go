@@ -8,30 +8,30 @@ import (
 	"sync"
 	"time"
 
+	capellaapi "github.com/attestantio/go-builder-client/api/capella"
+	apiv1 "github.com/attestantio/go-builder-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
-	"github.com/ethereum/go-ethereum/common"
-	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
-	"github.com/holiman/uint256"
-	"golang.org/x/time/rate"
-
 	"github.com/ethereum/go-ethereum/beacon/engine"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
+	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
 	"github.com/ethereum/go-ethereum/flashbotsextra"
 	"github.com/ethereum/go-ethereum/log"
-
-	capellaapi "github.com/attestantio/go-builder-client/api/capella"
-	apiv1 "github.com/attestantio/go-builder-client/api/v1"
-
 	"github.com/flashbots/go-boost-utils/bls"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
+	"github.com/holiman/uint256"
+	"golang.org/x/time/rate"
 )
 
 const (
-	RateLimitIntervalDefault = 500 * time.Millisecond
-	RateLimitBurstDefault    = 10
+	RateLimitIntervalDefault                     = 500 * time.Millisecond
+	RateLimitBurstDefault                        = 10
+	RateLimitResubmitIntervalMillisecondsDefault = 500 * time.Millisecond
+
+	SubmissionDelaySecondsDefault = 4 * time.Second
 )
 
 type PubkeyHex string
@@ -46,6 +46,7 @@ type IRelay interface {
 	SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, vd ValidatorData) error
 	SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
+	Config() RelayConfig
 	Start() error
 	Stop()
 }
@@ -67,6 +68,7 @@ type Builder struct {
 	builderSecretKey            *bls.SecretKey
 	builderPublicKey            boostTypes.PublicKey
 	builderSigningDomain        boostTypes.Domain
+	builderResubmitInterval     time.Duration
 
 	limiter *rate.Limiter
 
@@ -78,31 +80,50 @@ type Builder struct {
 	stop chan struct{}
 }
 
-func NewBuilder(sk *bls.SecretKey, ds flashbotsextra.IDatabaseService, relay IRelay, builderSigningDomain boostTypes.Domain,
-	eth IEthereumService, dryRun bool, ignoreLatePayloadAttributes bool, validator *blockvalidation.BlockValidationAPI,
-	beaconClient IBeaconClient, limiter *rate.Limiter) *Builder {
-	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
+// BuilderArgs is a struct that contains all the arguments needed to create a new Builder
+type BuilderArgs struct {
+	sk                          *bls.SecretKey
+	ds                          flashbotsextra.IDatabaseService
+	relay                       IRelay
+	builderSigningDomain        boostTypes.Domain
+	builderResubmitInterval     time.Duration
+	eth                         IEthereumService
+	dryRun                      bool
+	ignoreLatePayloadAttributes bool
+	validator                   *blockvalidation.BlockValidationAPI
+	beaconClient                IBeaconClient
+
+	limiter *rate.Limiter
+}
+
+func NewBuilder(args BuilderArgs) *Builder {
+	pkBytes := bls.PublicKeyFromSecretKey(args.sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
 
-	if limiter == nil {
-		limiter = rate.NewLimiter(rate.Every(RateLimitIntervalDefault), RateLimitBurstDefault)
+	if args.limiter == nil {
+		args.limiter = rate.NewLimiter(rate.Every(RateLimitIntervalDefault), RateLimitBurstDefault)
+	}
+
+	if args.builderResubmitInterval == 0 {
+		args.builderResubmitInterval = RateLimitResubmitIntervalMillisecondsDefault
 	}
 
 	slotCtx, slotCtxCancel := context.WithCancel(context.Background())
 	return &Builder{
-		ds:                          ds,
-		relay:                       relay,
-		eth:                         eth,
-		dryRun:                      dryRun,
-		ignoreLatePayloadAttributes: ignoreLatePayloadAttributes,
-		validator:                   validator,
-		beaconClient:                beaconClient,
-		builderSecretKey:            sk,
+		ds:                          args.ds,
+		relay:                       args.relay,
+		eth:                         args.eth,
+		dryRun:                      args.dryRun,
+		ignoreLatePayloadAttributes: args.ignoreLatePayloadAttributes,
+		validator:                   args.validator,
+		beaconClient:                args.beaconClient,
+		builderSecretKey:            args.sk,
 		builderPublicKey:            pk,
-		builderSigningDomain:        builderSigningDomain,
+		builderSigningDomain:        args.builderSigningDomain,
+		builderResubmitInterval:     args.builderResubmitInterval,
 
-		limiter:       limiter,
+		limiter:       args.limiter,
 		slotCtx:       slotCtx,
 		slotCtxCancel: slotCtxCancel,
 
@@ -157,7 +178,7 @@ func (b *Builder) Stop() error {
 	return nil
 }
 
-func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
+func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time, commitedBundles, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
 	if b.eth.Config().IsShanghai(block.Time()) {
 		if err := b.submitCapellaBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, proposerPubkey, vd, attrs); err != nil {
 			return err
@@ -173,7 +194,7 @@ func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersC
 	return nil
 }
 
-func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
+func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time, commitedBundles, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
 	executableData := engine.BlockToExecutableData(block, blockValue)
 	payload, err := executableDataToExecutionPayload(executableData.ExecutionPayload)
 	if err != nil {
@@ -231,7 +252,7 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, 
 	return nil
 }
 
-func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
+func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time, commitedBundles, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
 	executableData := engine.BlockToExecutableData(block, blockValue)
 	payload, err := executableDataToCapellaExecutionPayload(executableData.ExecutionPayload)
 	if err != nil {
@@ -393,7 +414,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 	// Avoid submitting early into a given slot. For example if slots have 12 second interval, submissions should
 	// not begin until 8 seconds into the slot.
 	slotTime := time.Unix(int64(attrs.Timestamp), 0).UTC()
-	submitTime := slotTime.Add(-4 * time.Second)
+	submitTime := slotTime.Add(-SubmissionDelaySecondsDefault)
 
 	ctx = context.WithValue(ctx, key("slot"), attrs.Slot)
 	ctx = context.WithValue(ctx, key("timestamp"), uint64(attrs.Timestamp))
@@ -401,7 +422,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock, &submitTime)
 
 	// Populates queue with submissions that increase block profit
-	blockHook := func(block *types.Block, blockValue *big.Int, ordersCloseTime time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle) {
+	blockHook := func(block *types.Block, blockValue *big.Int, ordersCloseTime time.Time, committedBundles, allBundles []types.SimulatedBundle) {
 		if ctx.Err() != nil {
 			return
 		}
@@ -416,7 +437,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 				blockValue:      new(big.Int).Set(blockValue),
 				ordersCloseTime: ordersCloseTime,
 				sealedAt:        sealedAt,
-				commitedBundles: commitedBundles,
+				commitedBundles: committedBundles,
 				allBundles:      allBundles,
 			}
 
@@ -427,8 +448,8 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 		}
 	}
 
-	// resubmits block builder requests every second
-	runRetryLoop(ctx, 500*time.Millisecond, func() {
+	// resubmits block builder requests every RateLimitResubmitInterval
+	runRetryLoop(ctx, RateLimitResubmitIntervalMillisecondsDefault, func() {
 		log.Debug("retrying BuildBlock", "slot", attrs.Slot, "parent", attrs.HeadHash)
 		err := b.eth.BuildBlock(attrs, blockHook)
 		if err != nil {

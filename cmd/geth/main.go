@@ -177,6 +177,7 @@ var (
 		utils.BuilderSecondaryRemoteRelayEndpoints,
 		utils.BuilderRateLimitDuration,
 		utils.BuilderRateLimitMaxBurst,
+		utils.BuilderEnableCancellations,
 	}
 
 	rpcFlags = []cli.Flag{

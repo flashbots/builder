@@ -831,7 +831,14 @@ var (
 		Category: flags.BuilderCategory,
 	}
 
+	BuilderEnableCancellations = &cli.BoolFlag{
+		Name:     "builder.cancellations",
+		Usage:    "Enable cancellations for the builder",
+		Category: flags.BuilderCategory,
+	}
+
 	// RPC settings
+
 	IPCDisabledFlag = &cli.BoolFlag{
 		Name:     "ipcdisable",
 		Usage:    "Disable the IPC-RPC server",
@@ -1647,6 +1654,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
 	cfg.BuilderRateLimitDuration = ctx.String(BuilderRateLimitDuration.Name)
 	cfg.BuilderRateLimitMaxBurst = ctx.Int(BuilderRateLimitMaxBurst.Name)
+	cfg.EnableCancellations = ctx.IsSet(BuilderEnableCancellations.Name)
 }
 
 // SetNodeConfig applies node-related command line flags to the config.
@@ -2414,7 +2422,7 @@ func DialRPCWithHeaders(endpoint string, headers []string) (*rpc.Client, error) 
 	}
 	var opts []rpc.ClientOption
 	if len(headers) > 0 {
-		var customHeaders = make(http.Header)
+		customHeaders := make(http.Header)
 		for _, h := range headers {
 			kv := strings.Split(h, ":")
 			if len(kv) != 2 {
