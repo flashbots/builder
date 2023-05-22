@@ -836,7 +836,7 @@ var (
 		Name:     "builder.block_resubmit_interval",
 		Usage:    "Determines the interval at which builder will resubmit block submissions",
 		EnvVars:  []string{"FLASHBOTS_BUILDER_RATE_LIMIT_RESUBMIT_INTERVAL"},
-		Value:    builder.BlockResubmitIntervalMillisecondsDefault.String(),
+		Value:    builder.BlockResubmitIntervalDefault.String(),
 		Category: flags.BuilderCategory,
 	}
 

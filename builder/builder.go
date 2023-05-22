@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	RateLimitIntervalDefault                 = 500 * time.Millisecond
-	RateLimitBurstDefault                    = 10
-	BlockResubmitIntervalMillisecondsDefault = 500 * time.Millisecond
+	RateLimitIntervalDefault     = 500 * time.Millisecond
+	RateLimitBurstDefault        = 10
+	BlockResubmitIntervalDefault = 500 * time.Millisecond
 
 	SubmissionDelaySecondsDefault = 4 * time.Second
 )
@@ -106,7 +106,7 @@ func NewBuilder(args BuilderArgs) *Builder {
 	}
 
 	if args.builderBlockResubmitInterval == 0 {
-		args.builderBlockResubmitInterval = BlockResubmitIntervalMillisecondsDefault
+		args.builderBlockResubmitInterval = BlockResubmitIntervalDefault
 	}
 
 	slotCtx, slotCtxCancel := context.WithCancel(context.Background())
