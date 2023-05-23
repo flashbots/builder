@@ -220,6 +220,8 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	if err != nil {
 		return fmt.Errorf("error parsing builder rate limit duration - %w", err)
 	}
+
+	// BuilderRateLimitMaxBurst is set to builder.RateLimitBurstDefault by default if not specified
 	limiter := rate.NewLimiter(rate.Every(duration), cfg.BuilderRateLimitMaxBurst)
 
 	var builderRateLimitInterval time.Duration

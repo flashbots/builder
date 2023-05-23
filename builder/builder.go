@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	_ "os"
 	"sync"
@@ -189,7 +190,8 @@ func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersC
 		}
 	}
 
-	log.Info("submitted block", "slot", attrs.Slot, "value", blockValue.String(), "parent", block.ParentHash, "hash", block.Hash(), "#commitedBundles", len(commitedBundles), "blockTimestamp", uint64(attrs.Timestamp))
+	log.Info("submitted block", "slot", attrs.Slot, "value", blockValue.String(), "parent", block.ParentHash,
+		"hash", block.Hash(), "#commitedBundles", len(commitedBundles))
 
 	return nil
 }
@@ -321,8 +323,7 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 
 	vd, err := b.relay.GetValidatorForSlot(attrs.Slot)
 	if err != nil {
-		log.Info("could not get validator while submitting block", "err", err, "slot", attrs.Slot)
-		return err
+		return fmt.Errorf("could not get validator while submitting block for slot %d - %w", attrs.Slot, err)
 	}
 
 	attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
@@ -330,8 +331,7 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 
 	proposerPubkey, err := boostTypes.HexToPubkey(string(vd.Pubkey))
 	if err != nil {
-		log.Error("could not parse pubkey", "err", err, "pubkey", vd.Pubkey)
-		return err
+		return fmt.Errorf("could not parse pubkey (%s) - %w", vd.Pubkey, err)
 	}
 
 	if !b.eth.Synced() {
@@ -340,8 +340,7 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 
 	parentBlock := b.eth.GetBlockByHash(attrs.HeadHash)
 	if parentBlock == nil {
-		log.Warn("Block hash not found in blocktree", "head block hash", attrs.HeadHash)
-		return errors.New("parent block not found in blocktree")
+		return fmt.Errorf("parent block hash not found in block tree given head block hash %s", attrs.HeadHash)
 	}
 
 	b.slotMu.Lock()

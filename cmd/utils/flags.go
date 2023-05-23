@@ -831,7 +831,6 @@ var (
 		Category: flags.BuilderCategory,
 	}
 
-	// BuilderBlockResubmitInterval determines the interval at which builder will resubmit block submissions.
 	BuilderBlockResubmitInterval = &cli.StringFlag{
 		Name:     "builder.block_resubmit_interval",
 		Usage:    "Determines the interval at which builder will resubmit block submissions",
@@ -847,7 +846,6 @@ var (
 	}
 
 	// RPC settings
-
 	IPCDisabledFlag = &cli.BoolFlag{
 		Name:     "ipcdisable",
 		Usage:    "Disable the IPC-RPC server",
@@ -2431,7 +2429,7 @@ func DialRPCWithHeaders(endpoint string, headers []string) (*rpc.Client, error) 
 	}
 	var opts []rpc.ClientOption
 	if len(headers) > 0 {
-		customHeaders := make(http.Header)
+		var customHeaders = make(http.Header)
 		for _, h := range headers {
 			kv := strings.Split(h, ":")
 			if len(kv) != 2 {

@@ -120,6 +120,8 @@ FLASHBOTS_BUILDER_RATE_LIMIT_DURATION - determines rate limit of events processe
 possibly signed sequence of decimal numbers, each with optional fraction and a unit suffix, such as "300ms", "-1.5h" or "2h45m".
 
 FLASHBOTS_BUILDER_RATE_LIMIT_MAX_BURST - determines the maximum number of events the builder can accommodate at any point in time
+
+FLASHBOTS_BUILDER_RATE_LIMIT_RESUBMIT_INTERVAL - determines the interval at which builder will resubmit block submissions
 ```
 
 ## Metrics
