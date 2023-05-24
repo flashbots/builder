@@ -373,8 +373,6 @@ type blockQueueEntry struct {
 	allBundles      []types.SimulatedBundle
 }
 
-type key string
-
 func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) {
 	ctx, cancel := context.WithTimeout(slotCtx, 12*time.Second)
 	defer cancel()
@@ -415,13 +413,13 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 	slotTime := time.Unix(int64(attrs.Timestamp), 0).UTC()
 	submitTime := slotTime.Add(-SubmissionDelaySecondsDefault)
 
-	ctx = context.WithValue(ctx, key("slot"), attrs.Slot)
-	ctx = context.WithValue(ctx, key("timestamp"), uint64(attrs.Timestamp))
 	// Empties queue, submits the best block for current job with rate limit (global for all jobs)
-	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock, &submitTime)
+	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock, submitTime)
 
 	// Populates queue with submissions that increase block profit
-	blockHook := func(block *types.Block, blockValue *big.Int, ordersCloseTime time.Time, committedBundles, allBundles []types.SimulatedBundle) {
+	blockHook := func(block *types.Block, blockValue *big.Int, ordersCloseTime time.Time,
+		committedBundles, allBundles []types.SimulatedBundle,
+	) {
 		if ctx.Err() != nil {
 			return
 		}

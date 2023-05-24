@@ -9,28 +9,42 @@ import (
 )
 
 // runResubmitLoop checks for update signal and calls submit respecting provided rate limiter and context
-func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal chan struct{}, submit func(), submitTime *time.Time) {
+func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal <-chan struct{}, submit func(), submitTime time.Time) {
+	if submitTime.IsZero() {
+		log.Warn("skipping resubmit loop - zero submit time found")
+		return
+	}
+
+	var (
+		waitUntilSubmitTime = func(now, waitUntil time.Time) (ok bool) {
+			sleepTime := waitUntil.UTC().Sub(now.UTC())
+			select {
+			case <-ctx.Done():
+				ok = false
+			case <-time.After(sleepTime):
+				ok = true
+			}
+			return ok
+		}
+
+		canContinue bool
+		now         = time.Now()
+	)
+
+	if canContinue = waitUntilSubmitTime(submitTime, now); !canContinue {
+		return
+	}
+
+	var res *rate.Reservation
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-updateSignal:
-			var res *rate.Reservation
-			if submitTime == nil {
-				res = limiter.Reserve()
-			} else {
-				now := time.Now()
-				sleepTime := submitTime.UTC().UnixMilli() - now.UTC().UnixMilli()
-				log.Debug("resubmit loop",
-					"now-sec", now.UTC().Unix(),
-					"slot", ctx.Value(key("slot")),
-					"slot-sec", submitTime.Add(4*time.Second).Unix(),
-					"delta-now-from-slot-ms", submitTime.Add(4*time.Second).Sub(now).Milliseconds(),
-					"block-time-sec", ctx.Value(key("timestamp")))
-				time.Sleep(time.Duration(sleepTime) * time.Millisecond)
-				res = limiter.Reserve()
-			}
+			// runBuildingJob is example caller that uses updateSignal channel via block hook that sends signal to
+			// represent submissions that increase block profit
 
+			res = limiter.Reserve()
 			if !res.OK() {
 				log.Warn("resubmit loop failed to make limiter reservation")
 				return
