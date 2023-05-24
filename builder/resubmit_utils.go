@@ -16,7 +16,11 @@ func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal <-
 	}
 
 	var (
-		waitUntilSubmitTime = func(now, waitUntil time.Time) (ok bool) {
+		waitUntilSubmitTime = func(waitUntil time.Time) (ok bool) {
+			now := time.Now().UTC()
+			if waitUntil.UTC().Before(now) {
+				waitUntil = now
+			}
 			sleepTime := waitUntil.UTC().Sub(now.UTC())
 			select {
 			case <-ctx.Done():
@@ -28,10 +32,9 @@ func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal <-
 		}
 
 		canContinue bool
-		now         = time.Now()
 	)
 
-	if canContinue = waitUntilSubmitTime(submitTime, now); !canContinue {
+	if canContinue = waitUntilSubmitTime(submitTime); !canContinue {
 		return
 	}
 
