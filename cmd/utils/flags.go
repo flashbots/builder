@@ -807,9 +807,6 @@ var (
 
 	// Builder rate limit settings
 
-	// BuilderRateLimitDuration determines rate limit of events processed by builder.
-	// Input is the time interval between events, which is converted to a rate.Limit
-	// which represents the number of events per second.
 	BuilderRateLimitDuration = &cli.StringFlag{
 		Name: "builder.rate_limit_duration",
 		Usage: "Determines rate limit of events processed by builder; a duration string is a possibly signed sequence " +
@@ -819,8 +816,7 @@ var (
 		Category: flags.BuilderCategory,
 	}
 
-	// BuilderRateLimitMaxBurst determines the maximum number of events a builder can handle at any given point in time.
-	// The burst value can be thought of as a bucket of size b, initially full and refilled at rate r per second.
+	// BuilderRateLimitMaxBurst burst value can be thought of as a bucket of size b, initially full and refilled at rate r per second.
 	// b is defined by BuilderRateLimitMaxBurst and r is defined by BuilderRateLimitDuration.
 	// Additional details can be found on rate.Limiter documentation: https://pkg.go.dev/golang.org/x/time/rate#Limiter
 	BuilderRateLimitMaxBurst = &cli.IntFlag{
