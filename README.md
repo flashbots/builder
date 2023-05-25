@@ -45,6 +45,13 @@ $ geth --help
     --builder.bellatrix_fork_version value (default: "0x02000000")
           Bellatrix fork version. [$BUILDER_BELLATRIX_FORK_VERSION]
 
+    --builder.block_resubmit_interval value (default: "500ms")
+          Determines the interval at which builder will resubmit block submissions
+          [$FLASHBOTS_BUILDER_RATE_LIMIT_RESUBMIT_INTERVAL]
+   
+    --builder.cancellations        (default: false)
+          Enable cancellations for the builder
+   
     --builder.dry-run              (default: false)
           Builder only validates blocks without submission to the relay
 
@@ -67,6 +74,16 @@ $ geth --help
     --builder.no_bundle_fetcher    (default: false)
           Disable the bundle fetcher
 
+    --builder.rate_limit_duration value (default: "500ms")
+          Determines rate limit of events processed by builder; a duration string is a
+          possibly signed sequence of decimal numbers, each with optional fraction and a
+          unit suffix, such as "300ms", "-1.5h" or "2h45m"
+          [$FLASHBOTS_BUILDER_RATE_LIMIT_DURATION]
+   
+    --builder.rate_limit_max_burst value (default: 10)
+          Determines the maximum number of burst events the builder can accommodate at any
+          given point in time. [$FLASHBOTS_BUILDER_RATE_LIMIT_MAX_BURST]
+   
     --builder.relay_secret_key value (default: "0x2fc12ae741f29701f8e30f5de6350766c020cb80768a0ff01e6838ffd2431e11")
           Builder local relay API key used for signing headers [$BUILDER_RELAY_SECRET_KEY]
 
