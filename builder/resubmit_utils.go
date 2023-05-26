@@ -33,7 +33,7 @@ func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal <-
 	)
 
 	if canContinue, err := waitUntilSubmitTime(submitTime); !canContinue {
-		log.Warn("skipping resubmit loop - cannot continue [err: %v]", err)
+		log.Warn("skipping resubmit loop - cannot continue", "error", err)
 		return
 	}
 
