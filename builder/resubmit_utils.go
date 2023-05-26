@@ -28,7 +28,7 @@ func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal <-
 			case <-time.After(sleepTime):
 				ok = true
 			}
-			return ok && ctx.Err() != nil, ctx.Err()
+			return ok && ctx.Err() == nil, ctx.Err()
 		}
 	)
 
