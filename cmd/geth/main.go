@@ -164,6 +164,9 @@ var (
 		utils.BuilderBeaconEndpoints,
 		utils.BuilderRemoteRelayEndpoint,
 		utils.BuilderSecondaryRemoteRelayEndpoints,
+		utils.BuilderRateLimitDuration,
+		utils.BuilderRateLimitMaxBurst,
+		utils.BuilderBlockResubmitInterval,
 		utils.BuilderEnableCancellations,
 	}
 

@@ -82,6 +82,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 		ignoreLatePayloadAttributes: false,
 		validator:                   nil,
 		beaconClient:                &testBeacon,
+		limiter:                     nil,
 	}
 	builder := NewBuilder(builderArgs)
 	builder.Start()
