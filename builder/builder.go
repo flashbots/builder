@@ -3,6 +3,7 @@ package builder
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	_ "os"
 	"sync"
@@ -24,6 +25,14 @@ import (
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 	"github.com/holiman/uint256"
 	"golang.org/x/time/rate"
+)
+
+const (
+	RateLimitIntervalDefault     = 500 * time.Millisecond
+	RateLimitBurstDefault        = 10
+	BlockResubmitIntervalDefault = 500 * time.Millisecond
+
+	SubmissionDelaySecondsDefault = 4 * time.Second
 )
 
 type PubkeyHex string
@@ -60,6 +69,7 @@ type Builder struct {
 	builderSecretKey            *bls.SecretKey
 	builderPublicKey            boostTypes.PublicKey
 	builderSigningDomain        boostTypes.Domain
+	builderResubmitInterval     time.Duration
 
 	limiter *rate.Limiter
 
@@ -73,21 +83,32 @@ type Builder struct {
 
 // BuilderArgs is a struct that contains all the arguments needed to create a new Builder
 type BuilderArgs struct {
-	sk                          *bls.SecretKey
-	ds                          flashbotsextra.IDatabaseService
-	relay                       IRelay
-	builderSigningDomain        boostTypes.Domain
-	eth                         IEthereumService
-	dryRun                      bool
-	ignoreLatePayloadAttributes bool
-	validator                   *blockvalidation.BlockValidationAPI
-	beaconClient                IBeaconClient
+	sk                           *bls.SecretKey
+	ds                           flashbotsextra.IDatabaseService
+	relay                        IRelay
+	builderSigningDomain         boostTypes.Domain
+	builderBlockResubmitInterval time.Duration
+	eth                          IEthereumService
+	dryRun                       bool
+	ignoreLatePayloadAttributes  bool
+	validator                    *blockvalidation.BlockValidationAPI
+	beaconClient                 IBeaconClient
+
+	limiter *rate.Limiter
 }
 
 func NewBuilder(args BuilderArgs) *Builder {
 	pkBytes := bls.PublicKeyFromSecretKey(args.sk).Compress()
 	pk := boostTypes.PublicKey{}
 	pk.FromSlice(pkBytes)
+
+	if args.limiter == nil {
+		args.limiter = rate.NewLimiter(rate.Every(RateLimitIntervalDefault), RateLimitBurstDefault)
+	}
+
+	if args.builderBlockResubmitInterval == 0 {
+		args.builderBlockResubmitInterval = BlockResubmitIntervalDefault
+	}
 
 	slotCtx, slotCtxCancel := context.WithCancel(context.Background())
 	return &Builder{
@@ -101,8 +122,9 @@ func NewBuilder(args BuilderArgs) *Builder {
 		builderSecretKey:            args.sk,
 		builderPublicKey:            pk,
 		builderSigningDomain:        args.builderSigningDomain,
+		builderResubmitInterval:     args.builderBlockResubmitInterval,
 
-		limiter:       rate.NewLimiter(rate.Every(time.Millisecond), 510),
+		limiter:       args.limiter,
 		slotCtx:       slotCtx,
 		slotCtxCancel: slotCtxCancel,
 
@@ -129,11 +151,25 @@ func (b *Builder) Start() error {
 				} else if payloadAttributes.Slot == currentSlot {
 					// Subsequent sse events should only be canonical!
 					if !b.ignoreLatePayloadAttributes {
-						b.OnPayloadAttribute(&payloadAttributes)
+						err := b.OnPayloadAttribute(&payloadAttributes)
+						if err != nil {
+							log.Error("error with builder processing on payload attribute",
+								"latestSlot", currentSlot,
+								"processedSlot", payloadAttributes.Slot,
+								"headHash", payloadAttributes.HeadHash.String(),
+								"error", err)
+						}
 					}
 				} else if payloadAttributes.Slot > currentSlot {
 					currentSlot = payloadAttributes.Slot
-					b.OnPayloadAttribute(&payloadAttributes)
+					err := b.OnPayloadAttribute(&payloadAttributes)
+					if err != nil {
+						log.Error("error with builder processing on payload attribute",
+							"latestSlot", currentSlot,
+							"processedSlot", payloadAttributes.Slot,
+							"headHash", payloadAttributes.HeadHash.String(),
+							"error", err)
+					}
 				}
 			}
 		}
@@ -158,7 +194,8 @@ func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersC
 		}
 	}
 
-	log.Info("submitted block", "slot", attrs.Slot, "value", blockValue.String(), "parent", block.ParentHash, "hash", block.Hash(), "#commitedBundles", len(commitedBundles))
+	log.Info("submitted block", "slot", attrs.Slot, "value", blockValue.String(), "parent", block.ParentHash,
+		"hash", block.Hash(), "#commitedBundles", len(commitedBundles))
 
 	return nil
 }
@@ -290,8 +327,7 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 
 	vd, err := b.relay.GetValidatorForSlot(attrs.Slot)
 	if err != nil {
-		log.Info("could not get validator while submitting block", "err", err, "slot", attrs.Slot)
-		return err
+		return fmt.Errorf("could not get validator while submitting block for slot %d - %w", attrs.Slot, err)
 	}
 
 	attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
@@ -299,8 +335,7 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 
 	proposerPubkey, err := boostTypes.HexToPubkey(string(vd.Pubkey))
 	if err != nil {
-		log.Error("could not parse pubkey", "err", err, "pubkey", vd.Pubkey)
-		return err
+		return fmt.Errorf("could not parse pubkey (%s) - %w", vd.Pubkey, err)
 	}
 
 	if !b.eth.Synced() {
@@ -309,8 +344,7 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 
 	parentBlock := b.eth.GetBlockByHash(attrs.HeadHash)
 	if parentBlock == nil {
-		log.Warn("Block hash not found in blocktree", "head block hash", attrs.HeadHash)
-		return errors.New("parent block not found in blocktree")
+		return fmt.Errorf("parent block hash not found in block tree given head block hash %s", attrs.HeadHash)
 	}
 
 	b.slotMu.Lock()
@@ -362,7 +396,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 		queueBestEntry         blockQueueEntry
 	)
 
-	log.Debug("runBuildingJob", "slot", attrs.Slot, "parent", attrs.HeadHash)
+	log.Debug("runBuildingJob", "slot", attrs.Slot, "parent", attrs.HeadHash, "payloadTimestamp", uint64(attrs.Timestamp))
 
 	submitBestBlock := func() {
 		queueMu.Lock()
@@ -378,11 +412,18 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 		queueMu.Unlock()
 	}
 
+	// Avoid submitting early into a given slot. For example if slots have 12 second interval, submissions should
+	// not begin until 8 seconds into the slot.
+	slotTime := time.Unix(int64(attrs.Timestamp), 0).UTC()
+	slotSubmitStartTime := slotTime.Add(-SubmissionDelaySecondsDefault)
+
 	// Empties queue, submits the best block for current job with rate limit (global for all jobs)
-	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock)
+	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock, slotSubmitStartTime)
 
 	// Populates queue with submissions that increase block profit
-	blockHook := func(block *types.Block, blockValue *big.Int, ordersCloseTime time.Time, commitedBundles, allBundles []types.SimulatedBundle) {
+	blockHook := func(block *types.Block, blockValue *big.Int, ordersCloseTime time.Time,
+		committedBundles, allBundles []types.SimulatedBundle,
+	) {
 		if ctx.Err() != nil {
 			return
 		}
@@ -397,7 +438,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 				blockValue:      new(big.Int).Set(blockValue),
 				ordersCloseTime: ordersCloseTime,
 				sealedAt:        sealedAt,
-				commitedBundles: commitedBundles,
+				commitedBundles: committedBundles,
 				allBundles:      allBundles,
 			}
 
@@ -408,9 +449,12 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 		}
 	}
 
-	// resubmits block builder requests every second
-	runRetryLoop(ctx, 500*time.Millisecond, func() {
-		log.Debug("retrying BuildBlock", "slot", attrs.Slot, "parent", attrs.HeadHash)
+	// resubmits block builder requests every builderBlockResubmitInterval
+	runRetryLoop(ctx, b.builderResubmitInterval, func() {
+		log.Debug("retrying BuildBlock",
+			"slot", attrs.Slot,
+			"parent", attrs.HeadHash,
+			"resubmit-interval", b.builderResubmitInterval.String())
 		err := b.eth.BuildBlock(attrs, blockHook)
 		if err != nil {
 			log.Warn("Failed to build block", "err", err)

@@ -9,13 +9,44 @@ import (
 )
 
 // runResubmitLoop checks for update signal and calls submit respecting provided rate limiter and context
-func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal chan struct{}, submit func()) {
+func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal <-chan struct{}, submit func(), submitTime time.Time) {
+	if submitTime.IsZero() {
+		log.Warn("skipping resubmit loop - zero submit time found")
+		return
+	}
+
+	var (
+		waitUntilSubmitTime = func(waitUntil time.Time) (ok bool, err error) {
+			now := time.Now().UTC()
+			if waitUntil.UTC().Before(now) {
+				waitUntil = now
+			}
+			sleepTime := waitUntil.UTC().Sub(now.UTC())
+			select {
+			case <-ctx.Done():
+				ok = false
+			case <-time.After(sleepTime):
+				ok = true
+			}
+			return ok && ctx.Err() == nil, ctx.Err()
+		}
+	)
+
+	if canContinue, err := waitUntilSubmitTime(submitTime); !canContinue {
+		log.Warn("skipping resubmit loop - cannot continue", "error", err)
+		return
+	}
+
+	var res *rate.Reservation
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-updateSignal:
-			res := limiter.Reserve()
+			// runBuildingJob is example caller that uses updateSignal channel via block hook that sends signal to
+			// represent submissions that increase block profit
+
+			res = limiter.Reserve()
 			if !res.OK() {
 				log.Warn("resubmit loop failed to make limiter reservation")
 				return

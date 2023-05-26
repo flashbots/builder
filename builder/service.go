@@ -7,6 +7,9 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
+
+	"golang.org/x/time/rate"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -211,6 +214,27 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		validator = blockvalidation.NewBlockValidationAPI(backend, accessVerifier)
 	}
 
+	// Set up builder rate limiter based on environment variables or CLI flags.
+	// Builder rate limit parameters are flags.BuilderRateLimitDuration and flags.BuilderRateLimitMaxBurst
+	duration, err := time.ParseDuration(cfg.BuilderRateLimitDuration)
+	if err != nil {
+		return fmt.Errorf("error parsing builder rate limit duration - %w", err)
+	}
+
+	// BuilderRateLimitMaxBurst is set to builder.RateLimitBurstDefault by default if not specified
+	limiter := rate.NewLimiter(rate.Every(duration), cfg.BuilderRateLimitMaxBurst)
+
+	var builderRateLimitInterval time.Duration
+	if cfg.BuilderRateLimitResubmitInterval != "" {
+		d, err := time.ParseDuration(cfg.BuilderRateLimitResubmitInterval)
+		if err != nil {
+			return fmt.Errorf("error parsing builder rate limit resubmit interval - %v", err)
+		}
+		builderRateLimitInterval = d
+	} else {
+		builderRateLimitInterval = RateLimitIntervalDefault
+	}
+
 	// TODO: move to proper flags
 	var ds flashbotsextra.IDatabaseService
 	dbDSN := os.Getenv("FLASHBOTS_POSTGRES_DSN")
@@ -242,15 +266,17 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	}
 
 	builderArgs := BuilderArgs{
-		sk:                          builderSk,
-		ds:                          ds,
-		relay:                       relay,
-		builderSigningDomain:        builderSigningDomain,
-		eth:                         ethereumService,
-		dryRun:                      cfg.DryRun,
-		ignoreLatePayloadAttributes: cfg.IgnoreLatePayloadAttributes,
-		validator:                   validator,
-		beaconClient:                beaconClient,
+		sk:                           builderSk,
+		ds:                           ds,
+		relay:                        relay,
+		builderSigningDomain:         builderSigningDomain,
+		builderBlockResubmitInterval: builderRateLimitInterval,
+		eth:                          ethereumService,
+		dryRun:                       cfg.DryRun,
+		ignoreLatePayloadAttributes:  cfg.IgnoreLatePayloadAttributes,
+		validator:                    validator,
+		beaconClient:                 beaconClient,
+		limiter:                      limiter,
 	}
 
 	builderBackend := NewBuilder(builderArgs)
