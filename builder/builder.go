@@ -152,20 +152,24 @@ func (b *Builder) Start() error {
 					// Subsequent sse events should only be canonical!
 					if !b.ignoreLatePayloadAttributes {
 						err := b.OnPayloadAttribute(&payloadAttributes)
+						if err != nil {
+							log.Error("error with builder processing on payload attribute",
+								"latestSlot", currentSlot,
+								"processedSlot", payloadAttributes.Slot,
+								"headHash", payloadAttributes.HeadHash.String(),
+								"error", err)
+						}
+					}
+				} else if payloadAttributes.Slot > currentSlot {
+					currentSlot = payloadAttributes.Slot
+					err := b.OnPayloadAttribute(&payloadAttributes)
+					if err != nil {
 						log.Error("error with builder processing on payload attribute",
 							"latestSlot", currentSlot,
 							"processedSlot", payloadAttributes.Slot,
 							"headHash", payloadAttributes.HeadHash.String(),
 							"error", err)
 					}
-				} else if payloadAttributes.Slot > currentSlot {
-					currentSlot = payloadAttributes.Slot
-					err := b.OnPayloadAttribute(&payloadAttributes)
-					log.Error("error with builder processing on payload attribute",
-						"latestSlot", currentSlot,
-						"processedSlot", payloadAttributes.Slot,
-						"headHash", payloadAttributes.HeadHash.String(),
-						"error", err)
 				}
 			}
 		}
@@ -411,10 +415,10 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 	// Avoid submitting early into a given slot. For example if slots have 12 second interval, submissions should
 	// not begin until 8 seconds into the slot.
 	slotTime := time.Unix(int64(attrs.Timestamp), 0).UTC()
-	submitTime := slotTime.Add(-SubmissionDelaySecondsDefault)
+	slotSubmitStartTime := slotTime.Add(-SubmissionDelaySecondsDefault)
 
 	// Empties queue, submits the best block for current job with rate limit (global for all jobs)
-	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock, submitTime)
+	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock, slotSubmitStartTime)
 
 	// Populates queue with submissions that increase block profit
 	blockHook := func(block *types.Block, blockValue *big.Int, ordersCloseTime time.Time,

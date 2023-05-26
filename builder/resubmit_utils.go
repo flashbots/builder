@@ -16,7 +16,7 @@ func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal <-
 	}
 
 	var (
-		waitUntilSubmitTime = func(waitUntil time.Time) (ok bool) {
+		waitUntilSubmitTime = func(waitUntil time.Time) (ok bool, err error) {
 			now := time.Now().UTC()
 			if waitUntil.UTC().Before(now) {
 				waitUntil = now
@@ -28,13 +28,12 @@ func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal <-
 			case <-time.After(sleepTime):
 				ok = true
 			}
-			return ok
+			return ok && ctx.Err() != nil, ctx.Err()
 		}
-
-		canContinue bool
 	)
 
-	if canContinue = waitUntilSubmitTime(submitTime); !canContinue {
+	if canContinue, err := waitUntilSubmitTime(submitTime); !canContinue {
+		log.Warn("skipping resubmit loop - cannot continue [err: %v]", err)
 		return
 	}
 
