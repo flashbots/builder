@@ -5,7 +5,6 @@ import (
 	"time"
 
 	apiv1 "github.com/attestantio/go-builder-client/api/v1"
-	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/flashbots/go-boost-utils/bls"
@@ -43,7 +42,7 @@ func (v *ValidatorPrivateData) PrepareRegistrationMessage(feeRecipientHex string
 	copy(pubkey[:], v.Pk)
 
 	msg := &apiv1.ValidatorRegistration{
-		FeeRecipient: bellatrix.ExecutionAddress(address),
+		FeeRecipient: address,
 		GasLimit:     1000,
 		Timestamp:    time.Now(),
 		Pubkey:       pubkey,
@@ -52,5 +51,5 @@ func (v *ValidatorPrivateData) PrepareRegistrationMessage(feeRecipientHex string
 	if err != nil {
 		return apiv1.SignedValidatorRegistration{}, err
 	}
-	return apiv1.SignedValidatorRegistration{Message: msg, Signature: phase0.BLSSignature(signature)}, nil
+	return apiv1.SignedValidatorRegistration{Message: msg, Signature: signature}, nil
 }

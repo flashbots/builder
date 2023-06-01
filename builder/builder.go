@@ -23,11 +23,10 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/flashbots/go-boost-utils/bls"
 	"github.com/flashbots/go-boost-utils/ssz"
+	boostTypes "github.com/flashbots/go-boost-utils/types"
 	"github.com/flashbots/go-boost-utils/utils"
 	"github.com/holiman/uint256"
 	"golang.org/x/time/rate"
-
-	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
 
 const (
@@ -245,7 +244,7 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, 
 	}
 
 	blockSubmitReq := bellatrixapi.SubmitBlockRequest{
-		Signature:        phase0.BLSSignature(signature),
+		Signature:        signature,
 		Message:          &blockBidMsg,
 		ExecutionPayload: payload,
 	}
@@ -289,9 +288,9 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 		Slot:                 attrs.Slot,
 		ParentHash:           payload.ParentHash,
 		BlockHash:            payload.BlockHash,
-		BuilderPubkey:        phase0.BLSPubKey(b.builderPublicKey),
-		ProposerPubkey:       phase0.BLSPubKey(proposerPubkey),
-		ProposerFeeRecipient: bellatrix.ExecutionAddress(vd.FeeRecipient),
+		BuilderPubkey:        b.builderPublicKey,
+		ProposerPubkey:       proposerPubkey,
+		ProposerFeeRecipient: vd.FeeRecipient,
 		GasLimit:             executableData.ExecutionPayload.GasLimit,
 		GasUsed:              executableData.ExecutionPayload.GasUsed,
 		Value:                value,
@@ -304,7 +303,7 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 	}
 
 	blockSubmitReq := capellaapi.SubmitBlockRequest{
-		Signature:        phase0.BLSSignature(signature),
+		Signature:        signature,
 		Message:          &blockBidMsg,
 		ExecutionPayload: payload,
 	}
@@ -371,7 +370,7 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 	b.slotCtx = slotCtx
 	b.slotCtxCancel = slotCtxCancel
 
-	go b.runBuildingJob(b.slotCtx, phase0.BLSPubKey(proposerPubkey), vd, attrs)
+	go b.runBuildingJob(b.slotCtx, proposerPubkey, vd, attrs)
 	return nil
 }
 

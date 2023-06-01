@@ -92,7 +92,7 @@ func TestValidatorRegistration(t *testing.T) {
 	rr = testRequest(t, relay, "POST", "/eth/v1/builder/validators", payload)
 	require.Equal(t, http.StatusOK, rr.Code)
 
-	payload[0].Message.Timestamp.Add(time.Second)
+	payload[0].Message.Timestamp = payload[0].Message.Timestamp.Add(time.Second)
 	// Invalid signature
 	payload[0].Signature[len(payload[0].Signature)-1] = 0x00
 	rr = testRequest(t, relay, "POST", "/eth/v1/builder/validators", payload)

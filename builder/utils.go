@@ -11,9 +11,7 @@ import (
 	"net/http"
 )
 
-var (
-	errHTTPErrorResponse = errors.New("HTTP error response")
-)
+var errHTTPErrorResponse = errors.New("HTTP error response")
 
 // SendSSZRequest is a request to send SSZ data to a remote relay.
 func SendSSZRequest(ctx context.Context, client http.Client, method, url string, payload []byte, useGzip bool) (code int, err error) {

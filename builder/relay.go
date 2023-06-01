@@ -12,7 +12,6 @@ import (
 	"github.com/attestantio/go-builder-client/api/bellatrix"
 	"github.com/attestantio/go-builder-client/api/capella"
 	"github.com/ethereum/go-ethereum/log"
-
 	"github.com/flashbots/go-boost-utils/utils"
 )
 

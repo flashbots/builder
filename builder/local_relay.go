@@ -27,9 +27,8 @@ import (
 	"github.com/flashbots/go-boost-utils/bls"
 	"github.com/flashbots/go-boost-utils/ssz"
 	"github.com/flashbots/go-boost-utils/utils"
-	"github.com/holiman/uint256"
-
 	"github.com/gorilla/mux"
+	"github.com/holiman/uint256"
 )
 
 type ForkData struct {
@@ -292,7 +291,7 @@ func (r *LocalRelay) handleGetHeader(w http.ResponseWriter, req *http.Request) {
 
 	response := &spec.VersionedSignedBuilderBid{
 		Version:   consensusspec.DataVersionBellatrix,
-		Bellatrix: &bellatrixapi.SignedBuilderBid{Message: &bid, Signature: phase0.BLSSignature(signature)},
+		Bellatrix: &bellatrixapi.SignedBuilderBid{Message: &bid, Signature: signature},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -441,9 +440,7 @@ func PayloadToPayloadHeader(p *bellatrix.ExecutionPayload) (*bellatrix.Execution
 	}
 
 	var txs []bellatrix.Transaction
-	for _, tx := range p.Transactions {
-		txs = append(txs, tx)
-	}
+	txs = append(txs, p.Transactions...)
 
 	transactions := bellatrixutil.ExecutionPayloadTransactions{Transactions: txs}
 	txroot, err := transactions.HashTreeRoot()
