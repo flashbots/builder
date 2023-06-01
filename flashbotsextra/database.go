@@ -6,10 +6,10 @@ import (
 	"math/big"
 	"time"
 
+	apiv1 "github.com/attestantio/go-builder-client/api/v1"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
-	boostTypes "github.com/flashbots/go-boost-utils/types"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
@@ -172,7 +172,7 @@ func (ds *DatabaseService) getBundleIdsAndInsertMissingBundles(ctx context.Conte
 	return bundleIdsMap, nil
 }
 
-func (ds *DatabaseService) insertBuildBlock(tx *sqlx.Tx, ctx context.Context, block *types.Block, blockValue *big.Int, bidTrace *boostTypes.BidTrace, ordersClosedAt time.Time, sealedAt time.Time) (uint64, error) {
+func (ds *DatabaseService) insertBuildBlock(tx *sqlx.Tx, ctx context.Context, block *types.Block, blockValue *big.Int, bidTrace *apiv1.BidTrace, ordersClosedAt time.Time, sealedAt time.Time) (uint64, error) {
 	blockData := BuiltBlock{
 		BlockNumber:          block.NumberU64(),
 		Profit:               new(big.Rat).SetFrac(blockValue, big.NewInt(1e18)).FloatString(18),

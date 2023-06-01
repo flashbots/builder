@@ -11,6 +11,7 @@ import (
 
 	"golang.org/x/time/rate"
 
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -21,7 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/flashbots/go-boost-utils/bls"
-	boostTypes "github.com/flashbots/go-boost-utils/types"
+	"github.com/flashbots/go-boost-utils/ssz"
 	"github.com/flashbots/go-utils/httplogger"
 	"github.com/gorilla/mux"
 )
@@ -141,9 +142,9 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 
 	var genesisForkVersion [4]byte
 	copy(genesisForkVersion[:], genesisForkVersionBytes[:4])
-	builderSigningDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeAppBuilder, genesisForkVersion, boostTypes.Root{})
+	builderSigningDomain := ssz.ComputeDomain(ssz.DomainTypeAppBuilder, genesisForkVersion, phase0.Root{})
 
-	genesisValidatorsRoot := boostTypes.Root(common.HexToHash(cfg.GenesisValidatorsRoot))
+	genesisValidatorsRoot := phase0.Root(common.HexToHash(cfg.GenesisValidatorsRoot))
 	bellatrixForkVersionBytes, err := hexutil.Decode(cfg.BellatrixForkVersion)
 	if err != nil {
 		return fmt.Errorf("invalid bellatrixForkVersion: %w", err)
@@ -151,7 +152,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 
 	var bellatrixForkVersion [4]byte
 	copy(bellatrixForkVersion[:], bellatrixForkVersionBytes[:4])
-	proposerSigningDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeBeaconProposer, bellatrixForkVersion, genesisValidatorsRoot)
+	proposerSigningDomain := ssz.ComputeDomain(ssz.DomainTypeBeaconProposer, bellatrixForkVersion, genesisValidatorsRoot)
 
 	var beaconClient IBeaconClient
 	if len(cfg.BeaconEndpoints) == 0 {
@@ -174,7 +175,10 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 			return errors.New("incorrect builder API secret key provided")
 		}
 
-		localRelay = NewLocalRelay(relaySk, beaconClient, builderSigningDomain, proposerSigningDomain, ForkData{cfg.GenesisForkVersion, cfg.BellatrixForkVersion, cfg.GenesisValidatorsRoot}, cfg.EnableValidatorChecks)
+		localRelay, err = NewLocalRelay(relaySk, beaconClient, builderSigningDomain, proposerSigningDomain, ForkData{cfg.GenesisForkVersion, cfg.BellatrixForkVersion, cfg.GenesisValidatorsRoot}, cfg.EnableValidatorChecks)
+		if err != nil {
+			return fmt.Errorf("failed to create local relay: %w", err)
+		}
 	}
 
 	var relay IRelay
@@ -279,7 +283,10 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		limiter:                      limiter,
 	}
 
-	builderBackend := NewBuilder(builderArgs)
+	builderBackend, err := NewBuilder(builderArgs)
+	if err != nil {
+		return fmt.Errorf("failed to create builder backend: %w", err)
+	}
 	builderService := NewService(cfg.ListenAddr, localRelay, builderBackend)
 
 	stack.RegisterAPIs([]rpc.API{
