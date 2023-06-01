@@ -62,17 +62,17 @@ type IBuilder interface {
 }
 
 type Builder struct {
-	ds                           flashbotsextra.IDatabaseService
-	relay                        IRelay
-	eth                          IEthereumService
-	dryRun                       bool
-	ignoreLatePayloadAttributes  bool
-	validator                    *blockvalidation.BlockValidationAPI
-	beaconClient                 IBeaconClient
-	builderSecretKey             *bls.SecretKey
-	builderPublicKey             phase0.BLSPubKey
-	builderSigningDomain         phase0.Domain
-	builderResubmitInterval      time.Duration
+	ds                          flashbotsextra.IDatabaseService
+	relay                       IRelay
+	eth                         IEthereumService
+	dryRun                      bool
+	ignoreLatePayloadAttributes bool
+	validator                   *blockvalidation.BlockValidationAPI
+	beaconClient                IBeaconClient
+	builderSecretKey            *bls.SecretKey
+	builderPublicKey            phase0.BLSPubKey
+	builderSigningDomain        phase0.Domain
+	builderResubmitInterval     time.Duration
 
 	limiter *rate.Limiter
 

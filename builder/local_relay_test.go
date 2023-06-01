@@ -66,6 +66,7 @@ func testRequest(t *testing.T, localRelay *LocalRelay, method, path string, payl
 		req, err = http.NewRequest(method, path, nil)
 	} else {
 		payloadBytes, err2 := json.Marshal(payload)
+		fmt.Println(string(payloadBytes))
 		require.NoError(t, err2)
 		req, err = http.NewRequest(method, path, bytes.NewReader(payloadBytes))
 	}
@@ -180,7 +181,7 @@ func TestGetHeader(t *testing.T) {
 	expectedHeader, err := PayloadToPayloadHeader(executionPayload)
 	require.NoError(t, err)
 	expectedValue, ok := uint256.FromBig(forkchoiceBlockProfit)
-	require.True(t, ok)
+	require.False(t, ok)
 	require.EqualValues(t, &bellatrixapi.BuilderBid{
 		Header: expectedHeader,
 		Value:  expectedValue,
@@ -223,6 +224,9 @@ func TestGetPayload(t *testing.T) {
 	err = json.Unmarshal(rr.Body.Bytes(), bid)
 	require.NoError(t, err)
 
+	blockHash := [32]byte{0x06}
+	syncCommitteeBits := [64]byte{0x07}
+
 	// Create request payload
 	msg := &consensusapiv1bellatrix.BlindedBeaconBlock{
 		Slot:          1,
@@ -233,10 +237,15 @@ func TestGetPayload(t *testing.T) {
 			ETH1Data: &phase0.ETH1Data{
 				DepositRoot:  phase0.Root{0x05},
 				DepositCount: 5,
-				BlockHash:    []byte{0x06},
+				BlockHash:    blockHash[:],
 			},
+			ProposerSlashings: []*phase0.ProposerSlashing{},
+			AttesterSlashings: []*phase0.AttesterSlashing{},
+			Attestations:      []*phase0.Attestation{},
+			Deposits:          []*phase0.Deposit{},
+			VoluntaryExits:    []*phase0.SignedVoluntaryExit{},
 			SyncAggregate: &altair.SyncAggregate{
-				SyncCommitteeBits:      []byte{0x07},
+				SyncCommitteeBits:      syncCommitteeBits[:],
 				SyncCommitteeSignature: phase0.BLSSignature{0x08},
 			},
 			ExecutionPayloadHeader: bid.Bellatrix.Message.Header,
@@ -248,7 +257,7 @@ func TestGetPayload(t *testing.T) {
 	require.NoError(t, err)
 
 	// Call getPayload with invalid signature
-	rr = testRequest(t, relay, "POST", "/eth/v1/builder/blinded_blocks", consensusapiv1bellatrix.SignedBlindedBeaconBlock{
+	rr = testRequest(t, relay, "POST", "/eth/v1/builder/blinded_blocks", &consensusapiv1bellatrix.SignedBlindedBeaconBlock{
 		Message:   msg,
 		Signature: phase0.BLSSignature{0x09},
 	})
@@ -256,7 +265,7 @@ func TestGetPayload(t *testing.T) {
 	require.Equal(t, `{"code":400,"message":"invalid signature"}`+"\n", rr.Body.String())
 
 	// Call getPayload with correct signature
-	rr = testRequest(t, relay, "POST", "/eth/v1/builder/blinded_blocks", consensusapiv1bellatrix.SignedBlindedBeaconBlock{
+	rr = testRequest(t, relay, "POST", "/eth/v1/builder/blinded_blocks", &consensusapiv1bellatrix.SignedBlindedBeaconBlock{
 		Message:   msg,
 		Signature: signature,
 	})

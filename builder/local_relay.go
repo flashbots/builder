@@ -176,6 +176,7 @@ func (r *LocalRelay) handleRegisterValidator(w http.ResponseWriter, req *http.Re
 
 		// Do not check timestamp before signature, as it would leak validator data
 		if registerRequest.Message.Timestamp.Unix() > time.Now().Add(10*time.Second).Unix() {
+			log.Error("invalid timestamp", "timestamp", registerRequest.Message.Timestamp)
 			respondError(w, http.StatusBadRequest, "invalid payload")
 			return
 		}
@@ -305,6 +306,7 @@ func (r *LocalRelay) handleGetHeader(w http.ResponseWriter, req *http.Request) {
 func (r *LocalRelay) handleGetPayload(w http.ResponseWriter, req *http.Request) {
 	payload := new(apiv1bellatrix.SignedBlindedBeaconBlock)
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		log.Error("failed to decode payload", "error", err)
 		respondError(w, http.StatusBadRequest, "invalid payload")
 		return
 	}
@@ -355,7 +357,7 @@ func (r *LocalRelay) handleGetPayload(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	response := api.VersionedExecutionPayload{
+	response := &api.VersionedExecutionPayload{
 		Version:   consensusspec.DataVersionBellatrix,
 		Bellatrix: bestPayload,
 	}

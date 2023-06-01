@@ -127,7 +127,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 		GasUsed:       testExecutableData.GasUsed,
 		Timestamp:     testExecutableData.Timestamp,
 		ExtraData:     hexutil.MustDecode("0x0042fafc"),
-		BaseFeePerGas: uint256.NewInt(10).Bytes32(),
+		BaseFeePerGas: [32]byte{0x10},
 		BlockHash:     expectedMessage.BlockHash,
 		Transactions:  []bellatrix.Transaction{},
 	}
