@@ -13,6 +13,8 @@ var (
 	ErrIncorrectRefundConfig = errors.New("incorrect refund config")
 )
 
+// SBundle is a bundle of transactions that must be executed atomically
+// unlike ordinary bundle it also supports refunds
 type SBundle struct {
 	Inclusion BundleInclusion
 	Body      []BundleBody
@@ -80,7 +82,8 @@ func (b *SBundle) Hash() common.Hash {
 }
 
 type SimSBundle struct {
-	Bundle      *SBundle
+	Bundle *SBundle
+	// MevGasPrice = (total coinbase profit) / (gas used)
 	MevGasPrice *big.Int
 	Profit      *big.Int
 }
