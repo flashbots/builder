@@ -192,7 +192,7 @@ func (b *Builder) Stop() error {
 
 func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
 	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
-	proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
+	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
 	if b.eth.Config().IsShanghai(block.Time()) {
 		if err := b.submitCapellaBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, proposerPubkey, vd, attrs); err != nil {
 			return err
@@ -211,7 +211,7 @@ func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersC
 
 func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
 	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
-	proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
+	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
 	executableData := engine.BlockToExecutableData(block, blockValue)
 	payload, err := executableDataToExecutionPayload(executableData.ExecutionPayload)
 	if err != nil {
@@ -270,7 +270,7 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, 
 
 func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
 	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
-	proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
+	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
 	executableData := engine.BlockToExecutableData(block, blockValue)
 	payload, err := executableDataToCapellaExecutionPayload(executableData.ExecutionPayload)
 	if err != nil {
@@ -314,7 +314,7 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 			log.Error("could not validate block for capella", "err", err)
 		}
 	} else {
-		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &boostBidTrace)
+		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
 		err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
 		if err != nil {
 			log.Error("could not submit capella block", "err", err, "#commitedBundles", len(commitedBundles))

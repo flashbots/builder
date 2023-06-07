@@ -23,14 +23,14 @@ type IDatabaseService interface {
 	ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, OrdersClosedAt time.Time, sealedAt time.Time,
 		commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle,
 		usedSbundles []types.UsedSBundle,
-		bidTrace *boostTypes.BidTrace)
+		bidTrace *apiv1.BidTrace)
 	GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error)
 	GetLatestUuidBundles(ctx context.Context, blockNum int64) ([]types.LatestUuidBundle, error)
 }
 
 type NilDbService struct{}
 
-func (NilDbService) ConsumeBuiltBlock(block *types.Block, _ *big.Int, _ time.Time, _ time.Time, _ []types.SimulatedBundle, _ []types.SimulatedBundle, _ []types.UsedSBundle, _ *boostTypes.BidTrace) {
+func (NilDbService) ConsumeBuiltBlock(block *types.Block, _ *big.Int, _ time.Time, _ time.Time, _ []types.SimulatedBundle, _ []types.SimulatedBundle, _ []types.UsedSBundle, _ *apiv1.BidTrace) {
 }
 
 func (NilDbService) GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error) {
@@ -247,7 +247,7 @@ func (ds *DatabaseService) insertUsedSBundleIds(tx *sqlx.Tx, ctx context.Context
 func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time,
 	commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle,
 	usedSbundles []types.UsedSBundle,
-	bidTrace *boostTypes.BidTrace) {
+	bidTrace *apiv1.BidTrace) {
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 

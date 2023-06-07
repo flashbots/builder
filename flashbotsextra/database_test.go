@@ -120,7 +120,7 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 		Success: true,
 	}
 
-	bidTrace := &boostTypes.BidTrace{}
+	bidTrace := &apiv1.BidTrace{}
 
 	ocAt := time.Now().Add(-time.Hour).UTC()
 	sealedAt := time.Now().Add(-30 * time.Minute).UTC()
