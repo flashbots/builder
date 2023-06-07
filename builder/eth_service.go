@@ -28,10 +28,11 @@ type testEthereumService struct {
 	testBlockValue     *big.Int
 	testBundlesMerged  []types.SimulatedBundle
 	testAllBundles     []types.SimulatedBundle
+	testUsedSbundles   []types.UsedSBundle
 }
 
 func (t *testEthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error {
-	sealedBlockCallback(t.testBlock, t.testBlockValue, time.Now(), t.testBundlesMerged, t.testAllBundles)
+	sealedBlockCallback(t.testBlock, t.testBlockValue, time.Now(), t.testBundlesMerged, t.testAllBundles, t.testUsedSbundles)
 	return nil
 }
 

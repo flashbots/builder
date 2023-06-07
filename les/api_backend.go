@@ -206,6 +206,13 @@ func (b *LesApiBackend) SendBundle(ctx context.Context, txs types.Transactions, 
 	return b.eth.txPool.AddMevBundle(txs, big.NewInt(blockNumber.Int64()), uuid, signingAddress, minTimestamp, maxTimestamp, revertingTxHashes)
 }
 
+func (b *LesApiBackend) SendSBundle(ctx context.Context, sbundle *types.SBundle) error {
+	return nil
+}
+
+func (b *LesApiBackend) CancelSBundles(ctx context.Context, hashes []common.Hash) {
+}
+
 func (b *LesApiBackend) SendMegabundle(ctx context.Context, txs types.Transactions, blockNumber rpc.BlockNumber, minTimestamp uint64, maxTimestamp uint64, revertingTxHashes []common.Hash, relayAddr common.Address) error {
 	return nil
 }

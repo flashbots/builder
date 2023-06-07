@@ -286,6 +286,14 @@ func (b *EthAPIBackend) SendBundle(ctx context.Context, txs types.Transactions, 
 	return b.eth.txPool.AddMevBundle(txs, big.NewInt(blockNumber.Int64()), uuid, signingAddress, minTimestamp, maxTimestamp, revertingTxHashes)
 }
 
+func (b *EthAPIBackend) SendSBundle(ctx context.Context, sbundle *types.SBundle) error {
+	return b.eth.txPool.AddSBundle(sbundle)
+}
+
+func (b *EthAPIBackend) CancelSBundles(ctx context.Context, hashes []common.Hash) {
+	b.eth.txPool.CancelSBundles(hashes)
+}
+
 func (b *EthAPIBackend) GetPoolTransactions() (types.Transactions, error) {
 	pending := b.eth.txPool.Pending(false)
 	var txs types.Transactions
