@@ -183,13 +183,15 @@ func (b *Builder) Stop() error {
 	return nil
 }
 
-func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time, commitedBundles, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
+func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
+	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
+	proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
 	if b.eth.Config().IsShanghai(block.Time()) {
-		if err := b.submitCapellaBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, proposerPubkey, vd, attrs); err != nil {
+		if err := b.submitCapellaBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, proposerPubkey, vd, attrs); err != nil {
 			return err
 		}
 	} else {
-		if err := b.submitBellatrixBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, proposerPubkey, vd, attrs); err != nil {
+		if err := b.submitBellatrixBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, proposerPubkey, vd, attrs); err != nil {
 			return err
 		}
 	}
@@ -200,7 +202,9 @@ func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersC
 	return nil
 }
 
-func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time, commitedBundles, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
+func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
+	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
+	proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
 	executableData := engine.BlockToExecutableData(block, blockValue)
 	payload, err := executableDataToExecutionPayload(executableData.ExecutionPayload)
 	if err != nil {
@@ -245,7 +249,7 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, 
 			log.Error("could not validate bellatrix block", "err", err)
 		}
 	} else {
-		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, &blockBidMsg)
+		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
 		err = b.relay.SubmitBlock(&blockSubmitReq, vd)
 		if err != nil {
 			log.Error("could not submit bellatrix block", "err", err, "#commitedBundles", len(commitedBundles))
@@ -258,7 +262,9 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, 
 	return nil
 }
 
-func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time, commitedBundles, allBundles []types.SimulatedBundle, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
+func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
+	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
+	proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
 	executableData := engine.BlockToExecutableData(block, blockValue)
 	payload, err := executableDataToCapellaExecutionPayload(executableData.ExecutionPayload)
 	if err != nil {
@@ -308,7 +314,7 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 			log.Error("could not validate block for capella", "err", err)
 		}
 	} else {
-		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, &boostBidTrace)
+		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &boostBidTrace)
 		err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
 		if err != nil {
 			log.Error("could not submit capella block", "err", err, "#commitedBundles", len(commitedBundles))
@@ -375,6 +381,7 @@ type blockQueueEntry struct {
 	sealedAt        time.Time
 	commitedBundles []types.SimulatedBundle
 	allBundles      []types.SimulatedBundle
+	usedSbundles    []types.UsedSBundle
 }
 
 func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTypes.PublicKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) {
@@ -401,7 +408,8 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 	submitBestBlock := func() {
 		queueMu.Lock()
 		if queueBestEntry.block.Hash() != queueLastSubmittedHash {
-			err := b.onSealedBlock(queueBestEntry.block, queueBestEntry.blockValue, queueBestEntry.ordersCloseTime, queueBestEntry.sealedAt, queueBestEntry.commitedBundles, queueBestEntry.allBundles, proposerPubkey, vd, attrs)
+			err := b.onSealedBlock(queueBestEntry.block, queueBestEntry.blockValue, queueBestEntry.ordersCloseTime, queueBestEntry.sealedAt,
+				queueBestEntry.commitedBundles, queueBestEntry.allBundles, queueBestEntry.usedSbundles, proposerPubkey, vd, attrs)
 
 			if err != nil {
 				log.Error("could not run sealed block hook", "err", err)
@@ -422,7 +430,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 
 	// Populates queue with submissions that increase block profit
 	blockHook := func(block *types.Block, blockValue *big.Int, ordersCloseTime time.Time,
-		committedBundles, allBundles []types.SimulatedBundle,
+		committedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
 	) {
 		if ctx.Err() != nil {
 			return
@@ -440,6 +448,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey boostTy
 				sealedAt:        sealedAt,
 				commitedBundles: committedBundles,
 				allBundles:      allBundles,
+				usedSbundles:    usedSbundles,
 			}
 
 			select {

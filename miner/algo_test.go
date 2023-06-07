@@ -212,11 +212,11 @@ func runAlgoTest(config *params.ChainConfig, alloc core.GenesisAlloc, txPool map
 	var (
 		statedb, chData = genTestSetupWithAlloc(config, alloc)
 		env             = newEnvironment(chData, statedb, header.Coinbase, header.GasLimit*uint64(scale), header.BaseFee)
-		builder         = newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil)
+		builder         = newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
 	)
 
 	// build block
-	resultEnv, _ := builder.buildBlock(bundles, txPool)
+	resultEnv, _, _ := builder.buildBlock(bundles, nil, txPool)
 	return resultEnv.profit, nil
 }
 

@@ -292,6 +292,7 @@ type TxPool struct {
 	privateTxs    *timestampedTxHashSet
 	mevBundles    []types.MevBundle
 	bundleFetcher IFetcher
+	sbundles      *SBundlePool
 }
 
 type txpoolResetRequest struct {
@@ -323,6 +324,7 @@ func NewTxPool(config Config, chainconfig *params.ChainConfig, chain blockChain)
 		initDoneCh:      make(chan struct{}),
 		gasPrice:        new(big.Int).SetUint64(config.PriceLimit),
 		privateTxs:      newExpiringTxHashSet(config.PrivateTxLifetime),
+		sbundles:        NewSBundlePool(types.LatestSigner(chainconfig)),
 	}
 
 	pool.locals = newAccountSet(pool.signer)
@@ -749,6 +751,18 @@ func (pool *TxPool) AddMevBundle(txs types.Transactions, blockNumber *big.Int, r
 		Hash:              bundleHash,
 	})
 	return nil
+}
+
+func (pool *TxPool) AddSBundle(bundle *types.SBundle) error {
+	return pool.sbundles.Add(bundle)
+}
+
+func (pool *TxPool) CancelSBundles(hashes []common.Hash) {
+	pool.sbundles.Cancel(hashes)
+}
+
+func (pool *TxPool) GetSBundles(block *big.Int) []*types.SBundle {
+	return pool.sbundles.GetSBundles(block.Uint64())
 }
 
 // Locals retrieves the accounts currently considered local by the pool.
@@ -1597,6 +1611,7 @@ func (pool *TxPool) reset(oldHead, newHead *types.Header) {
 	pool.eip2718.Store(pool.chainconfig.IsBerlin(next))
 	pool.eip1559.Store(pool.chainconfig.IsLondon(next))
 	pool.shanghai.Store(pool.chainconfig.IsShanghai(next, uint64(time.Now().Unix())))
+	pool.sbundles.ResetPoolData(pool)
 }
 
 // promoteExecutables moves transactions that have become processable from the

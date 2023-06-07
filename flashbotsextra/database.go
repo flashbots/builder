@@ -20,14 +20,17 @@ const (
 )
 
 type IDatabaseService interface {
-	ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, OrdersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, bidTrace *boostTypes.BidTrace)
+	ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, OrdersClosedAt time.Time, sealedAt time.Time,
+		commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle,
+		usedSbundles []types.UsedSBundle,
+		bidTrace *boostTypes.BidTrace)
 	GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error)
 	GetLatestUuidBundles(ctx context.Context, blockNum int64) ([]types.LatestUuidBundle, error)
 }
 
 type NilDbService struct{}
 
-func (NilDbService) ConsumeBuiltBlock(block *types.Block, _ *big.Int, _ time.Time, _ time.Time, _ []types.SimulatedBundle, _ []types.SimulatedBundle, _ *boostTypes.BidTrace) {
+func (NilDbService) ConsumeBuiltBlock(block *types.Block, _ *big.Int, _ time.Time, _ time.Time, _ []types.SimulatedBundle, _ []types.SimulatedBundle, _ []types.UsedSBundle, _ *boostTypes.BidTrace) {
 }
 
 func (NilDbService) GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error) {
@@ -224,7 +227,27 @@ func (ds *DatabaseService) insertAllBlockBundleIds(tx *sqlx.Tx, ctx context.Cont
 	return err
 }
 
-func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, bidTrace *boostTypes.BidTrace) {
+func (ds *DatabaseService) insertUsedSBundleIds(tx *sqlx.Tx, ctx context.Context, blockId uint64, usedSbundles []types.UsedSBundle) error {
+	if len(usedSbundles) == 0 {
+		return nil
+	}
+
+	toInsert := make([]DbUsedSBundle, len(usedSbundles))
+	for i, u := range usedSbundles {
+		toInsert[i] = DbUsedSBundle{
+			BlockId:  blockId,
+			Hash:     u.Bundle.Hash().Bytes(),
+			Inserted: u.Success,
+		}
+	}
+	_, err := tx.NamedExecContext(ctx, insertUsedSbundleQuery, toInsert)
+	return err
+}
+
+func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time,
+	commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle,
+	usedSbundles []types.UsedSBundle,
+	bidTrace *boostTypes.BidTrace) {
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 
@@ -264,6 +287,13 @@ func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, blockValue *big
 	if err != nil {
 		tx.Rollback()
 		log.Error("could not insert built block all bundles", "err", err)
+		return
+	}
+
+	err = ds.insertUsedSBundleIds(tx, ctx, blockId, usedSbundles)
+	if err != nil {
+		tx.Rollback()
+		log.Error("could not insert used sbundles", "err", err)
 		return
 	}
 

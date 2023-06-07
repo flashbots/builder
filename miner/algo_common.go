@@ -392,3 +392,144 @@ func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver
 
 	return receipt, nil
 }
+
+func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey) error {
+	if key == nil {
+		return errors.New("no private key provided")
+	}
+
+	tmpEnvDiff := envDiff.copy()
+
+	coinbaseBefore := tmpEnvDiff.state.GetBalance(tmpEnvDiff.header.Coinbase)
+	gasBefore := tmpEnvDiff.gasPool.Gas()
+
+	if err := tmpEnvDiff.commitSBundleInner(b.Bundle, chData, interrupt, key); err != nil {
+		return err
+	}
+
+	coinbaseAfter := tmpEnvDiff.state.GetBalance(tmpEnvDiff.header.Coinbase)
+	gasAfter := tmpEnvDiff.gasPool.Gas()
+
+	coinbaseDelta := new(big.Int).Sub(coinbaseAfter, coinbaseBefore)
+	gasDelta := new(big.Int).SetUint64(gasBefore - gasAfter)
+
+	if coinbaseDelta.Cmp(common.Big0) < 0 {
+		return errors.New("coinbase balance decreased")
+	}
+
+	gotEGP := new(big.Int).Div(coinbaseDelta, gasDelta)
+	simEGP := new(big.Int).Set(b.MevGasPrice)
+
+	// allow > 1% difference
+	gotEGP = gotEGP.Mul(gotEGP, big.NewInt(101))
+	simEGP = simEGP.Mul(simEGP, common.Big100)
+
+	if gotEGP.Cmp(simEGP) < 0 {
+		return fmt.Errorf("incorrect EGP: got %d, expected %d", gotEGP, simEGP)
+	}
+
+	*envDiff = *tmpEnvDiff
+	return nil
+}
+
+func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey) error {
+	// check inclusion
+	minBlock := b.Inclusion.BlockNumber
+	maxBlock := b.Inclusion.MaxBlockNumber
+	if current := envDiff.header.Number.Uint64(); current < minBlock || current > maxBlock {
+		return fmt.Errorf("bundle inclusion block number out of range: %d <= %d <= %d", minBlock, current, maxBlock)
+	}
+
+	// extract constraints into convenient format
+	refundIdx := make([]bool, len(b.Body))
+	refundPercents := make([]int, len(b.Body))
+	for _, el := range b.Validity.Refund {
+		refundIdx[el.BodyIdx] = true
+		refundPercents[el.BodyIdx] = el.Percent
+	}
+
+	var (
+		totalProfit      *big.Int = new(big.Int)
+		refundableProfit *big.Int = new(big.Int)
+	)
+
+	var (
+		coinbaseDelta  = new(big.Int)
+		coinbaseBefore *big.Int
+	)
+	// insert body and check it
+	for i, el := range b.Body {
+		coinbaseDelta.Set(common.Big0)
+		coinbaseBefore = envDiff.state.GetBalance(envDiff.header.Coinbase)
+
+		if el.Tx != nil {
+			receipt, _, err := envDiff.commitTx(el.Tx, chData)
+			if err != nil {
+				return err
+			}
+			if receipt.Status != types.ReceiptStatusSuccessful && !el.CanRevert {
+				return errors.New("tx failed")
+			}
+		} else if el.Bundle != nil {
+			err := envDiff.commitSBundleInner(el.Bundle, chData, interrupt, key)
+			if err != nil {
+				return err
+			}
+		} else {
+			return errors.New("invalid body element")
+		}
+
+		coinbaseDelta.Set(envDiff.state.GetBalance(envDiff.header.Coinbase))
+		coinbaseDelta.Sub(coinbaseDelta, coinbaseBefore)
+
+		totalProfit.Add(totalProfit, coinbaseDelta)
+		if !refundIdx[i] {
+			refundableProfit.Add(refundableProfit, coinbaseDelta)
+		}
+	}
+
+	// enforce constraints
+	coinbaseDelta.Set(common.Big0)
+	coinbaseBefore = envDiff.state.GetBalance(envDiff.header.Coinbase)
+	for i, el := range refundPercents {
+		if !refundIdx[i] {
+			continue
+		}
+		refundConfig, err := types.GetRefundConfig(&b.Body[i], envDiff.baseEnvironment.signer)
+		if err != nil {
+			return err
+		}
+
+		maxPayoutCost := new(big.Int).Set(core.SbundlePayoutMaxCost)
+		maxPayoutCost.Mul(maxPayoutCost, big.NewInt(int64(len(refundConfig))))
+		maxPayoutCost.Mul(maxPayoutCost, envDiff.header.BaseFee)
+
+		allocatedValue := common.PercentOf(refundableProfit, el)
+		allocatedValue.Sub(allocatedValue, maxPayoutCost)
+
+		if allocatedValue.Cmp(common.Big0) < 0 {
+			return fmt.Errorf("negative payout")
+		}
+
+		for _, refund := range refundConfig {
+			refundValue := common.PercentOf(allocatedValue, refund.Percent)
+			refundReceiver := refund.Address
+			rec, err := envDiff.commitPayoutTx(refundValue, envDiff.header.Coinbase, refundReceiver, core.SbundlePayoutMaxCostInt, key, chData)
+			if err != nil {
+				return err
+			}
+			if rec.Status != types.ReceiptStatusSuccessful {
+				return fmt.Errorf("refund tx failed")
+			}
+			log.Trace("Committed kickback", "payout", ethIntToFloat(allocatedValue), "receiver", refundReceiver)
+		}
+	}
+	coinbaseDelta.Set(envDiff.state.GetBalance(envDiff.header.Coinbase))
+	coinbaseDelta.Sub(coinbaseDelta, coinbaseBefore)
+	totalProfit.Add(totalProfit, coinbaseDelta)
+
+	if totalProfit.Cmp(common.Big0) < 0 {
+		return fmt.Errorf("negative profit")
+	}
+	return nil
+}

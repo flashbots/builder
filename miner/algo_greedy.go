@@ -1,6 +1,8 @@
 package miner
 
 import (
+	"crypto/ecdsa"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -16,19 +18,22 @@ import (
 type greedyBuilder struct {
 	inputEnvironment *environment
 	chainData        chainData
+	builderKey       *ecdsa.PrivateKey
 	interrupt        *int32
 }
 
-func newGreedyBuilder(chain *core.BlockChain, chainConfig *params.ChainConfig, blacklist map[common.Address]struct{}, env *environment, interrupt *int32) *greedyBuilder {
+func newGreedyBuilder(chain *core.BlockChain, chainConfig *params.ChainConfig, blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32) *greedyBuilder {
 	return &greedyBuilder{
 		inputEnvironment: env,
 		chainData:        chainData{chainConfig, chain, blacklist},
+		builderKey:       key,
 		interrupt:        interrupt,
 	}
 }
 
-func (b *greedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) []types.SimulatedBundle {
+func (b *greedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle) {
 	usedBundles := []types.SimulatedBundle{}
+	usedSbundles := []types.UsedSBundle{}
 
 	for {
 		order := orders.Peek()
@@ -64,16 +69,32 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders 
 
 			log.Trace("Included bundle", "bundleEGP", bundle.MevGasPrice.String(), "gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.TotalEth))
 			usedBundles = append(usedBundles, *bundle)
+		} else if sbundle := order.SBundle(); sbundle != nil {
+			usedEntry := types.UsedSBundle{
+				Bundle: sbundle.Bundle,
+			}
+			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey)
+			orders.Pop()
+			if err != nil {
+				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
+				usedEntry.Success = false
+				usedSbundles = append(usedSbundles, usedEntry)
+				continue
+			}
+
+			log.Trace("Included sbundle", "bundleEGP", sbundle.MevGasPrice.String(), "ethToCoinbase", ethIntToFloat(sbundle.Profit))
+			usedEntry.Success = true
+			usedSbundles = append(usedSbundles, usedEntry)
 		}
 	}
 
-	return usedBundles
+	return usedBundles, usedSbundles
 }
 
-func (b *greedyBuilder) buildBlock(simBundles []types.SimulatedBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle) {
-	orders := types.NewTransactionsByPriceAndNonce(b.inputEnvironment.signer, transactions, simBundles, b.inputEnvironment.header.BaseFee)
+func (b *greedyBuilder) buildBlock(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
+	orders := types.NewTransactionsByPriceAndNonce(b.inputEnvironment.signer, transactions, simBundles, simSBundles, b.inputEnvironment.header.BaseFee)
 	envDiff := newEnvironmentDiff(b.inputEnvironment.copy())
-	usedBundles := b.mergeOrdersIntoEnvDiff(envDiff, orders)
+	usedBundles, usedSbundles := b.mergeOrdersIntoEnvDiff(envDiff, orders)
 	envDiff.applyToBaseEnv()
-	return envDiff.baseEnvironment, usedBundles
+	return envDiff.baseEnvironment, usedBundles, usedSbundles
 }

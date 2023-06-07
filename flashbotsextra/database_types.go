@@ -65,6 +65,17 @@ type blockAndBundleId struct {
 	BundleId uint64 `db:"bundle_id"`
 }
 
+type DbUsedSBundle struct {
+	BlockId  uint64 `db:"block_id"`
+	Hash     []byte `db:"hash"`
+	Inserted bool   `db:"inserted"`
+}
+
+var insertUsedSbundleQuery = `
+INSERT INTO sbundle_builder_used (block_id, hash, inserted)
+VALUES (:block_id, :hash, :inserted)
+ON CONFLICT (block_id, hash) DO NOTHING`
+
 func SimulatedBundleToDbBundle(bundle *types.SimulatedBundle) DbBundle {
 	revertingTxHashes := make([]string, len(bundle.OriginalBundle.RevertingTxHashes))
 	for i, rTxHash := range bundle.OriginalBundle.RevertingTxHashes {

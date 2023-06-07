@@ -1,0 +1,48 @@
+#!/bin/bash
+# devnet.sh run - runs a node
+# devnet.sh clean - cleans data dir
+
+set -e
+
+cd "$(dirname "$0")"
+
+if [ "$1" == "run" ]; then
+    export GETH=${GETH:-../../build/bin/geth}
+    export BUILDER_TX_SIGNING_KEY=${BUILDER_TX_SIGNING_KEY:-0x3fc0ec3f3f7b0f0b4729e5f761ca93f0f73bef97162db46f6a36d06e61399ff1}
+
+    if [ ! -d "data" ]
+       then
+           echo Creating genesis block
+           mkdir data
+           cp -r keystore data/
+           touch data/password
+           $GETH init --datadir data genesis.json
+    fi
+
+
+    $GETH --datadir ./data \
+          --networkid 11155111 \
+          --unlock 8691735873B058E9C9959Cd1AE11E0Df941BB063 --password=./data/password --allow-insecure-unlock \
+          --mine \
+          --miner.algotype greedy \
+          --miner.maxmergedbundles 3 \
+          --miner.recommit 1s \
+          --miner.etherbase 0x8691735873B058E9C9959Cd1AE11E0Df941BB063 \
+          --nodiscover \
+          --port 30305 \
+          --http.api=eth,web3,net,debug,txpool,mev \
+          --http \
+          --http.port=8545 \
+          --metrics \
+          --metrics.addr 127.0.0.1 \
+          --metrics.expensive \
+          --vmodule="miner=5"
+
+elif [ "$1" == "clean" ]; then
+    echo "Cleaning data dir"
+    rm -rf ./data
+else
+    echo "Usage: devnet.sh run|clean"
+fi
+
+

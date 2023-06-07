@@ -710,7 +710,7 @@ func TestSimulateBundles(t *testing.T) {
 	bundle2 := types.MevBundle{Txs: types.Transactions{signTx(1)}, Hash: common.HexToHash("0x02")}
 	bundle3 := types.MevBundle{Txs: types.Transactions{signTx(0)}, Hash: common.HexToHash("0x03")}
 
-	simBundles, err := w.simulateBundles(env, []types.MevBundle{bundle1, bundle2, bundle3}, nil)
+	simBundles, _, err := w.simulateBundles(env, []types.MevBundle{bundle1, bundle2, bundle3}, nil, nil)
 	require.NoError(t, err)
 
 	if len(simBundles) != 2 {
@@ -724,7 +724,7 @@ func TestSimulateBundles(t *testing.T) {
 	}
 
 	// simulate 2 times to check cache
-	simBundles, err = w.simulateBundles(env, []types.MevBundle{bundle1, bundle2, bundle3}, nil)
+	simBundles, _, err = w.simulateBundles(env, []types.MevBundle{bundle1, bundle2, bundle3}, nil, nil)
 	require.NoError(t, err)
 
 	if len(simBundles) != 2 {
