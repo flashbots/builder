@@ -20,13 +20,12 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/trie"
-
-	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
 
 //go:generate go run github.com/fjl/gencodec -type PayloadAttributes -field-override payloadAttributesMarshaling -out gen_blockparams.go
@@ -241,8 +240,8 @@ type ExecutionPayloadBodyV1 struct {
 	Withdrawals     []*types.Withdrawal `json:"withdrawals"`
 }
 
-func ExecutionPayloadToBlock(payload *boostTypes.ExecutionPayload) (*types.Block, error) {
-	// TODO: separate decode function to avoid allocating twice
+func ExecutionPayloadToBlock(payload *bellatrix.ExecutionPayload) (*types.Block, error) {
+	// TODO: consolidate this into one function that handles all forks
 	transactionBytes := make([][]byte, len(payload.Transactions))
 	for i, txHexBytes := range payload.Transactions {
 		transactionBytes[i] = txHexBytes[:]
@@ -251,6 +250,14 @@ func ExecutionPayloadToBlock(payload *boostTypes.ExecutionPayload) (*types.Block
 	if err != nil {
 		return nil, err
 	}
+
+	// base fee per gas is stored little-endian but we need it
+	// big-endian for big.Int.
+	var baseFeePerGasBytes [32]byte
+	for i := 0; i < 32; i++ {
+		baseFeePerGasBytes[i] = payload.BaseFeePerGas[32-1-i]
+	}
+	baseFeePerGas := new(big.Int).SetBytes(baseFeePerGasBytes[:])
 
 	header := &types.Header{
 		ParentHash:  common.Hash(payload.ParentHash),
@@ -265,9 +272,9 @@ func ExecutionPayloadToBlock(payload *boostTypes.ExecutionPayload) (*types.Block
 		GasLimit:    payload.GasLimit,
 		GasUsed:     payload.GasUsed,
 		Time:        payload.Timestamp,
-		BaseFee:     payload.BaseFeePerGas.BigInt(),
+		BaseFee:     baseFeePerGas,
 		Extra:       payload.ExtraData,
-		MixDigest:   common.Hash(payload.Random),
+		MixDigest:   common.Hash(payload.PrevRandao),
 	}
 	block := types.NewBlockWithHeader(header).WithBody(txs, nil /* uncles */)
 	return block, nil

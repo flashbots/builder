@@ -5,13 +5,18 @@ import (
 	"testing"
 	"time"
 
+	apiv1 "github.com/attestantio/go-builder-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/bellatrix"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/flashbotsextra"
 	"github.com/flashbots/go-boost-utils/bls"
-	boostTypes "github.com/flashbots/go-boost-utils/types"
+	"github.com/flashbots/go-boost-utils/ssz"
+	"github.com/flashbots/go-boost-utils/utils"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -28,7 +33,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 		slot:      56,
 	}
 
-	feeRecipient, _ := boostTypes.HexToAddress("0xabcf8e0d4e9587369b2301d0790347320302cc00")
+	feeRecipient, _ := utils.HexToAddress("0xabcf8e0d4e9587369b2301d0790347320302cc00")
 	testRelay := testRelay{
 		gvsVd: ValidatorData{
 			Pubkey:       PubkeyHex(testBeacon.validator.Pk.String()),
@@ -40,7 +45,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 	sk, err := bls.SecretKeyFromBytes(hexutil.MustDecode("0x31ee185dad1220a8c88ca5275e64cf5a5cb09cb621cb30df52c9bee8fbaaf8d7"))
 	require.NoError(t, err)
 
-	bDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeAppBuilder, [4]byte{0x02, 0x0, 0x0, 0x0}, boostTypes.Hash{})
+	bDomain := ssz.ComputeDomain(ssz.DomainTypeAppBuilder, [4]byte{0x02, 0x0, 0x0, 0x0}, phase0.Root{})
 
 	testExecutableData := &engine.ExecutableData{
 		ParentHash:   common.Hash{0x02, 0x03},
@@ -84,7 +89,8 @@ func TestOnPayloadAttributes(t *testing.T) {
 		beaconClient:                &testBeacon,
 		limiter:                     nil,
 	}
-	builder := NewBuilder(builderArgs)
+	builder, err := NewBuilder(builderArgs)
+	require.NoError(t, err)
 	builder.Start()
 	defer builder.Stop()
 
@@ -93,43 +99,42 @@ func TestOnPayloadAttributes(t *testing.T) {
 	time.Sleep(time.Second * 3)
 
 	require.NotNil(t, testRelay.submittedMsg)
-	expectedProposerPubkey, err := boostTypes.HexToPubkey(testBeacon.validator.Pk.String())
+	expectedProposerPubkey, err := utils.HexToPubkey(testBeacon.validator.Pk.String())
 	require.NoError(t, err)
 
-	expectedMessage := boostTypes.BidTrace{
+	expectedMessage := apiv1.BidTrace{
 		Slot:                 uint64(25),
-		ParentHash:           boostTypes.Hash{0x02, 0x03},
+		ParentHash:           phase0.Hash32{0x02, 0x03},
 		BuilderPubkey:        builder.builderPublicKey,
 		ProposerPubkey:       expectedProposerPubkey,
 		ProposerFeeRecipient: feeRecipient,
 		GasLimit:             uint64(50),
 		GasUsed:              uint64(100),
-		Value:                boostTypes.U256Str{0x0a},
+		Value:                &uint256.Int{0x0a},
 	}
-	expectedMessage.BlockHash.FromSlice(hexutil.MustDecode("0xca4147f0d4150183ece9155068f34ee3c375448814e4ca557d482b1d40ee5407")[:])
-
+	copy(expectedMessage.BlockHash[:], hexutil.MustDecode("0xca4147f0d4150183ece9155068f34ee3c375448814e4ca557d482b1d40ee5407")[:])
 	require.Equal(t, expectedMessage, *testRelay.submittedMsg.Message)
 
-	expectedExecutionPayload := boostTypes.ExecutionPayload{
+	expectedExecutionPayload := bellatrix.ExecutionPayload{
 		ParentHash:    [32]byte(testExecutableData.ParentHash),
 		FeeRecipient:  feeRecipient,
 		StateRoot:     [32]byte(testExecutableData.StateRoot),
 		ReceiptsRoot:  [32]byte(testExecutableData.ReceiptsRoot),
 		LogsBloom:     [256]byte{},
-		Random:        [32]byte(testExecutableData.Random),
+		PrevRandao:    [32]byte(testExecutableData.Random),
 		BlockNumber:   testExecutableData.Number,
 		GasLimit:      testExecutableData.GasLimit,
 		GasUsed:       testExecutableData.GasUsed,
 		Timestamp:     testExecutableData.Timestamp,
 		ExtraData:     hexutil.MustDecode("0x0042fafc"),
-		BaseFeePerGas: boostTypes.U256Str{0x10},
+		BaseFeePerGas: [32]byte{0x10},
 		BlockHash:     expectedMessage.BlockHash,
-		Transactions:  []hexutil.Bytes{},
+		Transactions:  []bellatrix.Transaction{},
 	}
 
 	require.Equal(t, expectedExecutionPayload, *testRelay.submittedMsg.ExecutionPayload)
 
-	expectedSignature, err := boostTypes.HexToSignature("0xad09f171b1da05636acfc86778c319af69e39c79515d44bdfed616ba2ef677ffd4d155d87b3363c6bae651ce1e92786216b75f1ac91dd65f3b1d1902bf8485e742170732dd82ffdf4decb0151eeb7926dd053efa9794b2ebed1a203e62bb13e9")
+	expectedSignature, err := utils.HexToSignature("0xad09f171b1da05636acfc86778c319af69e39c79515d44bdfed616ba2ef677ffd4d155d87b3363c6bae651ce1e92786216b75f1ac91dd65f3b1d1902bf8485e742170732dd82ffdf4decb0151eeb7926dd053efa9794b2ebed1a203e62bb13e9")
 
 	require.NoError(t, err)
 	require.Equal(t, expectedSignature, testRelay.submittedMsg.Signature)

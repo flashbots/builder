@@ -9,11 +9,10 @@ import (
 	"sync"
 	"time"
 
+	"github.com/attestantio/go-builder-client/api/bellatrix"
 	"github.com/attestantio/go-builder-client/api/capella"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
-	boostTypes "github.com/flashbots/go-boost-utils/types"
-	"github.com/flashbots/mev-boost/server"
+	"github.com/flashbots/go-boost-utils/utils"
 )
 
 var ErrValidatorNotFound = errors.New("validator not found")
@@ -135,13 +134,13 @@ func (r *RemoteRelay) Start() error {
 
 func (r *RemoteRelay) Stop() {}
 
-func (r *RemoteRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ ValidatorData) error {
+func (r *RemoteRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
 	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"
 	if r.cancellationsEnabled {
 		endpoint = endpoint + "?cancellations=true"
 	}
-	code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg, nil)
+	code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg, nil)
 	if err != nil {
 		return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
 	}
@@ -178,7 +177,7 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 			return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
 		}
 	} else {
-		code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg, nil)
+		code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg, nil)
 		if err != nil {
 			return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
 		}
@@ -196,7 +195,7 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 
 func (r *RemoteRelay) getSlotValidatorMapFromRelay() (map[uint64]ValidatorData, error) {
 	var dst GetValidatorRelayResponse
-	code, err := server.SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodGet, r.config.Endpoint+"/relay/v1/builder/validators", nil, &dst)
+	code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodGet, r.config.Endpoint+"/relay/v1/builder/validators", nil, &dst)
 	if err != nil {
 		return nil, err
 	}
@@ -207,13 +206,11 @@ func (r *RemoteRelay) getSlotValidatorMapFromRelay() (map[uint64]ValidatorData, 
 
 	res := make(map[uint64]ValidatorData)
 	for _, data := range dst {
-		feeRecipientBytes, err := hexutil.Decode(data.Entry.Message.FeeRecipient)
+		feeRecipient, err := utils.HexToAddress(data.Entry.Message.FeeRecipient)
 		if err != nil {
 			log.Error("Ill-formatted fee_recipient from relay", "data", data)
 			continue
 		}
-		var feeRecipient boostTypes.Address
-		feeRecipient.FromSlice(feeRecipientBytes[:])
 
 		pubkeyHex := PubkeyHex(strings.ToLower(data.Entry.Message.Pubkey))
 

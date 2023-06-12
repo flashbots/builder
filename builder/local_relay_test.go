@@ -10,14 +10,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/attestantio/go-builder-client/api"
+	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
+	apiv1 "github.com/attestantio/go-builder-client/api/v1"
+	"github.com/attestantio/go-builder-client/spec"
+	consensusapiv1bellatrix "github.com/attestantio/go-eth2-client/api/v1/bellatrix"
+	"github.com/attestantio/go-eth2-client/spec/altair"
+	"github.com/attestantio/go-eth2-client/spec/bellatrix"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/flashbotsextra"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/flashbots/go-boost-utils/bls"
-	boostTypes "github.com/flashbots/go-boost-utils/types"
+	"github.com/flashbots/go-boost-utils/ssz"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
 )
@@ -25,11 +33,11 @@ import (
 func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *types.Block, blockValue *big.Int) (*Builder, *LocalRelay, *ValidatorPrivateData) {
 	validator := NewRandomValidator()
 	sk, _ := bls.GenerateRandomSecretKey()
-	bDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeAppBuilder, [4]byte{0x02, 0x0, 0x0, 0x0}, boostTypes.Hash{})
-	genesisValidatorsRoot := boostTypes.Hash(common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"))
-	cDomain := boostTypes.ComputeDomain(boostTypes.DomainTypeBeaconProposer, [4]byte{0x02, 0x0, 0x0, 0x0}, genesisValidatorsRoot)
+	bDomain := ssz.ComputeDomain(ssz.DomainTypeAppBuilder, [4]byte{0x02, 0x0, 0x0, 0x0}, phase0.Root{})
+	genesisValidatorsRoot := phase0.Root(common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"))
+	cDomain := ssz.ComputeDomain(ssz.DomainTypeBeaconProposer, [4]byte{0x02, 0x0, 0x0, 0x0}, genesisValidatorsRoot)
 	beaconClient := &testBeaconClient{validator: validator}
-	localRelay := NewLocalRelay(sk, beaconClient, bDomain, cDomain, ForkData{}, true)
+	localRelay, _ := NewLocalRelay(sk, beaconClient, bDomain, cDomain, ForkData{}, true)
 	ethService := &testEthereumService{synced: true, testExecutableData: forkchoiceData, testBlock: block, testBlockValue: blockValue}
 	builderArgs := BuilderArgs{
 		sk:                          sk,
@@ -43,8 +51,7 @@ func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *
 		beaconClient:                beaconClient,
 		limiter:                     nil,
 	}
-	backend := NewBuilder(builderArgs)
-	// service := NewService("127.0.0.1:31545", backend)
+	backend, _ := NewBuilder(builderArgs)
 
 	backend.limiter = rate.NewLimiter(rate.Inf, 0)
 
@@ -59,6 +66,7 @@ func testRequest(t *testing.T, localRelay *LocalRelay, method, path string, payl
 		req, err = http.NewRequest(method, path, nil)
 	} else {
 		payloadBytes, err2 := json.Marshal(payload)
+		fmt.Println(string(payloadBytes))
 		require.NoError(t, err2)
 		req, err = http.NewRequest(method, path, bytes.NewReader(payloadBytes))
 	}
@@ -79,12 +87,12 @@ func TestValidatorRegistration(t *testing.T) {
 	rr := testRequest(t, relay, "POST", "/eth/v1/builder/validators", payload)
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.Contains(t, relay.validators, PubkeyHex(v.Pk.String()))
-	require.Equal(t, FullValidatorData{ValidatorData: ValidatorData{Pubkey: PubkeyHex(v.Pk.String()), FeeRecipient: payload[0].Message.FeeRecipient, GasLimit: payload[0].Message.GasLimit}, Timestamp: payload[0].Message.Timestamp}, relay.validators[PubkeyHex(v.Pk.String())])
+	require.Equal(t, FullValidatorData{ValidatorData: ValidatorData{Pubkey: PubkeyHex(v.Pk.String()), FeeRecipient: payload[0].Message.FeeRecipient, GasLimit: payload[0].Message.GasLimit}, Timestamp: uint64(payload[0].Message.Timestamp.Unix())}, relay.validators[PubkeyHex(v.Pk.String())])
 
 	rr = testRequest(t, relay, "POST", "/eth/v1/builder/validators", payload)
 	require.Equal(t, http.StatusOK, rr.Code)
 
-	payload[0].Message.Timestamp += 1
+	payload[0].Message.Timestamp = payload[0].Message.Timestamp.Add(time.Second)
 	// Invalid signature
 	payload[0].Signature[len(payload[0].Signature)-1] = 0x00
 	rr = testRequest(t, relay, "POST", "/eth/v1/builder/validators", payload)
@@ -94,22 +102,22 @@ func TestValidatorRegistration(t *testing.T) {
 	// TODO: cover all errors
 }
 
-func prepareRegistrationMessage(t *testing.T, domain boostTypes.Domain, v *ValidatorPrivateData) ([]boostTypes.SignedValidatorRegistration, error) {
-	var pubkey boostTypes.PublicKey
-	pubkey.FromSlice(v.Pk)
+func prepareRegistrationMessage(t *testing.T, domain phase0.Domain, v *ValidatorPrivateData) ([]apiv1.SignedValidatorRegistration, error) {
+	var pubkey phase0.BLSPubKey
+	copy(pubkey[:], v.Pk)
 	require.Equal(t, []byte(v.Pk), pubkey[:])
 
-	msg := boostTypes.RegisterValidatorRequestMessage{
-		FeeRecipient: boostTypes.Address{0x42},
+	msg := apiv1.ValidatorRegistration{
+		FeeRecipient: bellatrix.ExecutionAddress{0x42},
 		GasLimit:     15_000_000,
-		Timestamp:    uint64(time.Now().Unix()),
+		Timestamp:    time.Now(),
 		Pubkey:       pubkey,
 	}
 
 	signature, err := v.Sign(&msg, domain)
 	require.NoError(t, err)
 
-	return []boostTypes.SignedValidatorRegistration{{
+	return []apiv1.SignedValidatorRegistration{{
 		Message:   &msg,
 		Signature: signature,
 	}}, nil
@@ -123,7 +131,7 @@ func registerValidator(t *testing.T, v *ValidatorPrivateData, relay *LocalRelay)
 	rr := testRequest(t, relay, "POST", "/eth/v1/builder/validators", payload)
 	require.Equal(t, http.StatusOK, rr.Code)
 	require.Contains(t, relay.validators, PubkeyHex(v.Pk.String()))
-	require.Equal(t, FullValidatorData{ValidatorData: ValidatorData{Pubkey: PubkeyHex(v.Pk.String()), FeeRecipient: payload[0].Message.FeeRecipient, GasLimit: payload[0].Message.GasLimit}, Timestamp: payload[0].Message.Timestamp}, relay.validators[PubkeyHex(v.Pk.String())])
+	require.Equal(t, FullValidatorData{ValidatorData: ValidatorData{Pubkey: PubkeyHex(v.Pk.String()), FeeRecipient: payload[0].Message.FeeRecipient, GasLimit: payload[0].Message.GasLimit}, Timestamp: uint64(payload[0].Message.Timestamp.Unix())}, relay.validators[PubkeyHex(v.Pk.String())])
 }
 
 func TestGetHeader(t *testing.T) {
@@ -164,25 +172,24 @@ func TestGetHeader(t *testing.T) {
 	rr = testRequest(t, relay, "GET", path, nil)
 	require.Equal(t, http.StatusOK, rr.Code)
 
-	bid := new(boostTypes.GetHeaderResponse)
+	bid := new(spec.VersionedSignedBuilderBid)
 	err = json.Unmarshal(rr.Body.Bytes(), bid)
 	require.NoError(t, err)
 
 	executionPayload, err := executableDataToExecutionPayload(forkchoiceData)
 	require.NoError(t, err)
-	expectedHeader, err := boostTypes.PayloadToPayloadHeader(executionPayload)
+	expectedHeader, err := PayloadToPayloadHeader(executionPayload)
 	require.NoError(t, err)
-	expectedValue := new(boostTypes.U256Str)
-	err = expectedValue.FromBig(forkchoiceBlockProfit)
-	require.NoError(t, err)
-	require.EqualValues(t, &boostTypes.BuilderBid{
+	expectedValue, ok := uint256.FromBig(forkchoiceBlockProfit)
+	require.False(t, ok)
+	require.EqualValues(t, &bellatrixapi.BuilderBid{
 		Header: expectedHeader,
-		Value:  *expectedValue,
+		Value:  expectedValue,
 		Pubkey: backend.builderPublicKey,
-	}, bid.Data.Message)
+	}, bid.Bellatrix.Message)
 
-	require.Equal(t, forkchoiceData.ParentHash.Bytes(), bid.Data.Message.Header.ParentHash[:], "didn't build on expected parent")
-	ok, err := boostTypes.VerifySignature(bid.Data.Message, backend.builderSigningDomain, backend.builderPublicKey[:], bid.Data.Signature[:])
+	require.Equal(t, forkchoiceData.ParentHash.Bytes(), bid.Bellatrix.Message.Header.ParentHash[:], "didn't build on expected parent")
+	ok, err = ssz.VerifySignature(bid.Bellatrix.Message, backend.builderSigningDomain, backend.builderPublicKey[:], bid.Bellatrix.Signature[:])
 
 	require.NoError(t, err)
 	require.True(t, ok)
@@ -213,27 +220,35 @@ func TestGetPayload(t *testing.T) {
 	rr := testRequest(t, relay, "GET", path, nil)
 	require.Equal(t, http.StatusOK, rr.Code)
 
-	bid := new(boostTypes.GetHeaderResponse)
+	bid := new(spec.VersionedSignedBuilderBid)
 	err = json.Unmarshal(rr.Body.Bytes(), bid)
 	require.NoError(t, err)
 
+	blockHash := [32]byte{0x06}
+	syncCommitteeBits := [64]byte{0x07}
+
 	// Create request payload
-	msg := &boostTypes.BlindedBeaconBlock{
+	msg := &consensusapiv1bellatrix.BlindedBeaconBlock{
 		Slot:          1,
 		ProposerIndex: 2,
-		ParentRoot:    boostTypes.Root{0x03},
-		StateRoot:     boostTypes.Root{0x04},
-		Body: &boostTypes.BlindedBeaconBlockBody{
-			Eth1Data: &boostTypes.Eth1Data{
-				DepositRoot:  boostTypes.Root{0x05},
+		ParentRoot:    phase0.Root{0x03},
+		StateRoot:     phase0.Root{0x04},
+		Body: &consensusapiv1bellatrix.BlindedBeaconBlockBody{
+			ETH1Data: &phase0.ETH1Data{
+				DepositRoot:  phase0.Root{0x05},
 				DepositCount: 5,
-				BlockHash:    boostTypes.Hash{0x06},
+				BlockHash:    blockHash[:],
 			},
-			SyncAggregate: &boostTypes.SyncAggregate{
-				CommitteeBits:      boostTypes.CommitteeBits{0x07},
-				CommitteeSignature: boostTypes.Signature{0x08},
+			ProposerSlashings: []*phase0.ProposerSlashing{},
+			AttesterSlashings: []*phase0.AttesterSlashing{},
+			Attestations:      []*phase0.Attestation{},
+			Deposits:          []*phase0.Deposit{},
+			VoluntaryExits:    []*phase0.SignedVoluntaryExit{},
+			SyncAggregate: &altair.SyncAggregate{
+				SyncCommitteeBits:      syncCommitteeBits[:],
+				SyncCommitteeSignature: phase0.BLSSignature{0x08},
 			},
-			ExecutionPayloadHeader: bid.Data.Message.Header,
+			ExecutionPayloadHeader: bid.Bellatrix.Message.Header,
 		},
 	}
 
@@ -242,28 +257,23 @@ func TestGetPayload(t *testing.T) {
 	require.NoError(t, err)
 
 	// Call getPayload with invalid signature
-	rr = testRequest(t, relay, "POST", "/eth/v1/builder/blinded_blocks", boostTypes.SignedBlindedBeaconBlock{
+	rr = testRequest(t, relay, "POST", "/eth/v1/builder/blinded_blocks", &consensusapiv1bellatrix.SignedBlindedBeaconBlock{
 		Message:   msg,
-		Signature: boostTypes.Signature{0x09},
+		Signature: phase0.BLSSignature{0x09},
 	})
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 	require.Equal(t, `{"code":400,"message":"invalid signature"}`+"\n", rr.Body.String())
 
 	// Call getPayload with correct signature
-	rr = testRequest(t, relay, "POST", "/eth/v1/builder/blinded_blocks", boostTypes.SignedBlindedBeaconBlock{
+	rr = testRequest(t, relay, "POST", "/eth/v1/builder/blinded_blocks", &consensusapiv1bellatrix.SignedBlindedBeaconBlock{
 		Message:   msg,
 		Signature: signature,
 	})
 
 	// Verify getPayload response
 	require.Equal(t, http.StatusOK, rr.Code)
-	getPayloadResponse := new(boostTypes.GetPayloadResponse)
+	getPayloadResponse := new(api.VersionedExecutionPayload)
 	err = json.Unmarshal(rr.Body.Bytes(), getPayloadResponse)
 	require.NoError(t, err)
-	require.Equal(t, bid.Data.Message.Header.BlockHash, getPayloadResponse.Data.BlockHash)
-}
-
-func TestXxx(t *testing.T) {
-	sk, _ := bls.GenerateRandomSecretKey()
-	fmt.Println(hexutil.Encode(sk.Serialize()))
+	require.Equal(t, bid.Bellatrix.Message.Header.BlockHash, getPayloadResponse.Bellatrix.BlockHash)
 }
