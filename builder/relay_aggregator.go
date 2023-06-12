@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/attestantio/go-builder-client/api/bellatrix"
 	"github.com/attestantio/go-builder-client/api/capella"
 	"github.com/ethereum/go-ethereum/log"
-	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
 
 type RemoteRelayAggregator struct {
@@ -41,7 +41,7 @@ func (r *RemoteRelayAggregator) Stop() {
 	}
 }
 
-func (r *RemoteRelayAggregator) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, registration ValidatorData) error {
+func (r *RemoteRelayAggregator) SubmitBlock(msg *bellatrix.SubmitBlockRequest, registration ValidatorData) error {
 	r.registrationsCacheLock.RLock()
 	defer r.registrationsCacheLock.RUnlock()
 

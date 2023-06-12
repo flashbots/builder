@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 
+	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
 	capellaapi "github.com/attestantio/go-builder-client/api/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/beacon/engine"
@@ -18,8 +19,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-
-	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
 
 type BlacklistedAddresses []common.Address
@@ -126,7 +125,7 @@ func NewBlockValidationAPI(eth *eth.Ethereum, accessVerifier *AccessVerifier) *B
 }
 
 type BuilderBlockValidationRequest struct {
-	boostTypes.BuilderSubmitBlockRequest
+	bellatrixapi.SubmitBlockRequest
 	RegisteredGasLimit uint64 `json:"registered_gas_limit,string"`
 }
 
@@ -143,11 +142,11 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockV
 		return err
 	}
 
-	if params.Message.ParentHash != boostTypes.Hash(block.ParentHash()) {
+	if params.Message.ParentHash != phase0.Hash32(block.ParentHash()) {
 		return fmt.Errorf("incorrect ParentHash %s, expected %s", params.Message.ParentHash.String(), block.ParentHash().String())
 	}
 
-	if params.Message.BlockHash != boostTypes.Hash(block.Hash()) {
+	if params.Message.BlockHash != phase0.Hash32(block.Hash()) {
 		return fmt.Errorf("incorrect BlockHash %s, expected %s", params.Message.BlockHash.String(), block.Hash().String())
 	}
 
@@ -160,7 +159,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockV
 	}
 
 	feeRecipient := common.BytesToAddress(params.Message.ProposerFeeRecipient[:])
-	expectedProfit := params.Message.Value.BigInt()
+	expectedProfit := params.Message.Value.ToBig()
 
 	var vmconfig vm.Config
 	var tracer *logger.AccessListTracer = nil
@@ -175,7 +174,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockV
 			return err
 		}
 		isPostMerge := true // the call is PoS-native
-		timestamp := params.BuilderSubmitBlockRequest.ExecutionPayload.Timestamp
+		timestamp := params.SubmitBlockRequest.ExecutionPayload.Timestamp
 		precompiles := vm.ActivePrecompiles(api.eth.APIBackend.ChainConfig().Rules(new(big.Int).SetUint64(params.ExecutionPayload.BlockNumber), isPostMerge, timestamp))
 		tracer = logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, precompiles)
 		vmconfig = vm.Config{Tracer: tracer, Debug: true}
@@ -235,12 +234,6 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockV
 	if err != nil {
 		return err
 	}
-
-	// validated at the relay
-	// isShanghai := api.eth.BlockChain().Config().IsShanghai(params.ExecutionPayload.Timestamp)
-	// if err := verifyWithdrawals(block.Withdrawals(), params.WithdrawalsRoot, isShanghai); err != nil {
-	// 	return err
-	// }
 
 	if params.Message.ParentHash != phase0.Hash32(block.ParentHash()) {
 		return fmt.Errorf("incorrect ParentHash %s, expected %s", params.Message.ParentHash.String(), block.ParentHash().String())

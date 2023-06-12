@@ -1,11 +1,15 @@
 package builder
 
 import (
+	"errors"
 	"time"
 
+	apiv1 "github.com/attestantio/go-builder-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/flashbots/go-boost-utils/bls"
-	boostTypes "github.com/flashbots/go-boost-utils/types"
+	"github.com/flashbots/go-boost-utils/ssz"
+	"github.com/flashbots/go-boost-utils/utils"
 )
 
 type ValidatorPrivateData struct {
@@ -18,31 +22,34 @@ func NewRandomValidator() *ValidatorPrivateData {
 	if err != nil {
 		return nil
 	}
-	return &ValidatorPrivateData{sk, pk.Compress()}
+	return &ValidatorPrivateData{sk, bls.PublicKeyToBytes(pk)}
 }
 
-func (v *ValidatorPrivateData) Sign(msg boostTypes.HashTreeRoot, d boostTypes.Domain) (boostTypes.Signature, error) {
-	return boostTypes.SignMessage(msg, d, v.sk)
+func (v *ValidatorPrivateData) Sign(msg ssz.ObjWithHashTreeRoot, d phase0.Domain) (phase0.BLSSignature, error) {
+	return ssz.SignMessage(msg, d, v.sk)
 }
 
-func (v *ValidatorPrivateData) PrepareRegistrationMessage(feeRecipientHex string) (boostTypes.SignedValidatorRegistration, error) {
-	address, err := boostTypes.HexToAddress(feeRecipientHex)
+func (v *ValidatorPrivateData) PrepareRegistrationMessage(feeRecipientHex string) (apiv1.SignedValidatorRegistration, error) {
+	address, err := utils.HexToAddress(feeRecipientHex)
 	if err != nil {
-		return boostTypes.SignedValidatorRegistration{}, err
+		return apiv1.SignedValidatorRegistration{}, err
 	}
 
-	pubkey := boostTypes.PublicKey{}
-	pubkey.FromSlice(v.Pk)
+	if len(v.Pk) != 48 {
+		return apiv1.SignedValidatorRegistration{}, errors.New("invalid public key")
+	}
+	pubkey := phase0.BLSPubKey{}
+	copy(pubkey[:], v.Pk)
 
-	msg := &boostTypes.RegisterValidatorRequestMessage{
+	msg := &apiv1.ValidatorRegistration{
 		FeeRecipient: address,
 		GasLimit:     1000,
-		Timestamp:    uint64(time.Now().UnixMilli()),
+		Timestamp:    time.Now(),
 		Pubkey:       pubkey,
 	}
-	signature, err := v.Sign(msg, boostTypes.DomainBuilder)
+	signature, err := v.Sign(msg, ssz.DomainBuilder)
 	if err != nil {
-		return boostTypes.SignedValidatorRegistration{}, err
+		return apiv1.SignedValidatorRegistration{}, err
 	}
-	return boostTypes.SignedValidatorRegistration{Message: msg, Signature: signature}, nil
+	return apiv1.SignedValidatorRegistration{Message: msg, Signature: signature}, nil
 }

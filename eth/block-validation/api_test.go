@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
 	capellaapi "github.com/attestantio/go-builder-client/api/capella"
 	apiv1 "github.com/attestantio/go-builder-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
@@ -90,15 +91,15 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	payload, err := ExecutableDataToExecutionPayload(execData)
 	require.NoError(t, err)
 
-	proposerAddr := boostTypes.Address{}
-	proposerAddr.FromSlice(testValidatorAddr[:])
+	proposerAddr := bellatrix.ExecutionAddress{}
+	copy(proposerAddr[:], testValidatorAddr[:])
 
 	blockRequest := &BuilderBlockValidationRequest{
-		BuilderSubmitBlockRequest: boostTypes.BuilderSubmitBlockRequest{
-			Signature: boostTypes.Signature{},
-			Message: &boostTypes.BidTrace{
-				ParentHash:           boostTypes.Hash(execData.ParentHash),
-				BlockHash:            boostTypes.Hash(execData.BlockHash),
+		SubmitBlockRequest: bellatrixapi.SubmitBlockRequest{
+			Signature: phase0.BLSSignature{},
+			Message: &apiv1.BidTrace{
+				ParentHash:           phase0.Hash32(execData.ParentHash),
+				BlockHash:            phase0.Hash32(execData.BlockHash),
 				ProposerFeeRecipient: proposerAddr,
 				GasLimit:             execData.GasLimit,
 				GasUsed:              execData.GasUsed,
@@ -108,9 +109,9 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 		RegisteredGasLimit: execData.GasLimit,
 	}
 
-	blockRequest.Message.Value = boostTypes.IntToU256(190526394825529)
+	blockRequest.Message.Value = uint256.NewInt(190526394825529)
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "inaccurate payment")
-	blockRequest.Message.Value = boostTypes.IntToU256(149830884438530)
+	blockRequest.Message.Value = uint256.NewInt(149830884438530)
 	require.NoError(t, api.ValidateBuilderSubmissionV1(blockRequest))
 
 	blockRequest.Message.GasLimit += 1
@@ -157,7 +158,6 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	invalidPayload, err := ExecutableDataToExecutionPayload(execData)
 	require.NoError(t, err)
 	invalidPayload.GasUsed = execData.GasUsed
-	invalidPayload.LogsBloom = boostTypes.Bloom{}
 	copy(invalidPayload.ReceiptsRoot[:], hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")[:32])
 	blockRequest.ExecutionPayload = invalidPayload
 	updatePayloadHash(t, blockRequest)
@@ -290,7 +290,6 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	invalidPayload, err := ExecutableDataToExecutionPayloadV2(execData)
 	require.NoError(t, err)
 	invalidPayload.GasUsed = execData.GasUsed
-	invalidPayload.LogsBloom = boostTypes.Bloom{}
 	copy(invalidPayload.ReceiptsRoot[:], hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")[:32])
 	blockRequest.ExecutionPayload = invalidPayload
 	updatePayloadHashV2(t, blockRequest)
@@ -436,10 +435,10 @@ func TestBlacklistLoad(t *testing.T) {
 	require.NoError(t, av.verifyTraces(tracer))
 }
 
-func ExecutableDataToExecutionPayload(data *engine.ExecutableData) (*boostTypes.ExecutionPayload, error) {
-	transactionData := make([]hexutil.Bytes, len(data.Transactions))
+func ExecutableDataToExecutionPayload(data *engine.ExecutableData) (*bellatrix.ExecutionPayload, error) {
+	transactionData := make([]bellatrix.Transaction, len(data.Transactions))
 	for i, tx := range data.Transactions {
-		transactionData[i] = hexutil.Bytes(tx)
+		transactionData[i] = bellatrix.Transaction(tx)
 	}
 
 	baseFeePerGas := new(boostTypes.U256Str)
@@ -448,13 +447,13 @@ func ExecutableDataToExecutionPayload(data *engine.ExecutableData) (*boostTypes.
 		return nil, err
 	}
 
-	return &boostTypes.ExecutionPayload{
+	return &bellatrix.ExecutionPayload{
 		ParentHash:    [32]byte(data.ParentHash),
 		FeeRecipient:  [20]byte(data.FeeRecipient),
 		StateRoot:     [32]byte(data.StateRoot),
 		ReceiptsRoot:  [32]byte(data.ReceiptsRoot),
-		LogsBloom:     boostTypes.Bloom(types.BytesToBloom(data.LogsBloom)),
-		Random:        [32]byte(data.Random),
+		LogsBloom:     types.BytesToBloom(data.LogsBloom),
+		PrevRandao:    [32]byte(data.Random),
 		BlockNumber:   data.Number,
 		GasLimit:      data.GasLimit,
 		GasUsed:       data.GasUsed,
@@ -493,7 +492,7 @@ func ExecutableDataToExecutionPayloadV2(data *engine.ExecutableData) (*capella.E
 		FeeRecipient:  [20]byte(data.FeeRecipient),
 		StateRoot:     [32]byte(data.StateRoot),
 		ReceiptsRoot:  [32]byte(data.ReceiptsRoot),
-		LogsBloom:     boostTypes.Bloom(types.BytesToBloom(data.LogsBloom)),
+		LogsBloom:     types.BytesToBloom(data.LogsBloom),
 		PrevRandao:    [32]byte(data.Random),
 		BlockNumber:   data.Number,
 		GasLimit:      data.GasLimit,

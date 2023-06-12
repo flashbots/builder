@@ -5,15 +5,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/attestantio/go-builder-client/api/bellatrix"
 	"github.com/attestantio/go-builder-client/api/capella"
-	boostTypes "github.com/flashbots/go-boost-utils/types"
 	"github.com/stretchr/testify/require"
 )
 
 /*
 	validator     ValidatorData
 	requestedSlot uint64
-	submittedMsg  *boostTypes.BuilderSubmitBlockRequest
+	submittedMsg  *bellatrix.SubmitBlockRequest
 */
 
 type testRelay struct {
@@ -22,8 +22,8 @@ type testRelay struct {
 	gvsErr  error
 
 	requestedSlot         uint64
-	submittedMsg          *boostTypes.BuilderSubmitBlockRequest
-	submittedMsgCh        chan *boostTypes.BuilderSubmitBlockRequest
+	submittedMsg          *bellatrix.SubmitBlockRequest
+	submittedMsgCh        chan *bellatrix.SubmitBlockRequest
 	submittedMsgCapella   *capella.SubmitBlockRequest
 	submittedMsgChCapella chan *capella.SubmitBlockRequest
 }
@@ -46,7 +46,7 @@ func newTestRelayAggBackend(numRelay int) *testRelayAggBackend {
 	return &testRelayAggBackend{testRelays, ragg}
 }
 
-func (r *testRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, registration ValidatorData) error {
+func (r *testRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, registration ValidatorData) error {
 	if r.submittedMsgCh != nil {
 		select {
 		case r.submittedMsgCh <- msg:
@@ -145,7 +145,7 @@ func TestRemoteRelayAggregator(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// if submitting for unseen VD should error out
-		msg := &boostTypes.BuilderSubmitBlockRequest{}
+		msg := &bellatrix.SubmitBlockRequest{}
 		err = backend.ragg.SubmitBlock(msg, ValidatorData{GasLimit: 40})
 		require.Error(t, err)
 	})
@@ -166,12 +166,12 @@ func TestRemoteRelayAggregator(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// if submitting for unseen VD should error out
-		msg := &boostTypes.BuilderSubmitBlockRequest{}
+		msg := &bellatrix.SubmitBlockRequest{}
 		err = backend.ragg.SubmitBlock(msg, ValidatorData{GasLimit: 40})
 		require.Error(t, err)
 
 		// should submit to the single pirmary if its the only one matching
-		backend.relays[0].submittedMsgCh = make(chan *boostTypes.BuilderSubmitBlockRequest, 1)
+		backend.relays[0].submittedMsgCh = make(chan *bellatrix.SubmitBlockRequest, 1)
 		err = backend.ragg.SubmitBlock(msg, ValidatorData{GasLimit: 10})
 		require.NoError(t, err)
 		select {
@@ -212,9 +212,9 @@ func TestRemoteRelayAggregator(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// should submit to multiple matching relays
-		backend.relays[0].submittedMsgCh = make(chan *boostTypes.BuilderSubmitBlockRequest, 1)
-		backend.relays[2].submittedMsgCh = make(chan *boostTypes.BuilderSubmitBlockRequest, 1)
-		msg := &boostTypes.BuilderSubmitBlockRequest{}
+		backend.relays[0].submittedMsgCh = make(chan *bellatrix.SubmitBlockRequest, 1)
+		backend.relays[2].submittedMsgCh = make(chan *bellatrix.SubmitBlockRequest, 1)
+		msg := &bellatrix.SubmitBlockRequest{}
 		err = backend.ragg.SubmitBlock(msg, ValidatorData{GasLimit: 10})
 		require.Error(t, err)
 

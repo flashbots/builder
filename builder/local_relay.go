@@ -12,12 +12,23 @@ import (
 	"sync"
 	"time"
 
-	"github.com/attestantio/go-builder-client/api/capella"
+	"github.com/attestantio/go-builder-client/api"
+	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
+	capellaapi "github.com/attestantio/go-builder-client/api/capella"
+	apiv1 "github.com/attestantio/go-builder-client/api/v1"
+	"github.com/attestantio/go-builder-client/spec"
+	apiv1bellatrix "github.com/attestantio/go-eth2-client/api/v1/bellatrix"
+	consensusspec "github.com/attestantio/go-eth2-client/spec"
+	"github.com/attestantio/go-eth2-client/spec/bellatrix"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
+	bellatrixutil "github.com/attestantio/go-eth2-client/util/bellatrix"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/flashbots/go-boost-utils/bls"
-	boostTypes "github.com/flashbots/go-boost-utils/types"
+	"github.com/flashbots/go-boost-utils/ssz"
+	"github.com/flashbots/go-boost-utils/utils"
 	"github.com/gorilla/mux"
+	"github.com/holiman/uint256"
 )
 
 type ForkData struct {
@@ -35,11 +46,11 @@ type LocalRelay struct {
 	beaconClient IBeaconClient
 
 	relaySecretKey        *bls.SecretKey
-	relayPublicKey        boostTypes.PublicKey
+	relayPublicKey        phase0.BLSPubKey
 	serializedRelayPubkey hexutil.Bytes
 
-	builderSigningDomain  boostTypes.Domain
-	proposerSigningDomain boostTypes.Domain
+	builderSigningDomain  phase0.Domain
+	proposerSigningDomain phase0.Domain
 
 	validatorsLock sync.RWMutex
 	validators     map[PubkeyHex]FullValidatorData
@@ -47,18 +58,23 @@ type LocalRelay struct {
 	enableBeaconChecks bool
 
 	bestDataLock sync.Mutex
-	bestHeader   *boostTypes.ExecutionPayloadHeader
-	bestPayload  *boostTypes.ExecutionPayload
-	profit       boostTypes.U256Str
+	bestHeader   *bellatrix.ExecutionPayloadHeader
+	bestPayload  *bellatrix.ExecutionPayload
+	profit       *uint256.Int
 
 	indexTemplate *template.Template
 	fd            ForkData
 }
 
-func NewLocalRelay(sk *bls.SecretKey, beaconClient IBeaconClient, builderSigningDomain, proposerSigningDomain boostTypes.Domain, fd ForkData, enableBeaconChecks bool) *LocalRelay {
-	pkBytes := bls.PublicKeyFromSecretKey(sk).Compress()
-	pk := boostTypes.PublicKey{}
-	pk.FromSlice(pkBytes)
+func NewLocalRelay(sk *bls.SecretKey, beaconClient IBeaconClient, builderSigningDomain, proposerSigningDomain phase0.Domain, fd ForkData, enableBeaconChecks bool) (*LocalRelay, error) {
+	blsPk, err := bls.PublicKeyFromSecretKey(sk)
+	if err != nil {
+		return nil, err
+	}
+	pk, err := utils.BlsPublicKeyToPublicKey(blsPk)
+	if err != nil {
+		return nil, err
+	}
 
 	indexTemplate, err := parseIndexTemplate()
 	if err != nil {
@@ -74,7 +90,7 @@ func NewLocalRelay(sk *bls.SecretKey, beaconClient IBeaconClient, builderSigning
 
 		builderSigningDomain:  builderSigningDomain,
 		proposerSigningDomain: proposerSigningDomain,
-		serializedRelayPubkey: pkBytes,
+		serializedRelayPubkey: bls.PublicKeyToBytes(blsPk),
 
 		validators: make(map[PubkeyHex]FullValidatorData),
 
@@ -82,7 +98,7 @@ func NewLocalRelay(sk *bls.SecretKey, beaconClient IBeaconClient, builderSigning
 
 		indexTemplate: indexTemplate,
 		fd:            fd,
-	}
+	}, nil
 }
 
 func (r *LocalRelay) Start() error {
@@ -94,12 +110,12 @@ func (r *LocalRelay) Stop() {
 	r.beaconClient.Stop()
 }
 
-func (r *LocalRelay) SubmitBlock(msg *boostTypes.BuilderSubmitBlockRequest, _ ValidatorData) error {
+func (r *LocalRelay) SubmitBlock(msg *bellatrixapi.SubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
 	return r.submitBlock(msg)
 }
 
-func (r *LocalRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData) error {
+func (r *LocalRelay) SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
 
 	return r.submitBlockCapella(msg)
@@ -111,19 +127,19 @@ func (r *LocalRelay) Config() RelayConfig {
 }
 
 // TODO: local relay support for capella
-func (r *LocalRelay) submitBlockCapella(msg *capella.SubmitBlockRequest) error {
+func (r *LocalRelay) submitBlockCapella(msg *capellaapi.SubmitBlockRequest) error {
 	return nil
 }
 
-func (r *LocalRelay) submitBlock(msg *boostTypes.BuilderSubmitBlockRequest) error {
-	payloadHeader, err := boostTypes.PayloadToPayloadHeader(msg.ExecutionPayload)
+func (r *LocalRelay) submitBlock(msg *bellatrixapi.SubmitBlockRequest) error {
+	header, err := PayloadToPayloadHeader(msg.ExecutionPayload)
 	if err != nil {
 		log.Error("could not convert payload to header", "err", err)
 		return err
 	}
 
 	r.bestDataLock.Lock()
-	r.bestHeader = payloadHeader
+	r.bestHeader = header
 	r.bestPayload = msg.ExecutionPayload
 	r.profit = msg.Message.Value
 	r.bestDataLock.Unlock()
@@ -132,7 +148,7 @@ func (r *LocalRelay) submitBlock(msg *boostTypes.BuilderSubmitBlockRequest) erro
 }
 
 func (r *LocalRelay) handleRegisterValidator(w http.ResponseWriter, req *http.Request) {
-	payload := []boostTypes.SignedValidatorRegistration{}
+	payload := []apiv1.SignedValidatorRegistration{}
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 		log.Error("could not decode payload", "err", err)
 		respondError(w, http.StatusBadRequest, "invalid payload")
@@ -150,7 +166,7 @@ func (r *LocalRelay) handleRegisterValidator(w http.ResponseWriter, req *http.Re
 			return
 		}
 
-		ok, err := boostTypes.VerifySignature(registerRequest.Message, r.builderSigningDomain, registerRequest.Message.Pubkey[:], registerRequest.Signature[:])
+		ok, err := ssz.VerifySignature(registerRequest.Message, r.builderSigningDomain, registerRequest.Message.Pubkey[:], registerRequest.Signature[:])
 		if !ok || err != nil {
 			log.Error("error verifying signature", "err", err)
 			respondError(w, http.StatusBadRequest, "invalid signature")
@@ -158,7 +174,8 @@ func (r *LocalRelay) handleRegisterValidator(w http.ResponseWriter, req *http.Re
 		}
 
 		// Do not check timestamp before signature, as it would leak validator data
-		if registerRequest.Message.Timestamp > uint64(time.Now().Add(10*time.Second).Unix()) {
+		if registerRequest.Message.Timestamp.Unix() > time.Now().Add(10*time.Second).Unix() {
+			log.Error("invalid timestamp", "timestamp", registerRequest.Message.Timestamp)
 			respondError(w, http.StatusBadRequest, "invalid payload")
 			return
 		}
@@ -178,12 +195,12 @@ func (r *LocalRelay) handleRegisterValidator(w http.ResponseWriter, req *http.Re
 	for _, registerRequest := range payload {
 		pubkeyHex := PubkeyHex(registerRequest.Message.Pubkey.String())
 		if previousValidatorData, ok := r.validators[pubkeyHex]; ok {
-			if registerRequest.Message.Timestamp < previousValidatorData.Timestamp {
+			if uint64(registerRequest.Message.Timestamp.Unix()) < previousValidatorData.Timestamp {
 				respondError(w, http.StatusBadRequest, "invalid timestamp")
 				return
 			}
 
-			if registerRequest.Message.Timestamp == previousValidatorData.Timestamp && (registerRequest.Message.FeeRecipient != previousValidatorData.FeeRecipient || registerRequest.Message.GasLimit != previousValidatorData.GasLimit) {
+			if uint64(registerRequest.Message.Timestamp.Unix()) == previousValidatorData.Timestamp && (registerRequest.Message.FeeRecipient != previousValidatorData.FeeRecipient || registerRequest.Message.GasLimit != previousValidatorData.GasLimit) {
 				respondError(w, http.StatusBadRequest, "invalid timestamp")
 				return
 			}
@@ -198,7 +215,7 @@ func (r *LocalRelay) handleRegisterValidator(w http.ResponseWriter, req *http.Re
 				FeeRecipient: registerRequest.Message.FeeRecipient,
 				GasLimit:     registerRequest.Message.GasLimit,
 			},
-			Timestamp: registerRequest.Message.Timestamp,
+			Timestamp: uint64(registerRequest.Message.Timestamp.Unix()),
 		}
 
 		log.Info("registered validator", "pubkey", pubkeyHex, "data", r.validators[pubkeyHex])
@@ -261,20 +278,20 @@ func (r *LocalRelay) handleGetHeader(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	bid := boostTypes.BuilderBid{
+	bid := bellatrixapi.BuilderBid{
 		Header: bestHeader,
 		Value:  profit,
 		Pubkey: r.relayPublicKey,
 	}
-	signature, err := boostTypes.SignMessage(&bid, r.builderSigningDomain, r.relaySecretKey)
+	signature, err := ssz.SignMessage(&bid, r.builderSigningDomain, r.relaySecretKey)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	response := &boostTypes.GetHeaderResponse{
-		Version: "bellatrix",
-		Data:    &boostTypes.SignedBuilderBid{Message: &bid, Signature: signature},
+	response := &spec.VersionedSignedBuilderBid{
+		Version:   consensusspec.DataVersionBellatrix,
+		Bellatrix: &bellatrixapi.SignedBuilderBid{Message: &bid, Signature: signature},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -286,8 +303,9 @@ func (r *LocalRelay) handleGetHeader(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *LocalRelay) handleGetPayload(w http.ResponseWriter, req *http.Request) {
-	payload := new(boostTypes.SignedBlindedBeaconBlock)
+	payload := new(apiv1bellatrix.SignedBlindedBeaconBlock)
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
+		log.Error("failed to decode payload", "error", err)
 		respondError(w, http.StatusBadRequest, "invalid payload")
 		return
 	}
@@ -297,7 +315,7 @@ func (r *LocalRelay) handleGetPayload(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	nextSlotProposerPubkeyHex, err := r.beaconClient.getProposerForNextSlot(payload.Message.Slot)
+	nextSlotProposerPubkeyHex, err := r.beaconClient.getProposerForNextSlot(uint64(payload.Message.Slot))
 	if err != nil {
 		if r.enableBeaconChecks {
 			respondError(w, http.StatusBadRequest, "unknown validator")
@@ -313,7 +331,7 @@ func (r *LocalRelay) handleGetPayload(w http.ResponseWriter, req *http.Request) 
 		}
 	}
 
-	ok, err := boostTypes.VerifySignature(payload.Message, r.proposerSigningDomain, nextSlotProposerPubkeyBytes[:], payload.Signature[:])
+	ok, err := ssz.VerifySignature(payload.Message, r.proposerSigningDomain, nextSlotProposerPubkeyBytes[:], payload.Signature[:])
 	if !ok || err != nil {
 		if r.enableBeaconChecks {
 			respondError(w, http.StatusBadRequest, "invalid signature")
@@ -338,9 +356,9 @@ func (r *LocalRelay) handleGetPayload(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	response := boostTypes.GetPayloadResponse{
-		Version: "bellatrix",
-		Data:    bestPayload,
+	response := &api.VersionedExecutionPayload{
+		Version:   consensusspec.DataVersionBellatrix,
+		Bellatrix: bestPayload,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -411,6 +429,39 @@ func (r *LocalRelay) handleStatus(w http.ResponseWriter, req *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func ExecutionPayloadHeaderEqual(l, r *boostTypes.ExecutionPayloadHeader) bool {
-	return l.ParentHash == r.ParentHash && l.FeeRecipient == r.FeeRecipient && l.StateRoot == r.StateRoot && l.ReceiptsRoot == r.ReceiptsRoot && l.LogsBloom == r.LogsBloom && l.Random == r.Random && l.BlockNumber == r.BlockNumber && l.GasLimit == r.GasLimit && l.GasUsed == r.GasUsed && l.Timestamp == r.Timestamp && l.BaseFeePerGas == r.BaseFeePerGas && bytes.Equal(l.ExtraData, r.ExtraData) && l.BlockHash == r.BlockHash && l.TransactionsRoot == r.TransactionsRoot
+func ExecutionPayloadHeaderEqual(l, r *bellatrix.ExecutionPayloadHeader) bool {
+	return l.ParentHash == r.ParentHash && l.FeeRecipient == r.FeeRecipient && l.StateRoot == r.StateRoot && l.ReceiptsRoot == r.ReceiptsRoot && l.LogsBloom == r.LogsBloom && l.PrevRandao == r.PrevRandao && l.BlockNumber == r.BlockNumber && l.GasLimit == r.GasLimit && l.GasUsed == r.GasUsed && l.Timestamp == r.Timestamp && l.BaseFeePerGas == r.BaseFeePerGas && bytes.Equal(l.ExtraData, r.ExtraData) && l.BlockHash == r.BlockHash && l.TransactionsRoot == r.TransactionsRoot
+}
+
+// PayloadToPayloadHeader converts an ExecutionPayload to ExecutionPayloadHeader
+func PayloadToPayloadHeader(p *bellatrix.ExecutionPayload) (*bellatrix.ExecutionPayloadHeader, error) {
+	if p == nil {
+		return nil, errors.New("nil payload")
+	}
+
+	var txs []bellatrix.Transaction
+	txs = append(txs, p.Transactions...)
+
+	transactions := bellatrixutil.ExecutionPayloadTransactions{Transactions: txs}
+	txroot, err := transactions.HashTreeRoot()
+	if err != nil {
+		return nil, err
+	}
+
+	return &bellatrix.ExecutionPayloadHeader{
+		ParentHash:       p.ParentHash,
+		FeeRecipient:     p.FeeRecipient,
+		StateRoot:        p.StateRoot,
+		ReceiptsRoot:     p.ReceiptsRoot,
+		LogsBloom:        p.LogsBloom,
+		PrevRandao:       p.PrevRandao,
+		BlockNumber:      p.BlockNumber,
+		GasLimit:         p.GasLimit,
+		GasUsed:          p.GasUsed,
+		Timestamp:        p.Timestamp,
+		ExtraData:        p.ExtraData,
+		BaseFeePerGas:    p.BaseFeePerGas,
+		BlockHash:        p.BlockHash,
+		TransactionsRoot: txroot,
+	}, nil
 }

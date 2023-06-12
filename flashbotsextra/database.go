@@ -6,10 +6,10 @@ import (
 	"math/big"
 	"time"
 
+	apiv1 "github.com/attestantio/go-builder-client/api/v1"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
-	boostTypes "github.com/flashbots/go-boost-utils/types"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
@@ -23,14 +23,14 @@ type IDatabaseService interface {
 	ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, OrdersClosedAt time.Time, sealedAt time.Time,
 		commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle,
 		usedSbundles []types.UsedSBundle,
-		bidTrace *boostTypes.BidTrace)
+		bidTrace *apiv1.BidTrace)
 	GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error)
 	GetLatestUuidBundles(ctx context.Context, blockNum int64) ([]types.LatestUuidBundle, error)
 }
 
 type NilDbService struct{}
 
-func (NilDbService) ConsumeBuiltBlock(block *types.Block, _ *big.Int, _ time.Time, _ time.Time, _ []types.SimulatedBundle, _ []types.SimulatedBundle, _ []types.UsedSBundle, _ *boostTypes.BidTrace) {
+func (NilDbService) ConsumeBuiltBlock(block *types.Block, _ *big.Int, _ time.Time, _ time.Time, _ []types.SimulatedBundle, _ []types.SimulatedBundle, _ []types.UsedSBundle, _ *apiv1.BidTrace) {
 }
 
 func (NilDbService) GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error) {
@@ -172,7 +172,7 @@ func (ds *DatabaseService) getBundleIdsAndInsertMissingBundles(ctx context.Conte
 	return bundleIdsMap, nil
 }
 
-func (ds *DatabaseService) insertBuildBlock(tx *sqlx.Tx, ctx context.Context, block *types.Block, blockValue *big.Int, bidTrace *boostTypes.BidTrace, ordersClosedAt time.Time, sealedAt time.Time) (uint64, error) {
+func (ds *DatabaseService) insertBuildBlock(tx *sqlx.Tx, ctx context.Context, block *types.Block, blockValue *big.Int, bidTrace *apiv1.BidTrace, ordersClosedAt time.Time, sealedAt time.Time) (uint64, error) {
 	blockData := BuiltBlock{
 		BlockNumber:          block.NumberU64(),
 		Profit:               new(big.Rat).SetFrac(blockValue, big.NewInt(1e18)).FloatString(18),
@@ -247,7 +247,7 @@ func (ds *DatabaseService) insertUsedSBundleIds(tx *sqlx.Tx, ctx context.Context
 func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time,
 	commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle,
 	usedSbundles []types.UsedSBundle,
-	bidTrace *boostTypes.BidTrace) {
+	bidTrace *apiv1.BidTrace) {
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 
