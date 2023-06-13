@@ -138,8 +138,13 @@ func (b *greedyBuilder) mergeGreedyBuckets(envDiff *environmentDiff, orders *typ
 	for {
 		order := orders.Peek()
 		if order == nil {
+			if len(transactionBucket) != 0 {
+				transactionBucket = sortTransactionsByProfit(transactionBucket)
+				b.commit(envDiff, transactionBucket, orders)
+				transactionBucket = nil
+				continue // re-run since committing transactions may have pushed higher nonce transactions back into heap
+			}
 			// TODO: don't break if there are still retryable transactions
-
 			// TODO: need to apply bucketed transactions after heap is empty
 			break
 		}
@@ -148,9 +153,11 @@ func (b *greedyBuilder) mergeGreedyBuckets(envDiff *environmentDiff, orders *typ
 			orders.Pop()
 			transactionBucket = append(transactionBucket, order)
 		} else {
-			transactionBucket = sortTransactionsByProfit(transactionBucket)
-			b.commit(envDiff, transactionBucket, orders)
-			transactionBucket = nil
+			if len(transactionBucket) != 0 {
+				transactionBucket = sortTransactionsByProfit(transactionBucket)
+				b.commit(envDiff, transactionBucket, orders)
+				transactionBucket = nil
+			}
 			bucket = InitializeBucket(order)
 		}
 	}
