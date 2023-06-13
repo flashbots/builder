@@ -683,6 +683,26 @@ func (t *TransactionsByPriceAndNonce) Shift() {
 	heap.Pop(&t.heads)
 }
 
+func (t *TransactionsByPriceAndNonce) ShiftAndPushByAccountForTx(tx *Transaction) {
+	if tx == nil {
+		return
+	}
+
+	acc, _ := Sender(t.signer, tx)
+	txs, ok := t.txs[acc]
+	if !ok || len(txs) < 1 {
+		return
+	}
+
+	wrapped, err := NewTxWithMinerFee(txs[0], t.baseFee)
+	if err != nil || wrapped == nil {
+		return
+	}
+
+	t.txs[acc] = txs[1:]
+	heap.Push(&t.heads, wrapped)
+}
+
 // Pop removes the best transaction, *not* replacing it with the next one from
 // the same account. This should be used when a transaction cannot be executed
 // and hence all subsequent ones should be discarded from the same account.
