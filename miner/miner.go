@@ -51,8 +51,7 @@ type Backend interface {
 type AlgoType int
 
 const (
-	ALGO_INVALID AlgoType = iota
-	ALGO_MEV_GETH
+	ALGO_MEV_GETH AlgoType = iota
 	ALGO_GREEDY
 )
 
@@ -63,7 +62,7 @@ func AlgoTypeFlagToEnum(algoString string) (AlgoType, error) {
 	case "greedy":
 		return ALGO_GREEDY, nil
 	default:
-		return ALGO_INVALID, errors.New("algo not recognized")
+		return ALGO_MEV_GETH, errors.New("algo not recognized")
 	}
 }
 

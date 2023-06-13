@@ -68,7 +68,12 @@ func sortTransactionsByProfit(transactions []*types.TxWithMinerFee) []*types.TxW
 
 func (b *greedyBuilder) commit(
 	envDiff *environmentDiff, transactions []*types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce,
-) {
+) ([]types.SimulatedBundle, []types.UsedSBundle) {
+	var (
+		usedBundles  []types.SimulatedBundle
+		usedSbundles []types.UsedSBundle
+	)
+
 	for _, order := range transactions {
 		if tx := order.Tx(); tx != nil {
 			receipt, skip, err := envDiff.commitTx(tx, b.chainData)
@@ -96,7 +101,7 @@ func (b *greedyBuilder) commit(
 
 			log.Trace("Included bundle", "bundleEGP", bundle.MevGasPrice.String(),
 				"gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.TotalEth))
-			//usedBundles = append(usedBundles, *bundle)
+			usedBundles = append(usedBundles, *bundle)
 		} else if sbundle := order.SBundle(); sbundle != nil {
 			usedEntry := types.UsedSBundle{
 				Bundle: sbundle.Bundle,
@@ -106,15 +111,16 @@ func (b *greedyBuilder) commit(
 				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
 				// TODO: handle retry
 				usedEntry.Success = false
-				//usedSbundles = append(usedSbundles, usedEntry)
+				usedSbundles = append(usedSbundles, usedEntry)
 				continue
 			}
 
 			log.Trace("Included sbundle", "bundleEGP", sbundle.MevGasPrice.String(), "ethToCoinbase", ethIntToFloat(sbundle.Profit))
 			usedEntry.Success = true
-			//usedSbundles = append(usedSbundles, usedEntry)
+			usedSbundles = append(usedSbundles, usedEntry)
 		}
 	}
+	return usedBundles, usedSbundles
 }
 
 func (b *greedyBuilder) mergeGreedyBuckets(
@@ -148,7 +154,9 @@ func (b *greedyBuilder) mergeGreedyBuckets(
 		if order == nil {
 			if len(transactionBucket) != 0 {
 				transactionBucket = sortTransactionsByProfit(transactionBucket)
-				b.commit(envDiff, transactionBucket, orders)
+				bundles, sbundles := b.commit(envDiff, transactionBucket, orders)
+				usedBundles = append(usedBundles, bundles...)
+				usedSbundles = append(usedSbundles, sbundles...)
 				transactionBucket = nil
 				continue // re-run since committing transactions may have pushed higher nonce transactions back into heap
 			}
@@ -162,7 +170,9 @@ func (b *greedyBuilder) mergeGreedyBuckets(
 		} else {
 			if len(transactionBucket) != 0 {
 				transactionBucket = sortTransactionsByProfit(transactionBucket)
-				b.commit(envDiff, transactionBucket, orders)
+				bundles, sbundles := b.commit(envDiff, transactionBucket, orders)
+				usedBundles = append(usedBundles, bundles...)
+				usedSbundles = append(usedSbundles, sbundles...)
 				transactionBucket = nil
 			}
 			bucket = InitializeBucket(order)
