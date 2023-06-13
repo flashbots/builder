@@ -120,12 +120,11 @@ func (b *greedyBuilder) mergeGreedyBuckets(envDiff *environmentDiff, orders *typ
 		usedBundles       []types.SimulatedBundle
 		usedSbundles      []types.UsedSBundle
 		transactionBucket []*types.TxWithMinerFee
-		basePercent       = new(big.Int).SetUint64(90)
-		denominator       = new(big.Int).SetUint64(100)
-		percent           = new(big.Int).Div(basePercent, denominator)
+		percent           = new(big.Float).SetFloat64(0.9)
 
 		InitializeBucket = func(order *types.TxWithMinerFee) [1]*big.Int {
-			bucketMin := new(big.Int).Mul(order.Price(), percent)
+			floorPrice := new(big.Float).Mul(new(big.Float).SetInt(order.Price()), percent)
+			bucketMin, _ := floorPrice.Int(nil)
 			return [1]*big.Int{bucketMin}
 		}
 
@@ -145,7 +144,6 @@ func (b *greedyBuilder) mergeGreedyBuckets(envDiff *environmentDiff, orders *typ
 				continue // re-run since committing transactions may have pushed higher nonce transactions back into heap
 			}
 			// TODO: don't break if there are still retryable transactions
-			// TODO: need to apply bucketed transactions after heap is empty
 			break
 		}
 
