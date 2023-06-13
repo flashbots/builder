@@ -521,6 +521,10 @@ func (t *TxWithMinerFee) SBundle() *SimSBundle {
 	return t.order.AsSBundle()
 }
 
+func (t *TxWithMinerFee) Price() *big.Int {
+	return t.minerFee
+}
+
 // NewTxWithMinerFee creates a wrapped transaction, calculating the effective
 // miner gasTipCap if a base fee is provided.
 // Returns error in case of a negative effective miner gasTipCap.
@@ -536,7 +540,7 @@ func NewTxWithMinerFee(tx *Transaction, baseFee *big.Int) (*TxWithMinerFee, erro
 }
 
 // NewBundleWithMinerFee creates a wrapped bundle.
-func NewBundleWithMinerFee(bundle *SimulatedBundle, baseFee *big.Int) (*TxWithMinerFee, error) {
+func NewBundleWithMinerFee(bundle *SimulatedBundle, _ *big.Int) (*TxWithMinerFee, error) {
 	minerFee := bundle.MevGasPrice
 	return &TxWithMinerFee{
 		order:    _BundleOrder{bundle},
@@ -545,7 +549,7 @@ func NewBundleWithMinerFee(bundle *SimulatedBundle, baseFee *big.Int) (*TxWithMi
 }
 
 // NewSBundleWithMinerFee creates a wrapped bundle.
-func NewSBundleWithMinerFee(sbundle *SimSBundle, baseFee *big.Int) (*TxWithMinerFee, error) {
+func NewSBundleWithMinerFee(sbundle *SimSBundle, _ *big.Int) (*TxWithMinerFee, error) {
 	minerFee := sbundle.MevGasPrice
 	return &TxWithMinerFee{
 		order:    _SBundleOrder{sbundle},

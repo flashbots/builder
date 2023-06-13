@@ -112,70 +112,29 @@ func (b *greedyBuilder) commit(envDiff *environmentDiff, transactions []*types.T
 
 func (b *greedyBuilder) mergeGreedyBuckets(envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) (
 	[]types.SimulatedBundle, []types.UsedSBundle) {
-	if orders == nil {
-		return nil, nil
-	}
-
 	if orders.Peek() == nil {
 		return nil, nil
 	}
 
-	type TransactionList struct {
-		ProfitSortedTransactions []*types.TxWithMinerFee
-	}
-
 	var (
-		buckets      = make([]*big.Int, 10)
-		bucketIndex  int
-		usedBundles  []types.SimulatedBundle
-		usedSbundles []types.UsedSBundle
-		txList       TransactionList
-		basePercent  = new(big.Int).SetInt64(10)
-		denominator  = new(big.Int).SetInt64(100)
+		usedBundles       []types.SimulatedBundle
+		usedSbundles      []types.UsedSBundle
+		transactionBucket []*types.TxWithMinerFee
+		basePercent       = new(big.Int).SetUint64(90)
+		denominator       = new(big.Int).SetUint64(100)
+		percent           = new(big.Int).Div(basePercent, denominator)
 
-		Price = func(order *types.TxWithMinerFee) (price *big.Int) {
-			if tx := order.Tx(); tx != nil {
-				egp, err := tx.EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
-				if err != nil {
-					return
-				}
-
-				price.Set(egp)
-			} else if bundle := order.Bundle(); bundle != nil {
-				price.Set(bundle.MevGasPrice)
-			} else if sbundle := order.SBundle(); sbundle != nil {
-				price.Set(sbundle.MevGasPrice)
-			}
-
-			return
+		InitializeBucket = func(order *types.TxWithMinerFee) [1]*big.Int {
+			bucketMin := new(big.Int).Mul(order.Price(), percent)
+			return [1]*big.Int{bucketMin}
 		}
 
-		InitializeBuckets = func(orders *types.TransactionsByPriceAndNonce) {
-			var (
-				peek    = orders.Peek()
-				highest = Price(peek)
-				size    = len(buckets)
-			)
-			for i := range buckets {
-				multiplier := new(big.Int).SetInt64(int64(i + 1))    // e.g. 1..10
-				percent := new(big.Int).Mul(basePercent, multiplier) // e.g. 10*9
-				percent.Div(percent, denominator)                    // e.g. 90/100
-				bucketMax := new(big.Int).Mul(highest, percent)      // e.g. 100 * 0.9
-
-				buckets[size-i+1] = bucketMax
-			}
-
-			// instead of [100, 90, 80, ... , 10] we want [90, 80, 70, ... , 0] for easier comparison
-			buckets = buckets[1:]
-			buckets = append(buckets, new(big.Int).SetInt64(0))
-		}
-
-		IsOrderInPriceRange = func(order *types.TxWithMinerFee) bool {
-			return Price(order).Cmp(buckets[bucketIndex]) > 0
+		IsOrderInPriceRange = func(order *types.TxWithMinerFee, minPrice *big.Int) bool {
+			return order.Price().Cmp(minPrice) > 0
 		}
 	)
 
-	InitializeBuckets(orders)
+	bucket := InitializeBucket(orders.Peek())
 	for {
 		order := orders.Peek()
 		if order == nil {
@@ -185,14 +144,14 @@ func (b *greedyBuilder) mergeGreedyBuckets(envDiff *environmentDiff, orders *typ
 			break
 		}
 
-		if ok := IsOrderInPriceRange(order); ok {
+		if ok := IsOrderInPriceRange(order, bucket[0]); ok {
 			orders.Pop()
-			txList.ProfitSortedTransactions = append(txList.ProfitSortedTransactions, order)
+			transactionBucket = append(transactionBucket, order)
 		} else {
-			txList.ProfitSortedTransactions = sortTransactionsByProfit(txList.ProfitSortedTransactions)
-			b.commit(envDiff, txList.ProfitSortedTransactions, orders)
-			txList.ProfitSortedTransactions = nil
-			bucketIndex++
+			transactionBucket = sortTransactionsByProfit(transactionBucket)
+			b.commit(envDiff, transactionBucket, orders)
+			transactionBucket = nil
+			bucket = InitializeBucket(order)
 		}
 	}
 
