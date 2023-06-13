@@ -34,6 +34,18 @@ func newGreedyBuilder(chain *core.BlockChain, chainConfig *params.ChainConfig, b
 }
 
 func sortTransactionsByProfit(transactions []*types.TxWithMinerFee) []*types.TxWithMinerFee {
+	var ProfitFunc = func(transaction *types.TxWithMinerFee) *big.Int {
+		if tx := transaction.Tx(); tx != nil {
+			return tx.Value()
+		} else if bundle := transaction.Bundle(); bundle != nil {
+			return bundle.TotalEth
+		} else if sbundle := transaction.SBundle(); sbundle != nil {
+			return sbundle.Profit
+		} else {
+			return new(big.Int).SetUint64(0)
+		}
+	}
+
 	sort.SliceStable(transactions, func(i, j int) bool {
 		if transactions[i].Tx() != nil {
 			return false
@@ -43,18 +55,10 @@ func sortTransactionsByProfit(transactions []*types.TxWithMinerFee) []*types.TxW
 			return false
 		}
 
-		var iProfit, jProfit *big.Int
-		if iBundle := transactions[i].Bundle(); iBundle != nil {
-			iProfit = iBundle.TotalEth
-		} else if iSBundle := transactions[i].SBundle(); iSBundle != nil {
-			iProfit = iSBundle.Profit
-		}
-
-		if jBundle := transactions[j].Bundle(); jBundle != nil {
-			jProfit = jBundle.TotalEth
-		} else if jSBundle := transactions[j].SBundle(); jSBundle != nil {
-			jProfit = jSBundle.Profit
-		}
+		var (
+			iProfit = ProfitFunc(transactions[i])
+			jProfit = ProfitFunc(transactions[j])
+		)
 
 		return iProfit.Cmp(jProfit) > 0
 	})
@@ -62,7 +66,9 @@ func sortTransactionsByProfit(transactions []*types.TxWithMinerFee) []*types.TxW
 	return transactions
 }
 
-func (b *greedyBuilder) commit(envDiff *environmentDiff, transactions []*types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce) {
+func (b *greedyBuilder) commit(
+	envDiff *environmentDiff, transactions []*types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce,
+) {
 	for _, order := range transactions {
 		if tx := order.Tx(); tx != nil {
 			receipt, skip, err := envDiff.commitTx(tx, b.chainData)
@@ -88,7 +94,8 @@ func (b *greedyBuilder) commit(envDiff *environmentDiff, transactions []*types.T
 				continue
 			}
 
-			log.Trace("Included bundle", "bundleEGP", bundle.MevGasPrice.String(), "gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.TotalEth))
+			log.Trace("Included bundle", "bundleEGP", bundle.MevGasPrice.String(),
+				"gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.TotalEth))
 			//usedBundles = append(usedBundles, *bundle)
 		} else if sbundle := order.SBundle(); sbundle != nil {
 			usedEntry := types.UsedSBundle{
@@ -110,8 +117,10 @@ func (b *greedyBuilder) commit(envDiff *environmentDiff, transactions []*types.T
 	}
 }
 
-func (b *greedyBuilder) mergeGreedyBuckets(envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) (
-	[]types.SimulatedBundle, []types.UsedSBundle) {
+func (b *greedyBuilder) mergeGreedyBuckets(
+	envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) (
+	[]types.SimulatedBundle, []types.UsedSBundle,
+) {
 	if orders.Peek() == nil {
 		return nil, nil
 	}
@@ -163,9 +172,12 @@ func (b *greedyBuilder) mergeGreedyBuckets(envDiff *environmentDiff, orders *typ
 	return usedBundles, usedSbundles
 }
 
-func (b *greedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle) {
-	usedBundles := []types.SimulatedBundle{}
-	usedSbundles := []types.UsedSBundle{}
+func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
+	envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle) {
+	var (
+		usedBundles  []types.SimulatedBundle
+		usedSbundles []types.UsedSBundle
+	)
 
 	for {
 		order := orders.Peek()
