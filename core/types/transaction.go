@@ -687,6 +687,12 @@ func (t *TransactionsByPriceAndNonce) Shift() {
 	heap.Pop(&t.heads)
 }
 
+// ShiftAndPushByAccountForTx attempts to update the transaction list associated with a given account address
+// based on the input transaction account. If the associated account exists and has additional transactions,
+// the top of the transaction list is popped and pushed to the heap.
+// Note that this operation should only be performed when the head transaction on the heap is different from the
+// input transaction. This operation is useful in scenarios where the current best head transaction for an account
+// was already popped from the heap and we want to process the next one from the same account.
 func (t *TransactionsByPriceAndNonce) ShiftAndPushByAccountForTx(tx *Transaction) {
 	if tx == nil {
 		return
