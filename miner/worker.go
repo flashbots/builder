@@ -1311,7 +1311,7 @@ func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) 
 		err          error
 	)
 	switch w.flashbots.algoType {
-	case ALGO_GREEDY:
+	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS:
 		blockBundles, allBundles, usedSbundles, err = w.fillTransactionsAlgoWorker(interrupt, env)
 	case ALGO_MEV_GETH:
 		blockBundles, allBundles, err = w.fillTransactions(interrupt, env)
@@ -1395,7 +1395,11 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 		return nil, nil, nil, err
 	}
 
-	builder := newGreedyBuilder(w.chain, w.chainConfig, w.blockList, env, w.config.BuilderTxSigningKey, interrupt)
+	builder := newGreedyBuilder(
+		w.chain, w.chainConfig, w.blockList, env,
+		w.config.BuilderTxSigningKey, interrupt, w.flashbots.algoType,
+	)
+
 	start := time.Now()
 	newEnv, blockBundles, usedSbundle := builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
 	if metrics.EnabledBuilder {

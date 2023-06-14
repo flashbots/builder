@@ -22,14 +22,19 @@ type greedyBuilder struct {
 	chainData        chainData
 	builderKey       *ecdsa.PrivateKey
 	interrupt        *int32
+	algoType         AlgoType
 }
 
-func newGreedyBuilder(chain *core.BlockChain, chainConfig *params.ChainConfig, blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32) *greedyBuilder {
+func newGreedyBuilder(
+	chain *core.BlockChain, chainConfig *params.ChainConfig,
+	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32, algo AlgoType,
+) *greedyBuilder {
 	return &greedyBuilder{
 		inputEnvironment: env,
 		chainData:        chainData{chainConfig, chain, blacklist},
 		builderKey:       key,
 		interrupt:        interrupt,
+		algoType:         algo,
 	}
 }
 
@@ -42,7 +47,7 @@ func sortTransactionsByProfit(transactions []*types.TxWithMinerFee) []*types.TxW
 		} else if sbundle := transaction.SBundle(); sbundle != nil {
 			return sbundle.Profit
 		} else {
-			return new(big.Int).SetUint64(0)
+			return big.NewInt(0)
 		}
 	}
 
@@ -135,16 +140,16 @@ func (b *greedyBuilder) mergeGreedyBuckets(
 		usedBundles       []types.SimulatedBundle
 		usedSbundles      []types.UsedSBundle
 		transactionBucket []*types.TxWithMinerFee
-		percent           = new(big.Float).SetFloat64(0.9)
+		percent           = big.NewFloat(0.9)
 
 		InitializeBucket = func(order *types.TxWithMinerFee) [1]*big.Int {
 			floorPrice := new(big.Float).Mul(new(big.Float).SetInt(order.Price()), percent)
-			bucketMin, _ := floorPrice.Int(nil)
-			return [1]*big.Int{bucketMin}
+			round, _ := floorPrice.Int64()
+			return [1]*big.Int{big.NewInt(round)}
 		}
 
 		IsOrderInPriceRange = func(order *types.TxWithMinerFee, minPrice *big.Int) bool {
-			return order.Price().Cmp(minPrice) > 0
+			return order.Price().Cmp(minPrice) > -1
 		}
 	)
 
@@ -182,13 +187,11 @@ func (b *greedyBuilder) mergeGreedyBuckets(
 	return usedBundles, usedSbundles
 }
 
-func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
-	envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle) {
+func (b *greedyBuilder) mergeGreedy(envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle) {
 	var (
 		usedBundles  []types.SimulatedBundle
 		usedSbundles []types.UsedSBundle
 	)
-
 	for {
 		order := orders.Peek()
 		if order == nil {
@@ -243,6 +246,18 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
 	}
 
 	return usedBundles, usedSbundles
+}
+
+func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
+	envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle) {
+	switch b.algoType {
+	case ALGO_GREEDY_BUCKETS:
+		return b.mergeGreedyBuckets(envDiff, orders)
+	case ALGO_GREEDY:
+		fallthrough
+	default:
+		return b.mergeGreedy(envDiff, orders)
+	}
 }
 
 func (b *greedyBuilder) buildBlock(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
