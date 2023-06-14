@@ -214,7 +214,6 @@ func BenchmarkAlgo(b *testing.B) {
 				})
 			}
 		}
-
 	}
 }
 
