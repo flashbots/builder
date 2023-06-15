@@ -1395,13 +1395,33 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 		return nil, nil, nil, err
 	}
 
-	builder := newGreedyBuilder(
-		w.chain, w.chainConfig, w.blockList, env,
-		w.config.BuilderTxSigningKey, interrupt, w.flashbots.algoType,
+	var (
+		newEnv       *environment
+		blockBundles []types.SimulatedBundle
+		usedSbundle  []types.UsedSBundle
 	)
 
 	start := time.Now()
-	newEnv, blockBundles, usedSbundle := builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
+
+	switch w.flashbots.algoType {
+	case ALGO_GREEDY_BUCKETS:
+		builder := newGreedyBucketsBuilder(
+			w.chain, w.chainConfig, w.blockList, env,
+			w.config.BuilderTxSigningKey, interrupt,
+		)
+
+		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
+	case ALGO_GREEDY:
+		fallthrough
+	default:
+		builder := newGreedyBuilder(
+			w.chain, w.chainConfig, w.blockList, env,
+			w.config.BuilderTxSigningKey, interrupt,
+		)
+
+		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
+	}
+
 	if metrics.EnabledBuilder {
 		mergeAlgoTimer.Update(time.Since(start))
 	}

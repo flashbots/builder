@@ -522,18 +522,16 @@ func (t *TxWithMinerFee) SBundle() *SimSBundle {
 }
 
 func (t *TxWithMinerFee) Price() *big.Int {
-	return t.minerFee
+	return new(big.Int).Set(t.minerFee)
 }
 
 func (t *TxWithMinerFee) Profit() *big.Int {
-	if tx := t.Tx(); tx != nil {
-		return tx.Value()
-	} else if bundle := t.Bundle(); bundle != nil {
+	if bundle := t.Bundle(); bundle != nil {
 		return bundle.TotalEth
 	} else if sbundle := t.SBundle(); sbundle != nil {
 		return sbundle.Profit
 	} else {
-		return big.NewInt(0)
+		panic("profit called on unsupported order type")
 	}
 }
 
