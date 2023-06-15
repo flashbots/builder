@@ -298,7 +298,7 @@ func TestBundleCommit(t *testing.T) {
 		t.Fatal("Failed to simulate bundle", err)
 	}
 
-	err = envDiff.commitBundle(&simBundle, chData, nil)
+	err = envDiff.commitBundle(&simBundle, chData, nil, false)
 	if err != nil {
 		t.Fatal("Failed to commit bundle", err)
 	}
@@ -408,7 +408,7 @@ func TestErrorBundleCommit(t *testing.T) {
 	newProfitBefore := new(big.Int).Set(envDiff.newProfit)
 	balanceBefore := envDiff.state.GetBalance(signers.addresses[2])
 
-	err = envDiff.commitBundle(&simBundle, chData, nil)
+	err = envDiff.commitBundle(&simBundle, chData, nil, false)
 	if err == nil {
 		t.Fatal("Committed failed bundle", err)
 	}
