@@ -525,6 +525,18 @@ func (t *TxWithMinerFee) Price() *big.Int {
 	return t.minerFee
 }
 
+func (t *TxWithMinerFee) Profit() *big.Int {
+	if tx := t.Tx(); tx != nil {
+		return tx.Value()
+	} else if bundle := t.Bundle(); bundle != nil {
+		return bundle.TotalEth
+	} else if sbundle := t.SBundle(); sbundle != nil {
+		return sbundle.Profit
+	} else {
+		return big.NewInt(0)
+	}
+}
+
 // NewTxWithMinerFee creates a wrapped transaction, calculating the effective
 // miner gasTipCap if a base fee is provided.
 // Returns error in case of a negative effective miner gasTipCap.

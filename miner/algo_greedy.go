@@ -38,39 +38,6 @@ func newGreedyBuilder(
 	}
 }
 
-func sortTransactionsByProfit(transactions []*types.TxWithMinerFee) []*types.TxWithMinerFee {
-	var ProfitFunc = func(transaction *types.TxWithMinerFee) *big.Int {
-		if tx := transaction.Tx(); tx != nil {
-			return tx.Value()
-		} else if bundle := transaction.Bundle(); bundle != nil {
-			return bundle.TotalEth
-		} else if sbundle := transaction.SBundle(); sbundle != nil {
-			return sbundle.Profit
-		} else {
-			return big.NewInt(0)
-		}
-	}
-
-	sort.SliceStable(transactions, func(i, j int) bool {
-		if transactions[i].Tx() != nil {
-			return false
-		}
-
-		if transactions[j].Tx() != nil {
-			return false
-		}
-
-		var (
-			iProfit = ProfitFunc(transactions[i])
-			jProfit = ProfitFunc(transactions[j])
-		)
-
-		return iProfit.Cmp(jProfit) > 0
-	})
-
-	return transactions
-}
-
 func (b *greedyBuilder) commit(
 	envDiff *environmentDiff, transactions []*types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce,
 ) ([]types.SimulatedBundle, []types.UsedSBundle) {
@@ -151,6 +118,17 @@ func (b *greedyBuilder) mergeGreedyBuckets(
 		IsOrderInPriceRange = func(order *types.TxWithMinerFee, minPrice *big.Int) bool {
 			return order.Price().Cmp(minPrice) > -1
 		}
+
+		SortByProfit = func(transactions []*types.TxWithMinerFee) {
+			sort.SliceStable(transactions, func(i, j int) bool {
+				var (
+					iProfit = transactions[i].Profit()
+					jProfit = transactions[j].Profit()
+				)
+
+				return iProfit.Cmp(jProfit) > 0
+			})
+		}
 	)
 
 	bucket := InitializeBucket(orders.Peek())
@@ -158,7 +136,7 @@ func (b *greedyBuilder) mergeGreedyBuckets(
 		order := orders.Peek()
 		if order == nil {
 			if len(transactionBucket) != 0 {
-				transactionBucket = sortTransactionsByProfit(transactionBucket)
+				SortByProfit(transactionBucket)
 				bundles, sbundles := b.commit(envDiff, transactionBucket, orders)
 				usedBundles = append(usedBundles, bundles...)
 				usedSbundles = append(usedSbundles, sbundles...)
@@ -174,7 +152,7 @@ func (b *greedyBuilder) mergeGreedyBuckets(
 			transactionBucket = append(transactionBucket, order)
 		} else {
 			if len(transactionBucket) != 0 {
-				transactionBucket = sortTransactionsByProfit(transactionBucket)
+				SortByProfit(transactionBucket)
 				bundles, sbundles := b.commit(envDiff, transactionBucket, orders)
 				usedBundles = append(usedBundles, bundles...)
 				usedSbundles = append(usedSbundles, sbundles...)
