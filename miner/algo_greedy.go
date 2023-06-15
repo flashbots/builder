@@ -64,7 +64,7 @@ func (b *greedyBuilder) commit(
 				log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
 			}
 		} else if bundle := order.Bundle(); bundle != nil {
-			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt)
+			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, true)
 			if err != nil {
 				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
 				// TODO: handle retry
@@ -78,7 +78,7 @@ func (b *greedyBuilder) commit(
 			usedEntry := types.UsedSBundle{
 				Bundle: sbundle.Bundle,
 			}
-			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey)
+			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, true)
 			if err != nil {
 				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
 				// TODO: handle retry
@@ -195,7 +195,7 @@ func (b *greedyBuilder) mergeGreedy(envDiff *environmentDiff, orders *types.Tran
 			}
 		} else if bundle := order.Bundle(); bundle != nil {
 			//log.Debug("buildBlock considering bundle", "egp", bundle.MevGasPrice.String(), "hash", bundle.OriginalBundle.Hash)
-			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt)
+			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, false)
 			orders.Pop()
 			if err != nil {
 				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
@@ -208,7 +208,7 @@ func (b *greedyBuilder) mergeGreedy(envDiff *environmentDiff, orders *types.Tran
 			usedEntry := types.UsedSBundle{
 				Bundle: sbundle.Bundle,
 			}
-			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey)
+			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, false)
 			orders.Pop()
 			if err != nil {
 				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
