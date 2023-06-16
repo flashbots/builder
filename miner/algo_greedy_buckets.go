@@ -41,9 +41,9 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 	retryMap map[*types.TxWithMinerFee]int, retryLimit int,
 ) ([]types.SimulatedBundle, []types.UsedSBundle) {
 	var (
-		usedBundles   []types.SimulatedBundle
-		usedSbundles  []types.UsedSBundle
-		TryRetryOrder = func(order *types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce, retryMap map[*types.TxWithMinerFee]int, retryLimit int) {
+		usedBundles                []types.SimulatedBundle
+		usedSbundles               []types.UsedSBundle
+		CheckRetryOrderAndReinsert = func(order *types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce, retryMap map[*types.TxWithMinerFee]int, retryLimit int) {
 			var isRetryable bool
 			if retryCount, exists := retryMap[order]; exists {
 				if retryCount != retryLimit {
@@ -66,7 +66,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 			receipt, skip, err := envDiff.commitTx(tx, b.chainData)
 			if err != nil {
 				log.Trace("could not apply tx", "hash", tx.Hash(), "err", err)
-				TryRetryOrder(order, orders, retryMap, retryLimit)
+				CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
 				continue
 			}
 
@@ -82,7 +82,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, true)
 			if err != nil {
 				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
-				TryRetryOrder(order, orders, retryMap, retryLimit)
+				CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
 				continue
 			}
 
@@ -99,7 +99,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 				// TODO: handle retry
 				usedEntry.Success = false
 				usedSbundles = append(usedSbundles, usedEntry)
-				TryRetryOrder(order, orders, retryMap, retryLimit)
+				CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
 				continue
 			}
 
@@ -123,7 +123,7 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 
 	var (
 		baseFee      = envDiff.baseEnvironment.header.BaseFee
-		retryMap     map[*types.TxWithMinerFee]int
+		retryMap     = make(map[*types.TxWithMinerFee]int)
 		usedBundles  []types.SimulatedBundle
 		usedSbundles []types.UsedSBundle
 		transactions []*types.TxWithMinerFee
