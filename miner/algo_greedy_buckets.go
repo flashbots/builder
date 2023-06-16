@@ -35,23 +35,43 @@ func newGreedyBucketsBuilder(
 	}
 }
 
-func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff, transactions []*types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle) {
+func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
+	transactions []*types.TxWithMinerFee,
+	orders *types.TransactionsByPriceAndNonce,
+	retryMap map[*types.TxWithMinerFee]int, retryLimit int,
+) ([]types.SimulatedBundle, []types.UsedSBundle) {
 	var (
-		usedBundles  []types.SimulatedBundle
-		usedSbundles []types.UsedSBundle
+		usedBundles   []types.SimulatedBundle
+		usedSbundles  []types.UsedSBundle
+		TryRetryOrder = func(order *types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce, retryMap map[*types.TxWithMinerFee]int, retryLimit int) {
+			var isRetryable bool
+			if retryCount, exists := retryMap[order]; exists {
+				if retryCount != retryLimit {
+					isRetryable = true
+					retryMap[order] = retryCount + 1
+				}
+			} else {
+				retryMap[order] = 0
+				isRetryable = true
+			}
+
+			if isRetryable {
+				orders.Push(order)
+			}
+		}
 	)
 
 	for _, order := range transactions {
 		if tx := order.Tx(); tx != nil {
 			receipt, skip, err := envDiff.commitTx(tx, b.chainData)
-			if skip == shiftTx {
-				orders.ShiftAndPushByAccountForTx(tx)
-			}
-
 			if err != nil {
 				log.Trace("could not apply tx", "hash", tx.Hash(), "err", err)
-				// TODO: handle retry
+				TryRetryOrder(order, orders, retryMap, retryLimit)
 				continue
+			}
+
+			if skip == shiftTx {
+				orders.ShiftAndPushByAccountForTx(tx)
 			}
 
 			effGapPrice, err := tx.EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
@@ -62,7 +82,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff, transactions []*
 			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, true)
 			if err != nil {
 				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
-				// TODO: handle retry
+				TryRetryOrder(order, orders, retryMap, retryLimit)
 				continue
 			}
 
@@ -79,6 +99,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff, transactions []*
 				// TODO: handle retry
 				usedEntry.Success = false
 				usedSbundles = append(usedSbundles, usedEntry)
+				TryRetryOrder(order, orders, retryMap, retryLimit)
 				continue
 			}
 
@@ -96,57 +117,67 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 		return nil, nil
 	}
 
-	var (
-		usedBundles       []types.SimulatedBundle
-		usedSbundles      []types.UsedSBundle
-		transactionBucket []*types.TxWithMinerFee
-		percent           = big.NewFloat(0.9)
+	const (
+		retryLimit = 2
+	)
 
-		InitializeBucket = func(order *types.TxWithMinerFee) [1]*big.Int {
-			floorPrice := new(big.Float).Mul(new(big.Float).SetInt(order.Price()), percent)
+	var (
+		baseFee      = envDiff.baseEnvironment.header.BaseFee
+		retryMap     map[*types.TxWithMinerFee]int
+		usedBundles  []types.SimulatedBundle
+		usedSbundles []types.UsedSBundle
+		transactions []*types.TxWithMinerFee
+		percent      = big.NewFloat(0.9)
+
+		CutoffPriceFromOrder = func(order *types.TxWithMinerFee) *big.Int {
+			floorPrice := new(big.Float).
+				Mul(
+					new(big.Float).SetInt(order.Price()),
+					percent,
+				)
 			round, _ := floorPrice.Int64()
-			return [1]*big.Int{big.NewInt(round)}
+			return big.NewInt(round)
 		}
 
 		IsOrderInPriceRange = func(order *types.TxWithMinerFee, minPrice *big.Int) bool {
 			return order.Price().Cmp(minPrice) > -1
 		}
 
-		SortInPlaceByProfit = func(transactions []*types.TxWithMinerFee) {
+		SortInPlaceByProfit = func(baseFee *big.Int, transactions []*types.TxWithMinerFee) {
 			sort.SliceStable(transactions, func(i, j int) bool {
-				return transactions[i].Profit().Cmp(transactions[j].Profit()) > 0
+				return transactions[i].Profit(baseFee).Cmp(transactions[j].Profit(baseFee)) > 0
 			})
 		}
 	)
 
-	bucket := InitializeBucket(orders.Peek())
+	minPrice := CutoffPriceFromOrder(orders.Peek())
 	for {
 		order := orders.Peek()
 		if order == nil {
-			if len(transactionBucket) != 0 {
-				SortInPlaceByProfit(transactionBucket)
-				bundles, sbundles := b.commit(envDiff, transactionBucket, orders)
+			if len(transactions) != 0 {
+				SortInPlaceByProfit(baseFee, transactions)
+				bundles, sbundles := b.commit(envDiff, transactions, orders, retryMap, retryLimit)
 				usedBundles = append(usedBundles, bundles...)
 				usedSbundles = append(usedSbundles, sbundles...)
-				transactionBucket = nil
+				transactions = nil
 				continue // re-run since committing transactions may have pushed higher nonce transactions back into heap
 			}
 			// TODO: don't break if there are still retryable transactions
 			break
 		}
 
-		if ok := IsOrderInPriceRange(order, bucket[0]); ok {
+		if ok := IsOrderInPriceRange(order, minPrice); ok {
 			orders.Pop()
-			transactionBucket = append(transactionBucket, order)
+			transactions = append(transactions, order)
 		} else {
-			if len(transactionBucket) != 0 {
-				SortInPlaceByProfit(transactionBucket)
-				bundles, sbundles := b.commit(envDiff, transactionBucket, orders)
+			if len(transactions) != 0 {
+				SortInPlaceByProfit(baseFee, transactions)
+				bundles, sbundles := b.commit(envDiff, transactions, orders, retryMap, retryLimit)
 				usedBundles = append(usedBundles, bundles...)
 				usedSbundles = append(usedSbundles, sbundles...)
-				transactionBucket = nil
+				transactions = nil
 			}
-			bucket = InitializeBucket(order)
+			minPrice = CutoffPriceFromOrder(order)
 		}
 	}
 

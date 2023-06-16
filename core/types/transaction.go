@@ -525,8 +525,12 @@ func (t *TxWithMinerFee) Price() *big.Int {
 	return new(big.Int).Set(t.minerFee)
 }
 
-func (t *TxWithMinerFee) Profit() *big.Int {
-	if bundle := t.Bundle(); bundle != nil {
+func (t *TxWithMinerFee) Profit(baseFee *big.Int) *big.Int {
+	if tx := t.Tx(); tx != nil {
+		profit := new(big.Int).Sub(tx.GasPrice(), baseFee)
+		profit.Mul(profit, new(big.Int).SetUint64(tx.Gas()))
+		return profit
+	} else if bundle := t.Bundle(); bundle != nil {
 		return bundle.TotalEth
 	} else if sbundle := t.SBundle(); sbundle != nil {
 		return sbundle.Profit
@@ -721,6 +725,14 @@ func (t *TransactionsByPriceAndNonce) ShiftAndPushByAccountForTx(tx *Transaction
 
 	t.txs[acc] = txs[1:]
 	heap.Push(&t.heads, wrapped)
+}
+
+func (t *TransactionsByPriceAndNonce) Push(tx *TxWithMinerFee) {
+	if tx == nil {
+		return
+	}
+
+	heap.Push(&t.heads, tx)
 }
 
 // Pop removes the best transaction, *not* replacing it with the next one from

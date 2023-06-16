@@ -223,11 +223,18 @@ func runAlgoTest(algo AlgoType, config *params.ChainConfig, alloc core.GenesisAl
 	var (
 		statedb, chData = genTestSetupWithAlloc(config, alloc)
 		env             = newEnvironment(chData, statedb, header.Coinbase, header.GasLimit*uint64(scale), header.BaseFee)
-		builder         = newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil, algo)
+		resultEnv       *environment
 	)
 
 	// build block
-	resultEnv, _, _ := builder.buildBlock(bundles, nil, txPool)
+	switch algo {
+	case ALGO_GREEDY_BUCKETS:
+		builder := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
+		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
+	case ALGO_GREEDY:
+		builder := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
+		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
+	}
 	return resultEnv.profit, nil
 }
 

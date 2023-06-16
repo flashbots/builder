@@ -27,8 +27,16 @@ func TestBuildBlockGasLimit(t *testing.T) {
 			signers.signTx(3, 21000, big.NewInt(math.MaxInt), big.NewInt(math.MaxInt), signers.addresses[2], big.NewInt(math.MaxInt), []byte{}),
 		}
 
-		builder := newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil, algo)
-		result, _, _ := builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
+		var result *environment
+		switch algo {
+		case ALGO_GREEDY_BUCKETS:
+			builder := newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
+			result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
+		case ALGO_GREEDY:
+			builder := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
+			result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
+		}
+
 		t.Log("block built", "txs", len(result.txs), "gasPool", result.gasPool.Gas(), "algorithm", algo.String())
 		if result.tcount != 1 {
 			t.Fatalf("Incorrect tx count [found: %d]", result.tcount)
