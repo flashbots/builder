@@ -199,7 +199,7 @@ Miner is responsible for block creation. Request from the `builder` is routed to
   `proposerTxCommit`. We do it in a way so all fees received by the block builder are sent to the fee recipient.
 * Transaction insertion is done in `fillTransactionsAlgoWorker` \ `fillTransactions`. Depending on the algorithm selected.
   Algo worker (greedy) inserts bundles whenever they belong in the block by effective gas price but default method inserts bundles on top of the block.
-  (see `--miner.algo`)
+  (see `--miner.algotype`)
 * Worker is also responsible for simulating bundles. Bundles are simulated in parallel and results are cached for the particular parent block.
 * `algo_greedy.go` implements logic of the block building. Bundles and transactions are sorted in the order of effective gas price then
   we try to insert everything into to block until gas limit is reached. Failing bundles are reverted during the insertion but txs are not.

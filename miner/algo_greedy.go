@@ -2,6 +2,7 @@ package miner
 
 import (
 	"crypto/ecdsa"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -31,67 +32,6 @@ func newGreedyBuilder(
 		builderKey:       key,
 		interrupt:        interrupt,
 	}
-}
-
-func (b *greedyBuilder) mergeGreedy(envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle) {
-	var (
-		usedBundles  []types.SimulatedBundle
-		usedSbundles []types.UsedSBundle
-	)
-	for {
-		order := orders.Peek()
-		if order == nil {
-			break
-		}
-
-		if tx := order.Tx(); tx != nil {
-			receipt, skip, err := envDiff.commitTx(tx, b.chainData)
-			switch skip {
-			case shiftTx:
-				orders.Shift()
-			case popTx:
-				orders.Pop()
-			}
-
-			if err != nil {
-				log.Trace("could not apply tx", "hash", tx.Hash(), "err", err)
-				continue
-			}
-			effGapPrice, err := tx.EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
-			if err == nil {
-				log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
-			}
-		} else if bundle := order.Bundle(); bundle != nil {
-			//log.Debug("buildBlock considering bundle", "egp", bundle.MevGasPrice.String(), "hash", bundle.OriginalBundle.Hash)
-			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, false)
-			orders.Pop()
-			if err != nil {
-				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
-				continue
-			}
-
-			log.Trace("Included bundle", "bundleEGP", bundle.MevGasPrice.String(), "gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.TotalEth))
-			usedBundles = append(usedBundles, *bundle)
-		} else if sbundle := order.SBundle(); sbundle != nil {
-			usedEntry := types.UsedSBundle{
-				Bundle: sbundle.Bundle,
-			}
-			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, false)
-			orders.Pop()
-			if err != nil {
-				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
-				usedEntry.Success = false
-				usedSbundles = append(usedSbundles, usedEntry)
-				continue
-			}
-
-			log.Trace("Included sbundle", "bundleEGP", sbundle.MevGasPrice.String(), "ethToCoinbase", ethIntToFloat(sbundle.Profit))
-			usedEntry.Success = true
-			usedSbundles = append(usedSbundles, usedEntry)
-		}
-	}
-
-	return usedBundles, usedSbundles
 }
 
 func (b *greedyBuilder) mergeOrdersIntoEnvDiff(

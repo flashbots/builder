@@ -2,13 +2,14 @@ package miner
 
 import (
 	"crypto/ecdsa"
+	"math/big"
+	"sort"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
-	"math/big"
-	"sort"
 )
 
 // / To use it:
@@ -160,9 +161,10 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 				usedBundles = append(usedBundles, bundles...)
 				usedSbundles = append(usedSbundles, sbundles...)
 				transactions = nil
-				continue // re-run since committing transactions may have pushed higher nonce transactions back into heap
+				// re-run since committing transactions may have pushed higher nonce transactions, or previously
+				// failed transactions back into orders heap
+				continue
 			}
-			// TODO: don't break if there are still retryable transactions
 			break
 		}
 
