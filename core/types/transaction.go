@@ -713,18 +713,12 @@ func (t *TransactionsByPriceAndNonce) ShiftAndPushByAccountForTx(tx *Transaction
 	}
 
 	acc, _ := Sender(t.signer, tx)
-	txs, ok := t.txs[acc]
-	if !ok || len(txs) < 1 {
-		return
+	if txs, exists := t.txs[acc]; exists && len(txs) > 0 {
+		if wrapped, err := NewTxWithMinerFee(txs[0], t.baseFee); err == nil {
+			t.txs[acc] = txs[1:]
+			heap.Push(&t.heads, wrapped)
+		}
 	}
-
-	wrapped, err := NewTxWithMinerFee(txs[0], t.baseFee)
-	if err != nil || wrapped == nil {
-		return
-	}
-
-	t.txs[acc] = txs[1:]
-	heap.Push(&t.heads, wrapped)
 }
 
 func (t *TransactionsByPriceAndNonce) Push(tx *TxWithMinerFee) {
