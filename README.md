@@ -114,6 +114,10 @@ $ geth --help
 
     --builder.validation_blacklist value
           Path to file containing blacklisted addresses, json-encoded list of strings
+          
+    --builder.validation_force_last_tx_payment (default: false)
+          Block validation API will enforce that the last tx in the block is payment to
+          the proposer.
 
     --builder.validator_checks     (default: false)
           Enable the validator checks

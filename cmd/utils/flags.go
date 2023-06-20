@@ -720,6 +720,12 @@ var (
 		Value:    "",
 		Category: flags.BuilderCategory,
 	}
+	BuilderBlockValidationForceLastTxPayment = &cli.BoolFlag{
+		Name:     "builder.validation_force_last_tx_payment",
+		Usage:    "Block validation API will enforce that the last tx in the block is payment to the proposer.",
+		Value:    false,
+		Category: flags.BuilderCategory,
+	}
 	BuilderEnableLocalRelay = &cli.BoolFlag{
 		Name:     "builder.local_relay",
 		Usage:    "Enable the local relay",
@@ -1676,6 +1682,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.RemoteRelayEndpoint = ctx.String(BuilderRemoteRelayEndpoint.Name)
 	cfg.SecondaryRemoteRelayEndpoints = strings.Split(ctx.String(BuilderSecondaryRemoteRelayEndpoints.Name), ",")
 	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
+	cfg.ValidationForceLastTxPayment = ctx.Bool(BuilderBlockValidationForceLastTxPayment.Name)
 	cfg.BuilderRateLimitDuration = ctx.String(BuilderRateLimitDuration.Name)
 	cfg.BuilderRateLimitMaxBurst = ctx.Int(BuilderRateLimitMaxBurst.Name)
 	cfg.BuilderSubmissionOffset = ctx.Duration(BuilderSubmissionOffset.Name)

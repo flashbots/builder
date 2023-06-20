@@ -40,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/utils"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/internal/syncx"
@@ -2494,7 +2495,11 @@ func (bc *BlockChain) SetBlockValidatorAndProcessorForTesting(v Validator, p Pro
 	bc.processor = p
 }
 
-func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Address, expectedProfit *big.Int, registeredGasLimit uint64, vmConfig vm.Config) error {
+// ValidatePayload validates the payload of the block.
+// It returns nil if the payload is valid, otherwise it returns an error.
+//   - `forceLastTxPayment` if set to true, proposer payment is assumed to be in the last transaction of the block
+//     otherwise we use proposer balance changes after each transaction to calculate proposer payment (see details in the code)
+func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Address, expectedProfit *big.Int, registeredGasLimit uint64, vmConfig vm.Config, forceLastTxPayment bool) error {
 	header := block.Header()
 	if err := bc.engine.VerifyHeader(bc, header, true); err != nil {
 		return err
@@ -2527,10 +2532,19 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 	// and dangling prefetcher, without defering each and holding on live refs.
 	defer statedb.StopPrefetcher()
 
+	// Inject balance change tracer
+	// This will allow us to check balance changes of the fee recipient without modifying `Process` method
+	balanceTracer := logger.NewBalanceChangeTracer(feeRecipient, vmConfig.Tracer, statedb)
+	vmConfig.Tracer = balanceTracer
+	vmConfig.Debug = true
+
 	receipts, _, usedGas, err := bc.processor.Process(block, statedb, vmConfig)
 	if err != nil {
 		return err
 	}
+
+	// Get fee recipient balance changes during each transaction execution
+	balanceChanges := balanceTracer.GetBalanceChanges()
 
 	if bc.Config().IsShanghai(header.Time) {
 		if header.WithdrawalsHash == nil {
@@ -2552,6 +2566,44 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 
 	if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
 		return err
+	}
+
+	// Validate proposer payment
+
+	if !forceLastTxPayment {
+		// We calculate the proposer payment by counting balance increases of the fee recipient account after each transaction.
+		// If the balance decreases for the fee recipient for some transaction, we ignore it,
+		// but we still count profit from the tip of this transaction if the fee recipient is also a coinbase.
+		// If this method of profit calculation fails for some reason, we fall back to the old method of calculating proposer payment
+		// where we look at the last transaction in the block.
+		feeRecipientProfit := big.NewInt(0)
+		for i, balanceChange := range balanceChanges {
+			if balanceChange.Sign() > 0 {
+				feeRecipientProfit.Add(feeRecipientProfit, balanceChange)
+			} else {
+				// If the fee recipient balance decreases, it means that the fee recipient sent eth out of the account
+				// or paid for the gas of the transaction.
+				// In this case, we ignore the balance change, but we still count fee profit as a positive balance change if we can.
+				if block.Coinbase() == feeRecipient {
+					if i >= len(block.Transactions()) {
+						log.Error("transactions length is less than balance changes length")
+						break
+					}
+					tip, err := block.Transactions()[i].EffectiveGasTip(block.BaseFee())
+					if err != nil {
+						log.Error("failed to calculate tip", "err", err)
+						break
+					}
+					profit := tip.Mul(tip, new(big.Int).SetUint64(receipts[i].GasUsed))
+					feeRecipientProfit.Add(feeRecipientProfit, profit)
+				}
+			}
+		}
+		if feeRecipientProfit.Cmp(expectedProfit) >= 0 {
+			return nil
+		}
+
+		log.Warn("proposer payment not enough, trying last tx payment validation", "expected", expectedProfit, "actual", feeRecipientProfit)
 	}
 
 	if len(receipts) == 0 {

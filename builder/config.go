@@ -21,6 +21,7 @@ type Config struct {
 	RemoteRelayEndpoint              string        `toml:",omitempty"`
 	SecondaryRemoteRelayEndpoints    []string      `toml:",omitempty"`
 	ValidationBlocklist              string        `toml:",omitempty"`
+	ValidationForceLastTxPayment     bool          `toml:",omitempty"`
 	BuilderRateLimitDuration         string        `toml:",omitempty"`
 	BuilderRateLimitMaxBurst         int           `toml:",omitempty"`
 	BuilderRateLimitResubmitInterval string        `toml:",omitempty"`
@@ -48,6 +49,7 @@ var DefaultConfig = Config{
 	RemoteRelayEndpoint:           "",
 	SecondaryRemoteRelayEndpoints: nil,
 	ValidationBlocklist:           "",
+	ValidationForceLastTxPayment:  false,
 	BuilderRateLimitDuration:      RateLimitIntervalDefault.String(),
 	BuilderRateLimitMaxBurst:      RateLimitBurstDefault,
 	EnableCancellations:           false,
