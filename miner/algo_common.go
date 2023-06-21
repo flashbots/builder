@@ -273,11 +273,12 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	if enforceProfit {
 		// if profit is enforced between simulation and actual commit, only allow >-1% divergence
 		simulatedBundleProfit := bundle.TotalEth
-		actualBundleGasFees := new(big.Int).Mul(bundleActualEffGP, big.NewInt(int64(gasUsed)))
-		actualBundleProfit := new(big.Int).Add(coinbaseBalanceDelta, actualBundleGasFees)
+		actualBundleProfit := bundleProfit
 
-		simulatedBundleProfit.Mul(simulatedBundleProfit, common.Big100)
-		actualBundleProfit.Mul(actualBundleProfit, big.NewInt(99))
+		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
+		// lower due to transaction ordering
+		simulatedBundleProfit.Mul(simulatedBundleProfit, big.NewInt(99))
+		actualBundleProfit.Mul(actualBundleProfit, common.Big100)
 
 		if simulatedBundleProfit.Cmp(actualBundleProfit) == 1 {
 			log.Trace("Lower bundle profit found after inclusion", "bundle", bundle.OriginalBundle.Hash)
@@ -446,11 +447,12 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 	if enforceProfit {
 		// if profit is enforced between simulation and actual commit, only allow >-1% divergence
 		simulatedProfit := b.Profit
-		actualGasFees := new(big.Int).Mul(gasDelta, gotEGP)
-		actualProfit := new(big.Int).Add(coinbaseDelta, actualGasFees)
+		actualProfit := coinbaseDelta
 
-		simulatedProfit.Mul(simulatedProfit, common.Big100)
-		actualProfit.Mul(actualProfit, big.NewInt(99))
+		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
+		// lower due to transaction ordering
+		simulatedProfit.Mul(simulatedProfit, big.NewInt(99))
+		actualProfit.Mul(actualProfit, common.Big100)
 
 		if simulatedProfit.Cmp(actualProfit) == 1 {
 			log.Trace("Lower sbundle profit found after inclusion", "sbundle", b.Bundle.Hash())

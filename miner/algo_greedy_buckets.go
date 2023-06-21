@@ -141,7 +141,7 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 		}
 
 		IsOrderInPriceRange = func(order *types.TxWithMinerFee, minPrice *big.Int) bool {
-			return order.Price().Cmp(minPrice) > -1
+			return order.Price().Cmp(minPrice) >= 0
 		}
 
 		SortInPlaceByProfit = func(baseFee *big.Int, transactions []*types.TxWithMinerFee) {
