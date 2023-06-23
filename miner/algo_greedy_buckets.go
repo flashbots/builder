@@ -107,6 +107,10 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 			log.Trace("Included sbundle", "bundleEGP", sbundle.MevGasPrice.String(), "ethToCoinbase", ethIntToFloat(sbundle.Profit))
 			usedEntry.Success = true
 			usedSbundles = append(usedSbundles, usedEntry)
+		} else {
+			// note: this should never happen because we should not be inserting invalid transaction types into
+			// the orders heap
+			panic("unsupported order type found")
 		}
 	}
 	return usedBundles, usedSbundles
