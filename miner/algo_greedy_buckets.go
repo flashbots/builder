@@ -45,7 +45,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 		usedBundles                []types.SimulatedBundle
 		usedSbundles               []types.UsedSBundle
 		CheckRetryOrderAndReinsert = func(order *types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce, retryMap map[*types.TxWithMinerFee]int, retryLimit int) {
-			var isRetryable bool
+			var isRetryable bool = false
 			if retryCount, exists := retryMap[order]; exists {
 				if retryCount != retryLimit {
 					isRetryable = true
@@ -119,7 +119,7 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 	}
 
 	const (
-		retryLimit = 2
+		retryLimit = 1
 	)
 
 	var (

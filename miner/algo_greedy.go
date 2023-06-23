@@ -35,7 +35,8 @@ func newGreedyBuilder(
 }
 
 func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
-	envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle) {
+	envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle,
+) {
 	var (
 		usedBundles  []types.SimulatedBundle
 		usedSbundles []types.UsedSBundle
