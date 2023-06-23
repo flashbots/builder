@@ -232,7 +232,7 @@ func runAlgoTest(algo AlgoType, config *params.ChainConfig, alloc core.GenesisAl
 		builder := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	case ALGO_GREEDY:
-		builder := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
+		builder := newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	}
 	return resultEnv.profit, nil
