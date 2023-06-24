@@ -39,7 +39,7 @@ func newGreedyBucketsBuilder(
 func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 	transactions []*types.TxWithMinerFee,
 	orders *types.TransactionsByPriceAndNonce,
-	retryMap map[*types.TxWithMinerFee]int, retryLimit int,
+	gasUsedMap map[*types.TxWithMinerFee]uint64, retryMap map[*types.TxWithMinerFee]int, retryLimit int,
 ) ([]types.SimulatedBundle, []types.UsedSBundle) {
 	var (
 		usedBundles                []types.SimulatedBundle
@@ -70,7 +70,16 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 			receipt, skip, err := envDiff.commitTx(tx, b.chainData)
 			if err != nil {
 				log.Trace("could not apply tx", "hash", tx.Hash(), "err", err)
-				CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
+
+				// attempt to retry transaction commit up to retryLimit
+				// the gas used is set for the order to re-calculate profit of the transaction for subsequent retries
+				if receipt != nil {
+					// if the receipt is nil we don't attempt to retry the transaction - this is to mitigate abuse since
+					// without a receipt the default profit calculation for a transaction uses the gas limit which
+					// can cause the transaction to always be first in any profit-sorted transaction list
+					gasUsedMap[order] = receipt.GasUsed
+					CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
+				}
 				continue
 			}
 
@@ -120,18 +129,18 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 }
 
 func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
-	envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle) {
+	envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle,
+) {
 	if orders.Peek() == nil {
 		return nil, nil
 	}
 
-	const (
-		retryLimit = 1
-	)
+	const retryLimit = 1
 
 	var (
 		baseFee      = envDiff.baseEnvironment.header.BaseFee
 		retryMap     = make(map[*types.TxWithMinerFee]int)
+		gasUsedMap   = make(map[*types.TxWithMinerFee]uint64)
 		usedBundles  []types.SimulatedBundle
 		usedSbundles []types.UsedSBundle
 		transactions []*types.TxWithMinerFee
@@ -151,9 +160,9 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 			return order.Price().Cmp(minPrice) >= 0
 		}
 
-		SortInPlaceByProfit = func(baseFee *big.Int, transactions []*types.TxWithMinerFee) {
+		SortInPlaceByProfit = func(baseFee *big.Int, transactions []*types.TxWithMinerFee, gasUsedMap map[*types.TxWithMinerFee]uint64) {
 			sort.SliceStable(transactions, func(i, j int) bool {
-				return transactions[i].Profit(baseFee).Cmp(transactions[j].Profit(baseFee)) > 0
+				return transactions[i].Profit(baseFee, gasUsedMap[transactions[i]]).Cmp(transactions[j].Profit(baseFee, gasUsedMap[transactions[j]])) > 0
 			})
 		}
 	)
@@ -163,8 +172,8 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 		order := orders.Peek()
 		if order == nil {
 			if len(transactions) != 0 {
-				SortInPlaceByProfit(baseFee, transactions)
-				bundles, sbundles := b.commit(envDiff, transactions, orders, retryMap, retryLimit)
+				SortInPlaceByProfit(baseFee, transactions, gasUsedMap)
+				bundles, sbundles := b.commit(envDiff, transactions, orders, gasUsedMap, retryMap, retryLimit)
 				usedBundles = append(usedBundles, bundles...)
 				usedSbundles = append(usedSbundles, sbundles...)
 				transactions = nil
@@ -180,8 +189,8 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 			transactions = append(transactions, order)
 		} else {
 			if len(transactions) != 0 {
-				SortInPlaceByProfit(baseFee, transactions)
-				bundles, sbundles := b.commit(envDiff, transactions, orders, retryMap, retryLimit)
+				SortInPlaceByProfit(baseFee, transactions, gasUsedMap)
+				bundles, sbundles := b.commit(envDiff, transactions, orders, gasUsedMap, retryMap, retryLimit)
 				usedBundles = append(usedBundles, bundles...)
 				usedSbundles = append(usedSbundles, sbundles...)
 				transactions = nil

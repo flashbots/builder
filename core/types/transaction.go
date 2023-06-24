@@ -525,10 +525,14 @@ func (t *TxWithMinerFee) Price() *big.Int {
 	return new(big.Int).Set(t.minerFee)
 }
 
-func (t *TxWithMinerFee) Profit(baseFee *big.Int) *big.Int {
+func (t *TxWithMinerFee) Profit(baseFee *big.Int, gasUsed uint64) *big.Int {
 	if tx := t.Tx(); tx != nil {
 		profit := new(big.Int).Sub(tx.GasPrice(), baseFee)
-		profit.Mul(profit, new(big.Int).SetUint64(tx.Gas()))
+		if gasUsed != 0 {
+			profit.Mul(profit, new(big.Int).SetUint64(gasUsed))
+		} else {
+			profit.Mul(profit, new(big.Int).SetUint64(tx.Gas()))
+		}
 		return profit
 	} else if bundle := t.Bundle(); bundle != nil {
 		return bundle.TotalEth

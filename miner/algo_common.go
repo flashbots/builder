@@ -161,31 +161,31 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 			// Pop the current out-of-gas transaction without shifting in the next from the account
 			from, _ := types.Sender(signer, tx)
 			log.Trace("Gas limit exceeded for current block", "sender", from)
-			return nil, popTx, err
+			return receipt, popTx, err
 
 		case errors.Is(err, core.ErrNonceTooLow):
 			// New head notification data race between the transaction pool and miner, shift
 			from, _ := types.Sender(signer, tx)
 			log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
-			return nil, shiftTx, err
+			return receipt, shiftTx, err
 
 		case errors.Is(err, core.ErrNonceTooHigh):
 			// Reorg notification data race between the transaction pool and miner, skip account =
 			from, _ := types.Sender(signer, tx)
 			log.Trace("Skipping account with hight nonce", "sender", from, "nonce", tx.Nonce())
-			return nil, popTx, err
+			return receipt, popTx, err
 
 		case errors.Is(err, core.ErrTxTypeNotSupported):
 			// Pop the unsupported transaction without shifting in the next from the account
 			from, _ := types.Sender(signer, tx)
 			log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
-			return nil, popTx, err
+			return receipt, popTx, err
 
 		default:
 			// Strange error, discard the transaction and get the next in line (note, the
 			// nonce-too-high clause will prevent us from executing in vain).
 			log.Trace("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
-			return nil, shiftTx, err
+			return receipt, shiftTx, err
 		}
 	}
 
