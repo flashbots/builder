@@ -1,28 +1,31 @@
 package builder
 
+import "time"
+
 type Config struct {
-	Enabled                          bool     `toml:",omitempty"`
-	EnableValidatorChecks            bool     `toml:",omitempty"`
-	EnableLocalRelay                 bool     `toml:",omitempty"`
-	SlotsInEpoch                     uint64   `toml:",omitempty"`
-	SecondsInSlot                    uint64   `toml:",omitempty"`
-	DisableBundleFetcher             bool     `toml:",omitempty"`
-	DryRun                           bool     `toml:",omitempty"`
-	IgnoreLatePayloadAttributes      bool     `toml:",omitempty"`
-	BuilderSecretKey                 string   `toml:",omitempty"`
-	RelaySecretKey                   string   `toml:",omitempty"`
-	ListenAddr                       string   `toml:",omitempty"`
-	GenesisForkVersion               string   `toml:",omitempty"`
-	BellatrixForkVersion             string   `toml:",omitempty"`
-	GenesisValidatorsRoot            string   `toml:",omitempty"`
-	BeaconEndpoints                  []string `toml:",omitempty"`
-	RemoteRelayEndpoint              string   `toml:",omitempty"`
-	SecondaryRemoteRelayEndpoints    []string `toml:",omitempty"`
-	ValidationBlocklist              string   `toml:",omitempty"`
-	BuilderRateLimitDuration         string   `toml:",omitempty"`
-	BuilderRateLimitMaxBurst         int      `toml:",omitempty"`
-	BuilderRateLimitResubmitInterval string   `toml:",omitempty"`
-	EnableCancellations              bool     `toml:",omitempty"`
+	Enabled                          bool          `toml:",omitempty"`
+	EnableValidatorChecks            bool          `toml:",omitempty"`
+	EnableLocalRelay                 bool          `toml:",omitempty"`
+	SlotsInEpoch                     uint64        `toml:",omitempty"`
+	SecondsInSlot                    uint64        `toml:",omitempty"`
+	DisableBundleFetcher             bool          `toml:",omitempty"`
+	DryRun                           bool          `toml:",omitempty"`
+	IgnoreLatePayloadAttributes      bool          `toml:",omitempty"`
+	BuilderSecretKey                 string        `toml:",omitempty"`
+	RelaySecretKey                   string        `toml:",omitempty"`
+	ListenAddr                       string        `toml:",omitempty"`
+	GenesisForkVersion               string        `toml:",omitempty"`
+	BellatrixForkVersion             string        `toml:",omitempty"`
+	GenesisValidatorsRoot            string        `toml:",omitempty"`
+	BeaconEndpoints                  []string      `toml:",omitempty"`
+	RemoteRelayEndpoint              string        `toml:",omitempty"`
+	SecondaryRemoteRelayEndpoints    []string      `toml:",omitempty"`
+	ValidationBlocklist              string        `toml:",omitempty"`
+	BuilderRateLimitDuration         string        `toml:",omitempty"`
+	BuilderRateLimitMaxBurst         int           `toml:",omitempty"`
+	BuilderRateLimitResubmitInterval string        `toml:",omitempty"`
+	BuilderSubmissionOffset          time.Duration `toml:",omitempty"`
+	EnableCancellations              bool          `toml:",omitempty"`
 }
 
 // DefaultConfig is the default config for the builder.
