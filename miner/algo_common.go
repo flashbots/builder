@@ -142,7 +142,7 @@ func applyTransactionWithBlacklist(signer types.Signer, config *params.ChainConf
 }
 
 // commit tx to envDiff
-func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
+func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData, dropTx bool) (*types.Receipt, int, error) {
 	header := envDiff.header
 	coinbase := &envDiff.baseEnvironment.coinbase
 	signer := envDiff.baseEnvironment.signer
@@ -156,6 +156,11 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 
 	receipt, newState, err := applyTransactionWithBlacklist(signer, chData.chainConfig, chData.chain, coinbase,
 		envDiff.gasPool, envDiff.state, header, tx, &header.GasUsed, *chData.chain.GetVMConfig(), chData.blacklist)
+
+	if (err != nil && dropTx) || (receipt != nil && receipt.Status == types.ReceiptStatusFailed && dropTx) {
+		return receipt, shiftTx, err
+	}
+
 	envDiff.state = newState
 	if err != nil {
 		switch {
@@ -207,8 +212,8 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	profitBefore := new(big.Int).Set(tmpEnvDiff.newProfit)
 	var gasUsed uint64
 
-	for _, tx := range bundle.OriginalBundle.Txs {
-		if tmpEnvDiff.header.BaseFee != nil && tx.Type() == 2 {
+	for index, tx := range bundle.OriginalBundle.Txs {
+		if tmpEnvDiff.header.BaseFee != nil && tx.Type() == types.DynamicFeeTxType {
 			// Sanity check for extremely large numbers
 			if tx.GasFeeCap().BitLen() > 256 {
 				return core.ErrFeeCapVeryHigh
@@ -240,16 +245,24 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 			return errInterrupt
 		}
 
-		receipt, _, err := tmpEnvDiff.commitTx(tx, chData)
+		canRevert := bundle.OriginalBundle.RevertingHash(tx.Hash())
+		receipt, _, err := tmpEnvDiff.commitTx(tx, chData, index == 0 && canRevert)
 
 		if err != nil {
 			log.Trace("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
 			return err
 		}
 
-		if receipt.Status != types.ReceiptStatusSuccessful && !bundle.OriginalBundle.RevertingHash(tx.Hash()) {
-			log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
-			return errors.New("bundle tx revert")
+		if receipt.Status != types.ReceiptStatusSuccessful {
+			if canRevert {
+				if index == 0 {
+					log.Trace("Bundle tx failed, but can revert", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
+					continue
+				}
+			} else {
+				log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
+				return errors.New("bundle tx revert")
+			}
 		}
 
 		gasUsed += receipt.GasUsed
@@ -387,7 +400,7 @@ func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver
 		return nil, errors.New("incorrect sender private key")
 	}
 
-	receipt, _, err := envDiff.commitTx(tx, chData)
+	receipt, _, err := envDiff.commitTx(tx, chData, false)
 	if err != nil {
 		return nil, err
 	}
@@ -465,7 +478,7 @@ func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chai
 		coinbaseBefore = envDiff.state.GetBalance(envDiff.header.Coinbase)
 
 		if el.Tx != nil {
-			receipt, _, err := envDiff.commitTx(el.Tx, chData)
+			receipt, _, err := envDiff.commitTx(el.Tx, chData, false)
 			if err != nil {
 				return err
 			}

@@ -42,7 +42,7 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders 
 		}
 
 		if tx := order.Tx(); tx != nil {
-			receipt, skip, err := envDiff.commitTx(tx, b.chainData)
+			receipt, skip, err := envDiff.commitTx(tx, b.chainData, false)
 			switch skip {
 			case shiftTx:
 				orders.Shift()
