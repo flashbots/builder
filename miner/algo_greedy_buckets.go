@@ -47,7 +47,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 		CheckRetryOrderAndReinsert = func(
 			order *types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce,
 			retryMap map[*types.TxWithMinerFee]int, retryLimit int,
-		) {
+		) bool {
 			var isRetryable bool = false
 			if retryCount, exists := retryMap[order]; exists {
 				if retryCount != retryLimit {
@@ -62,6 +62,8 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 			if isRetryable {
 				orders.Push(order)
 			}
+
+			return isRetryable
 		}
 	)
 
@@ -109,10 +111,10 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, true)
 			if err != nil {
 				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
-				// TODO: handle retry
-				usedEntry.Success = false
-				usedSbundles = append(usedSbundles, usedEntry)
-				CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
+				if ok := CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit); !ok {
+					usedEntry.Success = false
+					usedSbundles = append(usedSbundles, usedEntry)
+				}
 				continue
 			}
 

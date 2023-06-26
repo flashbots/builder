@@ -156,6 +156,7 @@ func TestAlgo(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
+				t.Logf("Profit: [want: %v] [actual: %v]", gotProfit, test.WantProfit)
 				if test.WantProfit.Cmp(gotProfit) != 0 {
 					t.Fatalf("Profit: want %v, got %v", test.WantProfit, gotProfit)
 				}
@@ -234,6 +235,10 @@ func runAlgoTest(algo AlgoType, config *params.ChainConfig, alloc core.GenesisAl
 	case ALGO_GREEDY:
 		builder := newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
+	}
+	fmt.Println("receipt size:", len(resultEnv.receipts))
+	for _, receipt := range resultEnv.receipts {
+		fmt.Println("status: ", receipt.Status)
 	}
 	return resultEnv.profit, nil
 }

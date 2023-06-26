@@ -273,12 +273,11 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	if enforceProfit {
 		// if profit is enforced between simulation and actual commit, only allow >-1% divergence
 		simulatedBundleProfit := new(big.Int).Set(bundle.TotalEth)
-		actualBundleGasFees := new(big.Int).Mul(bundleActualEffGP, big.NewInt(int64(gasUsed)))
-		actualBundleProfit := new(big.Int).Add(coinbaseBalanceDelta, actualBundleGasFees)
+		actualBundleProfit := new(big.Int).Mul(bundleActualEffGP, big.NewInt(int64(gasUsed)))
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
-		simulatedBundleProfit.Mul(simulatedBundleProfit, big.NewInt(99))
+		simulatedBundleProfit.Mul(simulatedBundleProfit, big.NewInt(95))
 		actualBundleProfit.Mul(actualBundleProfit, common.Big100)
 
 		if simulatedBundleProfit.Cmp(actualBundleProfit) > 0 {
@@ -452,7 +451,7 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
-		simulatedProfit.Mul(simulatedProfit, big.NewInt(99))
+		simulatedProfit.Mul(simulatedProfit, big.NewInt(95))
 		actualProfit.Mul(actualProfit, common.Big100)
 
 		if simulatedProfit.Cmp(actualProfit) > 0 {
