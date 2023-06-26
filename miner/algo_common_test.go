@@ -472,10 +472,20 @@ func TestBlacklist(t *testing.T) {
 
 	tx = signers.signTx(4, 40000, big.NewInt(0), big.NewInt(1), payProxyAddress, big.NewInt(99), calldata)
 	_, _, err = envDiff.commitTx(tx, chData)
-	fmt.Println("balance", envDiff.state.GetBalance(signers.addresses[3]))
-
 	if err == nil {
 		t.Fatal("committed blacklisted transaction: trace")
+	}
+
+	tx = signers.signTx(5, 40000, big.NewInt(0), big.NewInt(1), payProxyAddress, big.NewInt(0), calldata)
+	_, _, err = envDiff.commitTx(tx, chData)
+	if err == nil {
+		t.Fatal("committed blacklisted transaction: trace, zero value")
+	}
+
+	tx = signers.signTx(6, 30000, big.NewInt(0), big.NewInt(1), payProxyAddress, big.NewInt(99), calldata)
+	_, _, err = envDiff.commitTx(tx, chData)
+	if err == nil {
+		t.Fatal("committed blacklisted transaction: trace, failed tx")
 	}
 
 	if *envDiff.gasPool != gasPoolBefore {
