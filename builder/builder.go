@@ -34,7 +34,7 @@ const (
 	RateLimitBurstDefault        = 10
 	BlockResubmitIntervalDefault = 500 * time.Millisecond
 
-	SubmissionDelaySecondsDefault = 4 * time.Second
+	SubmissionOffsetFromEndOfSlotSecondsDefault = 3 * time.Second
 )
 
 type PubkeyHex string
@@ -73,7 +73,8 @@ type Builder struct {
 	builderSigningDomain        phase0.Domain
 	builderResubmitInterval     time.Duration
 
-	limiter *rate.Limiter
+	limiter                       *rate.Limiter
+	submissionOffsetFromEndOfSlot time.Duration
 
 	slotMu        sync.Mutex
 	slotAttrs     types.BuilderPayloadAttributes
@@ -85,16 +86,17 @@ type Builder struct {
 
 // BuilderArgs is a struct that contains all the arguments needed to create a new Builder
 type BuilderArgs struct {
-	sk                           *bls.SecretKey
-	ds                           flashbotsextra.IDatabaseService
-	relay                        IRelay
-	builderSigningDomain         phase0.Domain
-	builderBlockResubmitInterval time.Duration
-	eth                          IEthereumService
-	dryRun                       bool
-	ignoreLatePayloadAttributes  bool
-	validator                    *blockvalidation.BlockValidationAPI
-	beaconClient                 IBeaconClient
+	sk                            *bls.SecretKey
+	ds                            flashbotsextra.IDatabaseService
+	relay                         IRelay
+	builderSigningDomain          phase0.Domain
+	builderBlockResubmitInterval  time.Duration
+	eth                           IEthereumService
+	dryRun                        bool
+	ignoreLatePayloadAttributes   bool
+	validator                     *blockvalidation.BlockValidationAPI
+	beaconClient                  IBeaconClient
+	submissionOffsetFromEndOfSlot time.Duration
 
 	limiter *rate.Limiter
 }
@@ -117,19 +119,24 @@ func NewBuilder(args BuilderArgs) (*Builder, error) {
 		args.builderBlockResubmitInterval = BlockResubmitIntervalDefault
 	}
 
+	if args.submissionOffsetFromEndOfSlot == 0 {
+		args.submissionOffsetFromEndOfSlot = SubmissionOffsetFromEndOfSlotSecondsDefault
+	}
+
 	slotCtx, slotCtxCancel := context.WithCancel(context.Background())
 	return &Builder{
-		ds:                          args.ds,
-		relay:                       args.relay,
-		eth:                         args.eth,
-		dryRun:                      args.dryRun,
-		ignoreLatePayloadAttributes: args.ignoreLatePayloadAttributes,
-		validator:                   args.validator,
-		beaconClient:                args.beaconClient,
-		builderSecretKey:            args.sk,
-		builderPublicKey:            pk,
-		builderSigningDomain:        args.builderSigningDomain,
-		builderResubmitInterval:     args.builderBlockResubmitInterval,
+		ds:                            args.ds,
+		relay:                         args.relay,
+		eth:                           args.eth,
+		dryRun:                        args.dryRun,
+		ignoreLatePayloadAttributes:   args.ignoreLatePayloadAttributes,
+		validator:                     args.validator,
+		beaconClient:                  args.beaconClient,
+		builderSecretKey:              args.sk,
+		builderPublicKey:              pk,
+		builderSigningDomain:          args.builderSigningDomain,
+		builderResubmitInterval:       args.builderBlockResubmitInterval,
+		submissionOffsetFromEndOfSlot: args.submissionOffsetFromEndOfSlot,
 
 		limiter:       args.limiter,
 		slotCtx:       slotCtx,
@@ -423,7 +430,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 	// Avoid submitting early into a given slot. For example if slots have 12 second interval, submissions should
 	// not begin until 8 seconds into the slot.
 	slotTime := time.Unix(int64(attrs.Timestamp), 0).UTC()
-	slotSubmitStartTime := slotTime.Add(-SubmissionDelaySecondsDefault)
+	slotSubmitStartTime := slotTime.Add(-b.submissionOffsetFromEndOfSlot)
 
 	// Empties queue, submits the best block for current job with rate limit (global for all jobs)
 	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock, slotSubmitStartTime)

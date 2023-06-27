@@ -238,6 +238,18 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		builderRateLimitInterval = RateLimitIntervalDefault
 	}
 
+	var submissionOffset time.Duration
+	if offset := cfg.BuilderSubmissionOffset; offset != 0 {
+		if offset < 0 {
+			return fmt.Errorf("builder submission offset must be positive")
+		} else if uint64(offset.Seconds()) > cfg.SecondsInSlot {
+			return fmt.Errorf("builder submission offset must be less than seconds in slot")
+		}
+		submissionOffset = offset
+	} else {
+		submissionOffset = SubmissionOffsetFromEndOfSlotSecondsDefault
+	}
+
 	// TODO: move to proper flags
 	var ds flashbotsextra.IDatabaseService
 	dbDSN := os.Getenv("FLASHBOTS_POSTGRES_DSN")
@@ -269,17 +281,18 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	}
 
 	builderArgs := BuilderArgs{
-		sk:                           builderSk,
-		ds:                           ds,
-		relay:                        relay,
-		builderSigningDomain:         builderSigningDomain,
-		builderBlockResubmitInterval: builderRateLimitInterval,
-		eth:                          ethereumService,
-		dryRun:                       cfg.DryRun,
-		ignoreLatePayloadAttributes:  cfg.IgnoreLatePayloadAttributes,
-		validator:                    validator,
-		beaconClient:                 beaconClient,
-		limiter:                      limiter,
+		sk:                            builderSk,
+		ds:                            ds,
+		dryRun:                        cfg.DryRun,
+		eth:                           ethereumService,
+		relay:                         relay,
+		builderSigningDomain:          builderSigningDomain,
+		builderBlockResubmitInterval:  builderRateLimitInterval,
+		submissionOffsetFromEndOfSlot: submissionOffset,
+		ignoreLatePayloadAttributes:   cfg.IgnoreLatePayloadAttributes,
+		validator:                     validator,
+		beaconClient:                  beaconClient,
+		limiter:                       limiter,
 	}
 
 	builderBackend, err := NewBuilder(builderArgs)
