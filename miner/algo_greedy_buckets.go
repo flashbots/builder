@@ -23,15 +23,15 @@ type greedyBucketsBuilder struct {
 	builderKey       *ecdsa.PrivateKey
 	interrupt        *int32
 	gasUsedMap       map[*types.TxWithMinerFee]uint64
-	validationConf   validationConfig
+	validationConf   algorithmConfig
 }
 
 func newGreedyBucketsBuilder(
-	chain *core.BlockChain, chainConfig *params.ChainConfig, validationConf *validationConfig,
+	chain *core.BlockChain, chainConfig *params.ChainConfig, validationConf *algorithmConfig,
 	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32,
 ) *greedyBucketsBuilder {
 	if validationConf == nil {
-		validationConf = &validationConfig{
+		validationConf = &algorithmConfig{
 			EnforceProfit:          true,
 			ExpectedProfit:         nil,
 			ProfitThresholdPercent: defaultProfitThreshold,
@@ -53,7 +53,6 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 	gasUsedMap map[*types.TxWithMinerFee]uint64, retryMap map[*types.TxWithMinerFee]int, retryLimit int,
 ) ([]types.SimulatedBundle, []types.UsedSBundle) {
 	var (
-		baseFee        = envDiff.baseEnvironment.header.BaseFee
 		usedBundles    []types.SimulatedBundle
 		usedSbundles   []types.UsedSBundle
 		validationConf = b.validationConf
@@ -83,8 +82,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 
 	for _, order := range transactions {
 		if tx := order.Tx(); tx != nil {
-			validationConf.ExpectedProfit = order.Profit(baseFee, gasUsedMap[order])
-			receipt, skip, err := envDiff.commitTx(tx, b.chainData, validationConf)
+			receipt, skip, err := envDiff.commitTx(tx, b.chainData)
 			if err != nil {
 				log.Trace("could not apply tx", "hash", tx.Hash(), "err", err)
 

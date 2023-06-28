@@ -1407,8 +1407,8 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 	case ALGO_TEST_ONLY:
 		var (
 			algorithms      = []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_BUCKETS}
-			validationConfs = []*validationConfig{
-				&defaultValidationConfig,
+			validationConfs = []*algorithmConfig{
+				&defaultAlgorithmConfig,
 				{
 					EnforceProfit:          true,
 					ExpectedProfit:         nil,
@@ -1425,7 +1425,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 			pendingTxs = make([]map[common.Address]types.Transactions, len(algorithms))
 
 			results = make([]struct {
-				validationConf validationConfig
+				validationConf algorithmConfig
 				duration       time.Duration
 				profit         *big.Int
 				simBundles     []types.SimulatedBundle
@@ -1467,7 +1467,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 					newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pendingTxs[i])
 				}
 				results[i] = struct {
-					validationConf validationConfig
+					validationConf algorithmConfig
 					duration       time.Duration
 					profit         *big.Int
 					simBundles     []types.SimulatedBundle
@@ -1498,7 +1498,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 		}
 
 	case ALGO_GREEDY_BUCKETS:
-		validationConf := &validationConfig{
+		validationConf := &algorithmConfig{
 			EnforceProfit:          true,
 			ExpectedProfit:         nil,
 			ProfitThresholdPercent: defaultProfitThreshold,

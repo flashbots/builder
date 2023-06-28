@@ -48,7 +48,7 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
 		}
 
 		if tx := order.Tx(); tx != nil {
-			receipt, skip, err := envDiff.commitTx(tx, b.chainData, defaultValidationConfig)
+			receipt, skip, err := envDiff.commitTx(tx, b.chainData)
 			switch skip {
 			case shiftTx:
 				orders.Shift()
@@ -66,7 +66,7 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
 			}
 		} else if bundle := order.Bundle(); bundle != nil {
 			//log.Debug("buildBlock considering bundle", "egp", bundle.MevGasPrice.String(), "hash", bundle.OriginalBundle.Hash)
-			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, defaultValidationConfig)
+			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, defaultAlgorithmConfig)
 			orders.Pop()
 			if err != nil {
 				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
@@ -79,7 +79,7 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
 			usedEntry := types.UsedSBundle{
 				Bundle: sbundle.Bundle,
 			}
-			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, defaultValidationConfig)
+			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, defaultAlgorithmConfig)
 			orders.Pop()
 			if err != nil {
 				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)

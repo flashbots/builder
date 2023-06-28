@@ -27,8 +27,8 @@ const (
 const defaultProfitPercentMinimum = 70
 
 var (
-	defaultProfitThreshold  = big.NewInt(defaultProfitPercentMinimum)
-	defaultValidationConfig = validationConfig{
+	defaultProfitThreshold = big.NewInt(defaultProfitPercentMinimum)
+	defaultAlgorithmConfig = algorithmConfig{
 		EnforceProfit:          false,
 		ExpectedProfit:         common.Big0,
 		ProfitThresholdPercent: defaultProfitThreshold,
@@ -39,7 +39,7 @@ var emptyCodeHash = common.HexToHash("c5d2460186f7233c927e7db2dcc703c0e500b653ca
 
 var errInterrupt = errors.New("miner worker interrupted")
 
-type validationConfig struct {
+type algorithmConfig struct {
 	// EnforceProfit is true if we want to enforce a minimum profit threshold
 	// for committing a transaction based on ProfitThresholdPercent
 	EnforceProfit bool
@@ -165,7 +165,7 @@ func applyTransactionWithBlacklist(signer types.Signer, config *params.ChainConf
 }
 
 // commit tx to envDiff
-func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData, validation validationConfig) (*types.Receipt, int, error) {
+func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
 	header := envDiff.header
 	coinbase := &envDiff.baseEnvironment.coinbase
 	signer := envDiff.baseEnvironment.signer
@@ -219,23 +219,11 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 	envDiff.newTxs = append(envDiff.newTxs, tx)
 	envDiff.newReceipts = append(envDiff.newReceipts, receipt)
 
-	if validation.EnforceProfit {
-		if validation.ExpectedProfit == nil {
-			return receipt, shiftTx, errors.New("expected profit is nil")
-		}
-
-		simulatedProfit := new(big.Int).Mul(validation.ExpectedProfit, validation.ProfitThresholdPercent)
-		actualProfit := new(big.Int).Mul(gasPrice, big.NewInt(int64(receipt.GasUsed)))
-		if simulatedProfit.Cmp(actualProfit) > 0 {
-			return receipt, shiftTx, errors.New("transaction does not meet minimum profit")
-		}
-	}
-
 	return receipt, shiftTx, nil
 }
 
 // Commit Bundle to env diff
-func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chData chainData, interrupt *int32, validation validationConfig) error {
+func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chData chainData, interrupt *int32, validation algorithmConfig) error {
 	coinbase := envDiff.baseEnvironment.coinbase
 	tmpEnvDiff := envDiff.copy()
 
@@ -277,7 +265,7 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 			return errInterrupt
 		}
 
-		receipt, _, err := tmpEnvDiff.commitTx(tx, chData, defaultValidationConfig)
+		receipt, _, err := tmpEnvDiff.commitTx(tx, chData)
 
 		if err != nil {
 			log.Trace("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
@@ -440,7 +428,7 @@ func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver
 		return nil, errors.New("incorrect sender private key")
 	}
 
-	receipt, _, err := envDiff.commitTx(tx, chData, defaultValidationConfig)
+	receipt, _, err := envDiff.commitTx(tx, chData)
 	if err != nil {
 		return nil, err
 	}
@@ -448,7 +436,7 @@ func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver
 	return receipt, nil
 }
 
-func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey, validation validationConfig) error {
+func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey, validation algorithmConfig) error {
 	if key == nil {
 		return errors.New("no private key provided")
 	}
@@ -534,7 +522,7 @@ func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chai
 		coinbaseBefore = envDiff.state.GetBalance(envDiff.header.Coinbase)
 
 		if el.Tx != nil {
-			receipt, _, err := envDiff.commitTx(el.Tx, chData, defaultValidationConfig)
+			receipt, _, err := envDiff.commitTx(el.Tx, chData)
 			if err != nil {
 				return err
 			}
