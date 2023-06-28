@@ -22,9 +22,32 @@ const (
 	popTx   = 2
 )
 
+// defaultProfitPercentMinimum is to ensure committed transactions, bundles, sbundles don't fall below this threshold
+// when profit is enforced
+const defaultProfitPercentMinimum = 70
+
+var (
+	defaultProfitThreshold  = big.NewInt(defaultProfitPercentMinimum)
+	defaultValidationConfig = validationConfig{
+		EnforceProfit:          false,
+		ExpectedProfit:         common.Big0,
+		ProfitThresholdPercent: defaultProfitThreshold,
+	}
+)
+
 var emptyCodeHash = common.HexToHash("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
 
 var errInterrupt = errors.New("miner worker interrupted")
+
+type validationConfig struct {
+	// EnforceProfit is true if we want to enforce a minimum profit threshold
+	// for committing a transaction based on ProfitThresholdPercent
+	EnforceProfit bool
+	// ExpectedProfit should be set on a per transaction basis when profit is enforced
+	ExpectedProfit *big.Int
+	// ProfitThresholdPercent is the minimum profit threshold for committing a transaction
+	ProfitThresholdPercent *big.Int
+}
 
 type chainData struct {
 	chainConfig *params.ChainConfig
@@ -142,7 +165,7 @@ func applyTransactionWithBlacklist(signer types.Signer, config *params.ChainConf
 }
 
 // commit tx to envDiff
-func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
+func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData, validation validationConfig) (*types.Receipt, int, error) {
 	header := envDiff.header
 	coinbase := &envDiff.baseEnvironment.coinbase
 	signer := envDiff.baseEnvironment.signer
@@ -156,6 +179,7 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 
 	receipt, newState, err := applyTransactionWithBlacklist(signer, chData.chainConfig, chData.chain, coinbase,
 		envDiff.gasPool, envDiff.state, header, tx, &header.GasUsed, *chData.chain.GetVMConfig(), chData.blacklist)
+
 	envDiff.state = newState
 	if err != nil {
 		switch {
@@ -194,11 +218,24 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 	envDiff.newProfit = envDiff.newProfit.Add(envDiff.newProfit, gasPrice.Mul(gasPrice, big.NewInt(int64(receipt.GasUsed))))
 	envDiff.newTxs = append(envDiff.newTxs, tx)
 	envDiff.newReceipts = append(envDiff.newReceipts, receipt)
+
+	if validation.EnforceProfit {
+		if validation.ExpectedProfit == nil {
+			return receipt, shiftTx, errors.New("expected profit is nil")
+		}
+
+		simulatedProfit := new(big.Int).Mul(validation.ExpectedProfit, validation.ProfitThresholdPercent)
+		actualProfit := new(big.Int).Mul(gasPrice, big.NewInt(int64(receipt.GasUsed)))
+		if simulatedProfit.Cmp(actualProfit) > 0 {
+			return receipt, shiftTx, errors.New("transaction does not meet minimum profit")
+		}
+	}
+
 	return receipt, shiftTx, nil
 }
 
 // Commit Bundle to env diff
-func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chData chainData, interrupt *int32, enforceProfit bool) error {
+func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chData chainData, interrupt *int32, validation validationConfig) error {
 	coinbase := envDiff.baseEnvironment.coinbase
 	tmpEnvDiff := envDiff.copy()
 
@@ -208,7 +245,7 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	var gasUsed uint64
 
 	for _, tx := range bundle.OriginalBundle.Txs {
-		if tmpEnvDiff.header.BaseFee != nil && tx.Type() == 2 {
+		if tmpEnvDiff.header.BaseFee != nil && tx.Type() == types.DynamicFeeTxType {
 			// Sanity check for extremely large numbers
 			if tx.GasFeeCap().BitLen() > 256 {
 				return core.ErrFeeCapVeryHigh
@@ -240,7 +277,7 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 			return errInterrupt
 		}
 
-		receipt, _, err := tmpEnvDiff.commitTx(tx, chData)
+		receipt, _, err := tmpEnvDiff.commitTx(tx, chData, defaultValidationConfig)
 
 		if err != nil {
 			log.Trace("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
@@ -272,14 +309,14 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 		return errors.New("bundle underpays")
 	}
 
-	if enforceProfit {
-		// if profit is enforced between simulation and actual commit, only allow >-1% divergence
+	if validation.EnforceProfit {
+		// if profit is enforced between simulation and actual commit, only allow ProfitThresholdPercent divergence
 		simulatedBundleProfit := new(big.Int).Set(bundle.TotalEth)
 		actualBundleProfit := new(big.Int).Mul(bundleActualEffGP, big.NewInt(int64(gasUsed)))
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
-		simulatedBundleProfit.Mul(simulatedBundleProfit, big.NewInt(95))
+		simulatedBundleProfit.Mul(simulatedBundleProfit, validation.ProfitThresholdPercent)
 		actualBundleProfit.Mul(actualBundleProfit, common.Big100)
 
 		if simulatedBundleProfit.Cmp(actualBundleProfit) > 0 {
@@ -403,7 +440,7 @@ func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver
 		return nil, errors.New("incorrect sender private key")
 	}
 
-	receipt, _, err := envDiff.commitTx(tx, chData)
+	receipt, _, err := envDiff.commitTx(tx, chData, defaultValidationConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -411,7 +448,7 @@ func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver
 	return receipt, nil
 }
 
-func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey, enforceProfit bool) error {
+func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey, validation validationConfig) error {
 	if key == nil {
 		return errors.New("no private key provided")
 	}
@@ -446,14 +483,14 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 		return fmt.Errorf("incorrect EGP: got %d, expected %d", gotEGP, simEGP)
 	}
 
-	if enforceProfit {
+	if validation.EnforceProfit {
 		// if profit is enforced between simulation and actual commit, only allow >-1% divergence
 		simulatedProfit := new(big.Int).Set(b.Profit)
 		actualProfit := new(big.Int).Set(coinbaseDelta)
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
-		simulatedProfit.Mul(simulatedProfit, big.NewInt(95))
+		simulatedProfit.Mul(simulatedProfit, validation.ProfitThresholdPercent)
 		actualProfit.Mul(actualProfit, common.Big100)
 
 		if simulatedProfit.Cmp(actualProfit) > 0 {
@@ -497,7 +534,7 @@ func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chai
 		coinbaseBefore = envDiff.state.GetBalance(envDiff.header.Coinbase)
 
 		if el.Tx != nil {
-			receipt, _, err := envDiff.commitTx(el.Tx, chData)
+			receipt, _, err := envDiff.commitTx(el.Tx, chData, defaultValidationConfig)
 			if err != nil {
 				return err
 			}

@@ -480,7 +480,7 @@ func TestSBundles(t *testing.T) {
 				MevGasPrice: big.NewInt(1),
 				Profit:      big.NewInt(1),
 			}
-			err = envDiff.commitSBundle(&sim, chData, nil, builderPrivKey, false)
+			err = envDiff.commitSBundle(&sim, chData, nil, builderPrivKey, defaultValidationConfig)
 			if tt.ShouldFail {
 				require.Error(t, err)
 			} else {

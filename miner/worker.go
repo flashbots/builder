@@ -1311,7 +1311,7 @@ func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) 
 		err          error
 	)
 	switch w.flashbots.algoType {
-	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS:
+	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_TEST_ONLY:
 		blockBundles, allBundles, usedSbundles, err = w.fillTransactionsAlgoWorker(interrupt, env)
 	case ALGO_MEV_GETH:
 		blockBundles, allBundles, err = w.fillTransactions(interrupt, env)
@@ -1404,9 +1404,107 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 	start := time.Now()
 
 	switch w.flashbots.algoType {
+	case ALGO_TEST_ONLY:
+		var (
+			algorithms      = []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_BUCKETS}
+			validationConfs = []*validationConfig{
+				&defaultValidationConfig,
+				{
+					EnforceProfit:          true,
+					ExpectedProfit:         nil,
+					ProfitThresholdPercent: common.Big0, // 0% emulates naive total profit algorithm using greedy buckets
+				},
+				{
+					EnforceProfit:          true,
+					ExpectedProfit:         nil,
+					ProfitThresholdPercent: defaultProfitThreshold,
+				},
+			}
+			environments = make([]*environment, len(algorithms))
+
+			pendingTxs = make([]map[common.Address]types.Transactions, len(algorithms))
+
+			results = make([]struct {
+				validationConf validationConfig
+				duration       time.Duration
+				profit         *big.Int
+				simBundles     []types.SimulatedBundle
+				usedSbundle    []types.UsedSBundle
+				environment    *environment
+			}, len(algorithms))
+		)
+
+		for i := range environments {
+			environments[i] = env.copy()
+		}
+
+		for i := range pendingTxs {
+			pendingTxs[i] = make(map[common.Address]types.Transactions, len(pending))
+			for acc, txs := range pending {
+				p := make(types.Transactions, len(txs))
+				copy(p, txs)
+				pendingTxs[i][acc] = p
+			}
+		}
+
+		var (
+			wg    sync.WaitGroup
+			start = time.Now()
+		)
+		wg.Add(len(algorithms))
+		for i, algo := range algorithms {
+			go func(i int, algo AlgoType) {
+				defer wg.Done()
+
+				switch algo {
+				case ALGO_GREEDY:
+					builder := newGreedyBuilder(w.chain, w.chainConfig, w.blockList, environments[i], w.config.BuilderTxSigningKey, interrupt)
+					newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pendingTxs[i])
+				case ALGO_GREEDY_BUCKETS:
+					validationConf := validationConfs[i]
+					builder := newGreedyBucketsBuilder(w.chain, w.chainConfig, validationConf, w.blockList, environments[i],
+						w.config.BuilderTxSigningKey, interrupt)
+					newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pendingTxs[i])
+				}
+				results[i] = struct {
+					validationConf validationConfig
+					duration       time.Duration
+					profit         *big.Int
+					simBundles     []types.SimulatedBundle
+					usedSbundle    []types.UsedSBundle
+					environment    *environment
+				}{
+					validationConf: *validationConfs[i],
+					duration:       time.Since(start),
+					profit:         new(big.Int).Sub(newEnv.profit, environments[i].profit),
+					simBundles:     blockBundles,
+					usedSbundle:    usedSbundle,
+					environment:    environments[i],
+				}
+			}(i, algo)
+		}
+		wg.Wait()
+
+		for i := range results {
+			log.Info("[test-algo] block build complete",
+				"algo", algorithms[i].String(),
+				"duration", results[i].duration.Nanoseconds(),
+				"profit", results[i].profit.String(),
+				"num-txs", len(results[i].environment.txs),
+				"profit-threshold", results[i].validationConf.ProfitThresholdPercent.String(),
+				"num-bundles", len(results[i].simBundles),
+				"num-usedSbundles", len(results[i].usedSbundle),
+			)
+		}
+
 	case ALGO_GREEDY_BUCKETS:
+		validationConf := &validationConfig{
+			EnforceProfit:          true,
+			ExpectedProfit:         nil,
+			ProfitThresholdPercent: defaultProfitThreshold,
+		}
 		builder := newGreedyBucketsBuilder(
-			w.chain, w.chainConfig, w.blockList, env,
+			w.chain, w.chainConfig, validationConf, w.blockList, env,
 			w.config.BuilderTxSigningKey, interrupt,
 		)
 

@@ -54,6 +54,7 @@ const (
 	ALGO_MEV_GETH AlgoType = iota
 	ALGO_GREEDY
 	ALGO_GREEDY_BUCKETS
+	ALGO_TEST_ONLY
 )
 
 func (a AlgoType) String() string {
@@ -64,6 +65,8 @@ func (a AlgoType) String() string {
 		return "mev-geth"
 	case ALGO_GREEDY_BUCKETS:
 		return "greedy-buckets"
+	case ALGO_TEST_ONLY:
+		return "test-only"
 	default:
 		return "unsupported"
 	}
@@ -77,6 +80,8 @@ func AlgoTypeFlagToEnum(algoString string) (AlgoType, error) {
 		return ALGO_GREEDY_BUCKETS, nil
 	case ALGO_GREEDY.String():
 		return ALGO_GREEDY, nil
+	case ALGO_TEST_ONLY.String():
+		return ALGO_TEST_ONLY, nil
 	default:
 		return ALGO_MEV_GETH, errors.New("algo not recognized")
 	}
