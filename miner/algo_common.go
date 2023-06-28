@@ -223,7 +223,7 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 }
 
 // Commit Bundle to env diff
-func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chData chainData, interrupt *int32, validation algorithmConfig) error {
+func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chData chainData, interrupt *int32, algoConf algorithmConfig) error {
 	coinbase := envDiff.baseEnvironment.coinbase
 	tmpEnvDiff := envDiff.copy()
 
@@ -297,14 +297,14 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 		return errors.New("bundle underpays")
 	}
 
-	if validation.EnforceProfit {
+	if algoConf.EnforceProfit {
 		// if profit is enforced between simulation and actual commit, only allow ProfitThresholdPercent divergence
 		simulatedBundleProfit := new(big.Int).Set(bundle.TotalEth)
 		actualBundleProfit := new(big.Int).Mul(bundleActualEffGP, big.NewInt(int64(gasUsed)))
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
-		simulatedBundleProfit.Mul(simulatedBundleProfit, validation.ProfitThresholdPercent)
+		simulatedBundleProfit.Mul(simulatedBundleProfit, algoConf.ProfitThresholdPercent)
 		actualBundleProfit.Mul(actualBundleProfit, common.Big100)
 
 		if simulatedBundleProfit.Cmp(actualBundleProfit) > 0 {
@@ -436,7 +436,7 @@ func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver
 	return receipt, nil
 }
 
-func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey, validation algorithmConfig) error {
+func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey, algoConf algorithmConfig) error {
 	if key == nil {
 		return errors.New("no private key provided")
 	}
@@ -471,14 +471,14 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 		return fmt.Errorf("incorrect EGP: got %d, expected %d", gotEGP, simEGP)
 	}
 
-	if validation.EnforceProfit {
+	if algoConf.EnforceProfit {
 		// if profit is enforced between simulation and actual commit, only allow >-1% divergence
 		simulatedProfit := new(big.Int).Set(b.Profit)
 		actualProfit := new(big.Int).Set(coinbaseDelta)
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
-		simulatedProfit.Mul(simulatedProfit, validation.ProfitThresholdPercent)
+		simulatedProfit.Mul(simulatedProfit, algoConf.ProfitThresholdPercent)
 		actualProfit.Mul(actualProfit, common.Big100)
 
 		if simulatedProfit.Cmp(actualProfit) > 0 {
