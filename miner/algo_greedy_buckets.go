@@ -23,15 +23,15 @@ type greedyBucketsBuilder struct {
 	builderKey       *ecdsa.PrivateKey
 	interrupt        *int32
 	gasUsedMap       map[*types.TxWithMinerFee]uint64
-	validationConf   algorithmConfig
+	algoConf         algorithmConfig
 }
 
 func newGreedyBucketsBuilder(
-	chain *core.BlockChain, chainConfig *params.ChainConfig, validationConf *algorithmConfig,
+	chain *core.BlockChain, chainConfig *params.ChainConfig, algoConf *algorithmConfig,
 	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32,
 ) *greedyBucketsBuilder {
-	if validationConf == nil {
-		validationConf = &algorithmConfig{
+	if algoConf == nil {
+		algoConf = &algorithmConfig{
 			EnforceProfit:          true,
 			ExpectedProfit:         nil,
 			ProfitThresholdPercent: defaultProfitThreshold,
@@ -43,7 +43,7 @@ func newGreedyBucketsBuilder(
 		builderKey:       key,
 		interrupt:        interrupt,
 		gasUsedMap:       make(map[*types.TxWithMinerFee]uint64),
-		validationConf:   *validationConf,
+		algoConf:         *algoConf,
 	}
 }
 
@@ -53,9 +53,9 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 	gasUsedMap map[*types.TxWithMinerFee]uint64, retryMap map[*types.TxWithMinerFee]int, retryLimit int,
 ) ([]types.SimulatedBundle, []types.UsedSBundle) {
 	var (
-		usedBundles    []types.SimulatedBundle
-		usedSbundles   []types.UsedSBundle
-		validationConf = b.validationConf
+		usedBundles  []types.SimulatedBundle
+		usedSbundles []types.UsedSBundle
+		algoConf     = b.algoConf
 
 		CheckRetryOrderAndReinsert = func(
 			order *types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce,
@@ -107,7 +107,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 				log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
 			}
 		} else if bundle := order.Bundle(); bundle != nil {
-			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, validationConf)
+			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, algoConf)
 			if err != nil {
 				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
 				CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
@@ -121,7 +121,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 			usedEntry := types.UsedSBundle{
 				Bundle: sbundle.Bundle,
 			}
-			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, validationConf)
+			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, algoConf)
 			if err != nil {
 				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
 				if ok := CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit); !ok {
@@ -159,7 +159,7 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 		usedSbundles []types.UsedSBundle
 		transactions []*types.TxWithMinerFee
 		percent      = new(big.Float).Quo(
-			new(big.Float).SetInt(b.validationConf.ProfitThresholdPercent),
+			new(big.Float).SetInt(b.algoConf.ProfitThresholdPercent),
 			new(big.Float).SetInt(common.Big100),
 		)
 
