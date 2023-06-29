@@ -2,6 +2,7 @@ package miner
 
 import (
 	"crypto/ecdsa"
+	"errors"
 	"math/big"
 	"sort"
 
@@ -45,6 +46,23 @@ func newGreedyBucketsBuilder(
 		gasUsedMap:       make(map[*types.TxWithMinerFee]uint64),
 		algoConf:         *algoConf,
 	}
+}
+
+// CutoffPriceFromOrder returns the cutoff price for a given order based on the cutoff percent.
+// For example, if the cutoff percent is 0.9, the cutoff price will be 90% of the order price, rounded down to the nearest integer.
+func CutoffPriceFromOrder(order *types.TxWithMinerFee, cutoffPercent *big.Float) *big.Int {
+	floorPrice := new(big.Float).
+		Mul(
+			new(big.Float).SetInt(order.Price()),
+			cutoffPercent,
+		)
+	round, _ := floorPrice.Int64()
+	return big.NewInt(round)
+}
+
+// IsOrderInPriceRange returns true if the order price is greater than or equal to the minPrice.
+func IsOrderInPriceRange(order *types.TxWithMinerFee, minPrice *big.Int) bool {
+	return order.Price().Cmp(minPrice) >= 0
 }
 
 func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
@@ -110,7 +128,19 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, algoConf)
 			if err != nil {
 				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
-				CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
+
+				var e *lowProfitError
+				if errors.As(err, &e) {
+					if e.ActualEffectiveGasPrice != nil {
+						order.SetPrice(e.ActualEffectiveGasPrice)
+					}
+
+					if e.ActualProfit != nil {
+						order.SetProfit(e.ActualProfit)
+					}
+					// if the bundle was not included due to low profit, we can retry the bundle
+					CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
+				}
 				continue
 			}
 
@@ -124,9 +154,22 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, algoConf)
 			if err != nil {
 				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
-				if ok := CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit); !ok {
-					usedEntry.Success = false
-					usedSbundles = append(usedSbundles, usedEntry)
+
+				var e *lowProfitError
+				if errors.As(err, &e) {
+					if e.ActualEffectiveGasPrice != nil {
+						order.SetPrice(e.ActualEffectiveGasPrice)
+					}
+
+					if e.ActualProfit != nil {
+						order.SetProfit(e.ActualProfit)
+					}
+
+					// if the sbundle was not included due to low profit, we can retry the bundle
+					if ok := CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit); !ok {
+						usedEntry.Success = false
+						usedSbundles = append(usedSbundles, usedEntry)
+					}
 				}
 				continue
 			}
@@ -162,20 +205,6 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 			new(big.Float).SetInt(b.algoConf.ProfitThresholdPercent),
 			new(big.Float).SetInt(common.Big100),
 		)
-
-		CutoffPriceFromOrder = func(order *types.TxWithMinerFee, cutoffPercent *big.Float) *big.Int {
-			floorPrice := new(big.Float).
-				Mul(
-					new(big.Float).SetInt(order.Price()),
-					cutoffPercent,
-				)
-			round, _ := floorPrice.Int64()
-			return big.NewInt(round)
-		}
-
-		IsOrderInPriceRange = func(order *types.TxWithMinerFee, minPrice *big.Int) bool {
-			return order.Price().Cmp(minPrice) >= 0
-		}
 
 		SortInPlaceByProfit = func(baseFee *big.Int, transactions []*types.TxWithMinerFee, gasUsedMap map[*types.TxWithMinerFee]uint64) {
 			sort.SliceStable(transactions, func(i, j int) bool {

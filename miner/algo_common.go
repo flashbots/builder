@@ -39,6 +39,22 @@ var emptyCodeHash = common.HexToHash("c5d2460186f7233c927e7db2dcc703c0e500b653ca
 
 var errInterrupt = errors.New("miner worker interrupted")
 
+// lowProfitError is returned when an order is not committed due to low profit or low effective gas price
+type lowProfitError struct {
+	ExpectedProfit *big.Int
+	ActualProfit   *big.Int
+
+	ExpectedEffectiveGasPrice *big.Int
+	ActualEffectiveGasPrice   *big.Int
+}
+
+func (e *lowProfitError) Error() string {
+	return fmt.Sprintf(
+		"low profit: expected %v, actual %v, expected effective gas price %v, actual effective gas price %v",
+		e.ExpectedProfit, e.ActualProfit, e.ExpectedEffectiveGasPrice, e.ActualEffectiveGasPrice,
+	)
+}
+
 type algorithmConfig struct {
 	// EnforceProfit is true if we want to enforce a minimum profit threshold
 	// for committing a transaction based on ProfitThresholdPercent
@@ -289,12 +305,15 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	bundleSimEffGP := new(big.Int).Set(bundle.MevGasPrice)
 
 	// allow >-1% divergence
-	bundleActualEffGP.Mul(bundleActualEffGP, common.Big100)
-	bundleSimEffGP.Mul(bundleSimEffGP, big.NewInt(99))
+	actualEGP := new(big.Int).Mul(bundleActualEffGP, common.Big100)  // bundle actual effective gas price * 100
+	simulatedEGP := new(big.Int).Mul(bundleSimEffGP, big.NewInt(99)) // bundle simulated effective gas price * 99
 
-	if bundleSimEffGP.Cmp(bundleActualEffGP) == 1 {
+	if simulatedEGP.Cmp(actualEGP) > 0 {
 		log.Trace("Bundle underpays after inclusion", "bundle", bundle.OriginalBundle.Hash)
-		return errors.New("bundle underpays")
+		return &lowProfitError{
+			ExpectedEffectiveGasPrice: bundleSimEffGP,
+			ActualEffectiveGasPrice:   bundleActualEffGP,
+		}
 	}
 
 	if algoConf.EnforceProfit {
@@ -304,12 +323,15 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
-		simulatedBundleProfit.Mul(simulatedBundleProfit, algoConf.ProfitThresholdPercent)
-		actualBundleProfit.Mul(actualBundleProfit, common.Big100)
+		simulatedProfitMultiple := new(big.Int).Mul(simulatedBundleProfit, algoConf.ProfitThresholdPercent)
+		actualProfitMultiple := new(big.Int).Mul(actualBundleProfit, common.Big100)
 
-		if simulatedBundleProfit.Cmp(actualBundleProfit) > 0 {
+		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
 			log.Trace("Lower bundle profit found after inclusion", "bundle", bundle.OriginalBundle.Hash)
-			return errors.New("bundle profit too low")
+			return &lowProfitError{
+				ExpectedProfit: simulatedBundleProfit,
+				ActualProfit:   actualBundleProfit,
+			}
 		}
 	}
 
@@ -464,26 +486,32 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 	simEGP := new(big.Int).Set(b.MevGasPrice)
 
 	// allow > 1% difference
-	gotEGP = gotEGP.Mul(gotEGP, big.NewInt(101))
-	simEGP = simEGP.Mul(simEGP, common.Big100)
+	actualEGP := new(big.Int).Mul(gotEGP, big.NewInt(101))
+	simulatedEGP := new(big.Int).Mul(simEGP, common.Big100)
 
-	if gotEGP.Cmp(simEGP) < 0 {
-		return fmt.Errorf("incorrect EGP: got %d, expected %d", gotEGP, simEGP)
+	if simulatedEGP.Cmp(actualEGP) > 0 {
+		return &lowProfitError{
+			ExpectedEffectiveGasPrice: simEGP,
+			ActualEffectiveGasPrice:   gotEGP,
+		}
 	}
 
 	if algoConf.EnforceProfit {
 		// if profit is enforced between simulation and actual commit, only allow >-1% divergence
-		simulatedProfit := new(big.Int).Set(b.Profit)
-		actualProfit := new(big.Int).Set(coinbaseDelta)
+		simulatedSbundleProfit := new(big.Int).Set(b.Profit)
+		actualSbundleProfit := new(big.Int).Set(coinbaseDelta)
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
-		simulatedProfit.Mul(simulatedProfit, algoConf.ProfitThresholdPercent)
-		actualProfit.Mul(actualProfit, common.Big100)
+		simulatedProfitMultiple := new(big.Int).Mul(simulatedSbundleProfit, algoConf.ProfitThresholdPercent)
+		actualProfitMultiple := new(big.Int).Mul(actualSbundleProfit, common.Big100)
 
-		if simulatedProfit.Cmp(actualProfit) > 0 {
+		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
 			log.Trace("Lower sbundle profit found after inclusion", "sbundle", b.Bundle.Hash())
-			return errors.New("sbundle profit too low")
+			return &lowProfitError{
+				ExpectedProfit: simulatedSbundleProfit,
+				ActualProfit:   actualSbundleProfit,
+			}
 		}
 	}
 

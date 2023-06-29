@@ -543,6 +543,22 @@ func (t *TxWithMinerFee) Profit(baseFee *big.Int, gasUsed uint64) *big.Int {
 	}
 }
 
+// SetPrice sets the miner fee of the wrapped transaction.
+func (t *TxWithMinerFee) SetPrice(price *big.Int) {
+	t.minerFee.Set(price)
+}
+
+// SetProfit sets the profit of the wrapped transaction.
+func (t *TxWithMinerFee) SetProfit(profit *big.Int) {
+	if bundle := t.Bundle(); bundle != nil {
+		bundle.TotalEth.Set(profit)
+	} else if sbundle := t.SBundle(); sbundle != nil {
+		sbundle.Profit.Set(profit)
+	} else {
+		panic("SetProfit called on unsupported order type")
+	}
+}
+
 // NewTxWithMinerFee creates a wrapped transaction, calculating the effective
 // miner gasTipCap if a base fee is provided.
 // Returns error in case of a negative effective miner gasTipCap.
