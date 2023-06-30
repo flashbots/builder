@@ -22,9 +22,48 @@ const (
 	popTx   = 2
 )
 
+// defaultProfitPercentMinimum is to ensure committed transactions, bundles, sbundles don't fall below this threshold
+// when profit is enforced
+const defaultProfitPercentMinimum = 70
+
+var (
+	defaultProfitThreshold = big.NewInt(defaultProfitPercentMinimum)
+	defaultAlgorithmConfig = algorithmConfig{
+		EnforceProfit:          false,
+		ExpectedProfit:         common.Big0,
+		ProfitThresholdPercent: defaultProfitThreshold,
+	}
+)
+
 var emptyCodeHash = common.HexToHash("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
 
 var errInterrupt = errors.New("miner worker interrupted")
+
+// lowProfitError is returned when an order is not committed due to low profit or low effective gas price
+type lowProfitError struct {
+	ExpectedProfit *big.Int
+	ActualProfit   *big.Int
+
+	ExpectedEffectiveGasPrice *big.Int
+	ActualEffectiveGasPrice   *big.Int
+}
+
+func (e *lowProfitError) Error() string {
+	return fmt.Sprintf(
+		"low profit: expected %v, actual %v, expected effective gas price %v, actual effective gas price %v",
+		e.ExpectedProfit, e.ActualProfit, e.ExpectedEffectiveGasPrice, e.ActualEffectiveGasPrice,
+	)
+}
+
+type algorithmConfig struct {
+	// EnforceProfit is true if we want to enforce a minimum profit threshold
+	// for committing a transaction based on ProfitThresholdPercent
+	EnforceProfit bool
+	// ExpectedProfit should be set on a per transaction basis when profit is enforced
+	ExpectedProfit *big.Int
+	// ProfitThresholdPercent is the minimum profit threshold for committing a transaction
+	ProfitThresholdPercent *big.Int
+}
 
 type chainData struct {
 	chainConfig *params.ChainConfig
@@ -156,6 +195,7 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 
 	receipt, newState, err := applyTransactionWithBlacklist(signer, chData.chainConfig, chData.chain, coinbase,
 		envDiff.gasPool, envDiff.state, header, tx, &header.GasUsed, *chData.chain.GetVMConfig(), chData.blacklist)
+
 	envDiff.state = newState
 	if err != nil {
 		switch {
@@ -163,42 +203,43 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 			// Pop the current out-of-gas transaction without shifting in the next from the account
 			from, _ := types.Sender(signer, tx)
 			log.Trace("Gas limit exceeded for current block", "sender", from)
-			return nil, popTx, err
+			return receipt, popTx, err
 
 		case errors.Is(err, core.ErrNonceTooLow):
 			// New head notification data race between the transaction pool and miner, shift
 			from, _ := types.Sender(signer, tx)
 			log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
-			return nil, shiftTx, err
+			return receipt, shiftTx, err
 
 		case errors.Is(err, core.ErrNonceTooHigh):
 			// Reorg notification data race between the transaction pool and miner, skip account =
 			from, _ := types.Sender(signer, tx)
 			log.Trace("Skipping account with hight nonce", "sender", from, "nonce", tx.Nonce())
-			return nil, popTx, err
+			return receipt, popTx, err
 
 		case errors.Is(err, core.ErrTxTypeNotSupported):
 			// Pop the unsupported transaction without shifting in the next from the account
 			from, _ := types.Sender(signer, tx)
 			log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
-			return nil, popTx, err
+			return receipt, popTx, err
 
 		default:
 			// Strange error, discard the transaction and get the next in line (note, the
 			// nonce-too-high clause will prevent us from executing in vain).
 			log.Trace("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
-			return nil, shiftTx, err
+			return receipt, shiftTx, err
 		}
 	}
 
 	envDiff.newProfit = envDiff.newProfit.Add(envDiff.newProfit, gasPrice.Mul(gasPrice, big.NewInt(int64(receipt.GasUsed))))
 	envDiff.newTxs = append(envDiff.newTxs, tx)
 	envDiff.newReceipts = append(envDiff.newReceipts, receipt)
+
 	return receipt, shiftTx, nil
 }
 
 // Commit Bundle to env diff
-func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chData chainData, interrupt *int32) error {
+func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chData chainData, interrupt *int32, algoConf algorithmConfig) error {
 	coinbase := envDiff.baseEnvironment.coinbase
 	tmpEnvDiff := envDiff.copy()
 
@@ -208,7 +249,7 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	var gasUsed uint64
 
 	for _, tx := range bundle.OriginalBundle.Txs {
-		if tmpEnvDiff.header.BaseFee != nil && tx.Type() == 2 {
+		if tmpEnvDiff.header.BaseFee != nil && tx.Type() == types.DynamicFeeTxType {
 			// Sanity check for extremely large numbers
 			if tx.GasFeeCap().BitLen() > 256 {
 				return core.ErrFeeCapVeryHigh
@@ -264,12 +305,34 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	bundleSimEffGP := new(big.Int).Set(bundle.MevGasPrice)
 
 	// allow >-1% divergence
-	bundleActualEffGP.Mul(bundleActualEffGP, big.NewInt(100))
-	bundleSimEffGP.Mul(bundleSimEffGP, big.NewInt(99))
+	actualEGP := new(big.Int).Mul(bundleActualEffGP, common.Big100)  // bundle actual effective gas price * 100
+	simulatedEGP := new(big.Int).Mul(bundleSimEffGP, big.NewInt(99)) // bundle simulated effective gas price * 99
 
-	if bundleSimEffGP.Cmp(bundleActualEffGP) == 1 {
+	if simulatedEGP.Cmp(actualEGP) > 0 {
 		log.Trace("Bundle underpays after inclusion", "bundle", bundle.OriginalBundle.Hash)
-		return errors.New("bundle underpays")
+		return &lowProfitError{
+			ExpectedEffectiveGasPrice: bundleSimEffGP,
+			ActualEffectiveGasPrice:   bundleActualEffGP,
+		}
+	}
+
+	if algoConf.EnforceProfit {
+		// if profit is enforced between simulation and actual commit, only allow ProfitThresholdPercent divergence
+		simulatedBundleProfit := new(big.Int).Set(bundle.TotalEth)
+		actualBundleProfit := new(big.Int).Mul(bundleActualEffGP, big.NewInt(int64(gasUsed)))
+
+		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
+		// lower due to transaction ordering
+		simulatedProfitMultiple := new(big.Int).Mul(simulatedBundleProfit, algoConf.ProfitThresholdPercent)
+		actualProfitMultiple := new(big.Int).Mul(actualBundleProfit, common.Big100)
+
+		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
+			log.Trace("Lower bundle profit found after inclusion", "bundle", bundle.OriginalBundle.Hash)
+			return &lowProfitError{
+				ExpectedProfit: simulatedBundleProfit,
+				ActualProfit:   actualBundleProfit,
+			}
+		}
 	}
 
 	*envDiff = *tmpEnvDiff
@@ -395,7 +458,7 @@ func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver
 	return receipt, nil
 }
 
-func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey) error {
+func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey, algoConf algorithmConfig) error {
 	if key == nil {
 		return errors.New("no private key provided")
 	}
@@ -423,11 +486,33 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 	simEGP := new(big.Int).Set(b.MevGasPrice)
 
 	// allow > 1% difference
-	gotEGP = gotEGP.Mul(gotEGP, big.NewInt(101))
-	simEGP = simEGP.Mul(simEGP, common.Big100)
+	actualEGP := new(big.Int).Mul(gotEGP, big.NewInt(101))
+	simulatedEGP := new(big.Int).Mul(simEGP, common.Big100)
 
-	if gotEGP.Cmp(simEGP) < 0 {
-		return fmt.Errorf("incorrect EGP: got %d, expected %d", gotEGP, simEGP)
+	if simulatedEGP.Cmp(actualEGP) > 0 {
+		return &lowProfitError{
+			ExpectedEffectiveGasPrice: simEGP,
+			ActualEffectiveGasPrice:   gotEGP,
+		}
+	}
+
+	if algoConf.EnforceProfit {
+		// if profit is enforced between simulation and actual commit, only allow >-1% divergence
+		simulatedSbundleProfit := new(big.Int).Set(b.Profit)
+		actualSbundleProfit := new(big.Int).Set(coinbaseDelta)
+
+		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
+		// lower due to transaction ordering
+		simulatedProfitMultiple := new(big.Int).Mul(simulatedSbundleProfit, algoConf.ProfitThresholdPercent)
+		actualProfitMultiple := new(big.Int).Mul(actualSbundleProfit, common.Big100)
+
+		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
+			log.Trace("Lower sbundle profit found after inclusion", "sbundle", b.Bundle.Hash())
+			return &lowProfitError{
+				ExpectedProfit: simulatedSbundleProfit,
+				ActualProfit:   actualSbundleProfit,
+			}
+		}
 	}
 
 	*envDiff = *tmpEnvDiff

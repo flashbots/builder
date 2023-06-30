@@ -298,7 +298,7 @@ func TestBundleCommit(t *testing.T) {
 		t.Fatal("Failed to simulate bundle", err)
 	}
 
-	err = envDiff.commitBundle(&simBundle, chData, nil)
+	err = envDiff.commitBundle(&simBundle, chData, nil, defaultAlgorithmConfig)
 	if err != nil {
 		t.Fatal("Failed to commit bundle", err)
 	}
@@ -408,7 +408,7 @@ func TestErrorBundleCommit(t *testing.T) {
 	newProfitBefore := new(big.Int).Set(envDiff.newProfit)
 	balanceBefore := envDiff.state.GetBalance(signers.addresses[2])
 
-	err = envDiff.commitBundle(&simBundle, chData, nil)
+	err = envDiff.commitBundle(&simBundle, chData, nil, defaultAlgorithmConfig)
 	if err == nil {
 		t.Fatal("Committed failed bundle", err)
 	}
@@ -523,7 +523,7 @@ func TestGetSealingWorkAlgos(t *testing.T) {
 		testConfig.AlgoType = ALGO_MEV_GETH
 	})
 
-	for _, algoType := range []AlgoType{ALGO_MEV_GETH, ALGO_GREEDY} {
+	for _, algoType := range []AlgoType{ALGO_MEV_GETH, ALGO_GREEDY, ALGO_GREEDY_BUCKETS} {
 		local := new(params.ChainConfig)
 		*local = *ethashChainConfig
 		local.TerminalTotalDifficulty = big.NewInt(0)
@@ -538,7 +538,7 @@ func TestGetSealingWorkAlgosWithProfit(t *testing.T) {
 		testConfig.BuilderTxSigningKey = nil
 	})
 
-	for _, algoType := range []AlgoType{ALGO_GREEDY} {
+	for _, algoType := range []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS} {
 		var err error
 		testConfig.BuilderTxSigningKey, err = crypto.GenerateKey()
 		require.NoError(t, err)

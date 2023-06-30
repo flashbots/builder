@@ -2,34 +2,45 @@ package miner
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 )
 
 func TestBuildBlockGasLimit(t *testing.T) {
-	statedb, chData, signers := genTestSetup()
+	algos := []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS}
+	for _, algo := range algos {
+		statedb, chData, signers := genTestSetup()
+		env := newEnvironment(chData, statedb, signers.addresses[0], 21000, big.NewInt(1))
+		txs := make(map[common.Address]types.Transactions)
 
-	env := newEnvironment(chData, statedb, signers.addresses[0], 21000, big.NewInt(1))
+		txs[signers.addresses[1]] = types.Transactions{
+			signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{}),
+		}
+		txs[signers.addresses[2]] = types.Transactions{
+			signers.signTx(2, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{}),
+		}
+		txs[signers.addresses[3]] = types.Transactions{
+			signers.signTx(3, 21000, big.NewInt(math.MaxInt), big.NewInt(math.MaxInt), signers.addresses[2], big.NewInt(math.MaxInt), []byte{}),
+		}
 
-	txs := make(map[common.Address]types.Transactions)
+		var result *environment
+		switch algo {
+		case ALGO_GREEDY_BUCKETS:
+			builder := newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
+			result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
+		case ALGO_GREEDY:
+			builder := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, nil, nil, env, nil, nil)
+			result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
+		}
 
-	txs[signers.addresses[1]] = types.Transactions{
-		signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{}),
-	}
-	txs[signers.addresses[2]] = types.Transactions{
-		signers.signTx(2, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{}),
-	}
-
-	builder := newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
-
-	result, _, _ := builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
-	log.Info("block built", "txs", len(result.txs), "gasPool", result.gasPool.Gas())
-	if result.tcount != 1 {
-		t.Fatal("Incorrect tx count")
+		t.Log("block built", "txs", len(result.txs), "gasPool", result.gasPool.Gas(), "algorithm", algo.String())
+		if result.tcount != 1 {
+			t.Fatalf("Incorrect tx count [found: %d]", result.tcount)
+		}
 	}
 }
 
