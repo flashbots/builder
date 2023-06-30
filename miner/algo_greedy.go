@@ -22,7 +22,10 @@ type greedyBuilder struct {
 	interrupt        *int32
 }
 
-func newGreedyBuilder(chain *core.BlockChain, chainConfig *params.ChainConfig, blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32) *greedyBuilder {
+func newGreedyBuilder(
+	chain *core.BlockChain, chainConfig *params.ChainConfig,
+	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32,
+) *greedyBuilder {
 	return &greedyBuilder{
 		inputEnvironment: env,
 		chainData:        chainData{chainConfig, chain, blacklist},
@@ -31,10 +34,13 @@ func newGreedyBuilder(chain *core.BlockChain, chainConfig *params.ChainConfig, b
 	}
 }
 
-func (b *greedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle) {
-	usedBundles := []types.SimulatedBundle{}
-	usedSbundles := []types.UsedSBundle{}
-
+func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
+	envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle,
+) {
+	var (
+		usedBundles  []types.SimulatedBundle
+		usedSbundles []types.UsedSBundle
+	)
 	for {
 		order := orders.Peek()
 		if order == nil {
@@ -60,7 +66,7 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders 
 			}
 		} else if bundle := order.Bundle(); bundle != nil {
 			//log.Debug("buildBlock considering bundle", "egp", bundle.MevGasPrice.String(), "hash", bundle.OriginalBundle.Hash)
-			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt)
+			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, defaultAlgorithmConfig)
 			orders.Pop()
 			if err != nil {
 				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
@@ -73,7 +79,7 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders 
 			usedEntry := types.UsedSBundle{
 				Bundle: sbundle.Bundle,
 			}
-			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey)
+			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, defaultAlgorithmConfig)
 			orders.Pop()
 			if err != nil {
 				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
@@ -87,7 +93,6 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(envDiff *environmentDiff, orders 
 			usedSbundles = append(usedSbundles, usedEntry)
 		}
 	}
-
 	return usedBundles, usedSbundles
 }
 

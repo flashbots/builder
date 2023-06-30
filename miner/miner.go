@@ -53,13 +53,29 @@ type AlgoType int
 const (
 	ALGO_MEV_GETH AlgoType = iota
 	ALGO_GREEDY
+	ALGO_GREEDY_BUCKETS
 )
 
+func (a AlgoType) String() string {
+	switch a {
+	case ALGO_GREEDY:
+		return "greedy"
+	case ALGO_MEV_GETH:
+		return "mev-geth"
+	case ALGO_GREEDY_BUCKETS:
+		return "greedy-buckets"
+	default:
+		return "unsupported"
+	}
+}
+
 func AlgoTypeFlagToEnum(algoString string) (AlgoType, error) {
-	switch algoString {
-	case "mev-geth":
+	switch strings.ToLower(algoString) {
+	case ALGO_MEV_GETH.String():
 		return ALGO_MEV_GETH, nil
-	case "greedy":
+	case ALGO_GREEDY_BUCKETS.String():
+		return ALGO_GREEDY_BUCKETS, nil
+	case ALGO_GREEDY.String():
 		return ALGO_GREEDY, nil
 	default:
 		return ALGO_MEV_GETH, errors.New("algo not recognized")
