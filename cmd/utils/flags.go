@@ -809,7 +809,8 @@ var (
 
 	BuilderRateLimitDuration = &cli.StringFlag{
 		Name: "builder.rate_limit_duration",
-		Usage: "Determines rate limit of events processed by builder; a duration string is a possibly signed sequence " +
+		Usage: "Determines rate limit of events processed by builder. For example, a value of \"500ms\" denotes that the builder processes events every 500ms. " +
+			"A duration string is a possibly signed sequence " +
 			"of decimal numbers, each with optional fraction and a unit suffix, such as \"300ms\", \"-1.5h\" or \"2h45m\"",
 		EnvVars:  []string{"FLASHBOTS_BUILDER_RATE_LIMIT_DURATION"},
 		Value:    builder.RateLimitIntervalDefault.String(),
@@ -832,6 +833,15 @@ var (
 		Usage:    "Determines the interval at which builder will resubmit block submissions",
 		EnvVars:  []string{"FLASHBOTS_BUILDER_RATE_LIMIT_RESUBMIT_INTERVAL"},
 		Value:    builder.BlockResubmitIntervalDefault.String(),
+		Category: flags.BuilderCategory,
+	}
+
+	BuilderSubmissionOffset = &cli.DurationFlag{
+		Name: "builder.submission_offset",
+		Usage: "Determines the offset from the end of slot time that the builder will submit blocks. " +
+			"For example, if a slot is 12 seconds long, and the offset is 2 seconds, the builder will submit blocks at 10 seconds into the slot.",
+		EnvVars:  []string{"FLASHBOTS_BUILDER_SUBMISSION_OFFSET"},
+		Value:    builder.SubmissionOffsetFromEndOfSlotSecondsDefault,
 		Category: flags.BuilderCategory,
 	}
 
@@ -1657,6 +1667,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
 	cfg.BuilderRateLimitDuration = ctx.String(BuilderRateLimitDuration.Name)
 	cfg.BuilderRateLimitMaxBurst = ctx.Int(BuilderRateLimitMaxBurst.Name)
+	cfg.BuilderSubmissionOffset = ctx.Duration(BuilderSubmissionOffset.Name)
 	cfg.EnableCancellations = ctx.IsSet(BuilderEnableCancellations.Name)
 }
 

@@ -521,6 +521,44 @@ func (t *TxWithMinerFee) SBundle() *SimSBundle {
 	return t.order.AsSBundle()
 }
 
+func (t *TxWithMinerFee) Price() *big.Int {
+	return new(big.Int).Set(t.minerFee)
+}
+
+func (t *TxWithMinerFee) Profit(baseFee *big.Int, gasUsed uint64) *big.Int {
+	if tx := t.Tx(); tx != nil {
+		profit := new(big.Int).Sub(tx.GasPrice(), baseFee)
+		if gasUsed != 0 {
+			profit.Mul(profit, new(big.Int).SetUint64(gasUsed))
+		} else {
+			profit.Mul(profit, new(big.Int).SetUint64(tx.Gas()))
+		}
+		return profit
+	} else if bundle := t.Bundle(); bundle != nil {
+		return bundle.TotalEth
+	} else if sbundle := t.SBundle(); sbundle != nil {
+		return sbundle.Profit
+	} else {
+		panic("profit called on unsupported order type")
+	}
+}
+
+// SetPrice sets the miner fee of the wrapped transaction.
+func (t *TxWithMinerFee) SetPrice(price *big.Int) {
+	t.minerFee.Set(price)
+}
+
+// SetProfit sets the profit of the wrapped transaction.
+func (t *TxWithMinerFee) SetProfit(profit *big.Int) {
+	if bundle := t.Bundle(); bundle != nil {
+		bundle.TotalEth.Set(profit)
+	} else if sbundle := t.SBundle(); sbundle != nil {
+		sbundle.Profit.Set(profit)
+	} else {
+		panic("SetProfit called on unsupported order type")
+	}
+}
+
 // NewTxWithMinerFee creates a wrapped transaction, calculating the effective
 // miner gasTipCap if a base fee is provided.
 // Returns error in case of a negative effective miner gasTipCap.
@@ -536,7 +574,7 @@ func NewTxWithMinerFee(tx *Transaction, baseFee *big.Int) (*TxWithMinerFee, erro
 }
 
 // NewBundleWithMinerFee creates a wrapped bundle.
-func NewBundleWithMinerFee(bundle *SimulatedBundle, baseFee *big.Int) (*TxWithMinerFee, error) {
+func NewBundleWithMinerFee(bundle *SimulatedBundle, _ *big.Int) (*TxWithMinerFee, error) {
 	minerFee := bundle.MevGasPrice
 	return &TxWithMinerFee{
 		order:    _BundleOrder{bundle},
@@ -545,7 +583,7 @@ func NewBundleWithMinerFee(bundle *SimulatedBundle, baseFee *big.Int) (*TxWithMi
 }
 
 // NewSBundleWithMinerFee creates a wrapped bundle.
-func NewSBundleWithMinerFee(sbundle *SimSBundle, baseFee *big.Int) (*TxWithMinerFee, error) {
+func NewSBundleWithMinerFee(sbundle *SimSBundle, _ *big.Int) (*TxWithMinerFee, error) {
 	minerFee := sbundle.MevGasPrice
 	return &TxWithMinerFee{
 		order:    _SBundleOrder{sbundle},
@@ -681,6 +719,34 @@ func (t *TransactionsByPriceAndNonce) Shift() {
 		}
 	}
 	heap.Pop(&t.heads)
+}
+
+// ShiftAndPushByAccountForTx attempts to update the transaction list associated with a given account address
+// based on the input transaction account. If the associated account exists and has additional transactions,
+// the top of the transaction list is popped and pushed to the heap.
+// Note that this operation should only be performed when the head transaction on the heap is different from the
+// input transaction. This operation is useful in scenarios where the current best head transaction for an account
+// was already popped from the heap and we want to process the next one from the same account.
+func (t *TransactionsByPriceAndNonce) ShiftAndPushByAccountForTx(tx *Transaction) {
+	if tx == nil {
+		return
+	}
+
+	acc, _ := Sender(t.signer, tx)
+	if txs, exists := t.txs[acc]; exists && len(txs) > 0 {
+		if wrapped, err := NewTxWithMinerFee(txs[0], t.baseFee); err == nil {
+			t.txs[acc] = txs[1:]
+			heap.Push(&t.heads, wrapped)
+		}
+	}
+}
+
+func (t *TransactionsByPriceAndNonce) Push(tx *TxWithMinerFee) {
+	if tx == nil {
+		return
+	}
+
+	heap.Push(&t.heads, tx)
 }
 
 // Pop removes the best transaction, *not* replacing it with the next one from

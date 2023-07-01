@@ -1303,7 +1303,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	return env, nil
 }
 
-func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) (error, []types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle) {
+func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle, error) {
 	var (
 		blockBundles []types.SimulatedBundle
 		allBundles   []types.SimulatedBundle
@@ -1311,21 +1311,21 @@ func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) 
 		err          error
 	)
 	switch w.flashbots.algoType {
-	case ALGO_GREEDY:
-		err, blockBundles, allBundles, usedSbundles = w.fillTransactionsAlgoWorker(interrupt, env)
+	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS:
+		blockBundles, allBundles, usedSbundles, err = w.fillTransactionsAlgoWorker(interrupt, env)
 	case ALGO_MEV_GETH:
-		err, blockBundles, allBundles = w.fillTransactions(interrupt, env)
+		blockBundles, allBundles, err = w.fillTransactions(interrupt, env)
 	default:
-		err, blockBundles, allBundles = w.fillTransactions(interrupt, env)
+		blockBundles, allBundles, err = w.fillTransactions(interrupt, env)
 	}
-	return err, blockBundles, allBundles, usedSbundles
+	return blockBundles, allBundles, usedSbundles, err
 }
 
 // fillTransactions retrieves the pending transactions from the txpool and fills them
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
 // Returns error if any, otherwise the bundles that made it into the block and all bundles that passed simulation
-func (w *worker) fillTransactions(interrupt *int32, env *environment) (error, []types.SimulatedBundle, []types.SimulatedBundle) {
+func (w *worker) fillTransactions(interrupt *int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, error) {
 	// Split the pending transactions into locals and remotes
 	// Fill the block with all available pending transactions.
 	pending := w.eth.TxPool().Pending(true)
@@ -1343,23 +1343,25 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) (error, []
 		bundles, ccBundleCh := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
 		bundles = append(bundles, <-ccBundleCh...)
 
-		var bundleTxs types.Transactions
-		var resultingBundle simulatedBundle
-		var mergedBundles []types.SimulatedBundle
-		var numBundles int
-		var err error
+		var (
+			bundleTxs       types.Transactions
+			resultingBundle simulatedBundle
+			mergedBundles   []types.SimulatedBundle
+			numBundles      int
+			err             error
+		)
 		// Sets allBundles in outer scope
 		bundleTxs, resultingBundle, mergedBundles, numBundles, allBundles, err = w.generateFlashbotsBundle(env, bundles, pending)
 		if err != nil {
 			log.Error("Failed to generate flashbots bundle", "err", err)
-			return err, nil, nil
+			return nil, nil, err
 		}
 		log.Info("Flashbots bundle", "ethToCoinbase", ethIntToFloat(resultingBundle.TotalEth), "gasUsed", resultingBundle.TotalGasUsed, "bundleScore", resultingBundle.MevGasPrice, "bundleLength", len(bundleTxs), "numBundles", numBundles, "worker", w.flashbots.maxMergedBundles)
 		if len(bundleTxs) == 0 {
-			return errors.New("no bundles to apply"), nil, nil
+			return nil, nil, errors.New("no bundles to apply")
 		}
 		if err := w.commitBundle(env, bundleTxs, interrupt); err != nil {
-			return err, nil, nil
+			return nil, nil, err
 		}
 		blockBundles = mergedBundles
 		env.profit.Add(env.profit, resultingBundle.EthSentToCoinbase)
@@ -1368,40 +1370,69 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) (error, []
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, nil, nil, env.header.BaseFee)
 		if err := w.commitTransactions(env, txs, interrupt); err != nil {
-			return err, nil, nil
+			return nil, nil, err
 		}
 	}
 	if len(remoteTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, nil, nil, env.header.BaseFee)
 		if err := w.commitTransactions(env, txs, interrupt); err != nil {
-			return err, nil, nil
+			return nil, nil, err
 		}
 	}
 
-	return nil, blockBundles, allBundles
+	return blockBundles, allBundles, nil
 }
 
 // fillTransactionsAlgoWorker retrieves the pending transactions and bundles from the txpool and fills them
 // into the given sealing block.
 // Returns error if any, otherwise the bundles that made it into the block and all bundles that passed simulation
-func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) (error, []types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle) {
+func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle, error) {
 	// Split the pending transactions into locals and remotes
 	// Fill the block with all available pending transactions.
 	pending := w.eth.TxPool().Pending(true)
 	bundlesToConsider, sbundlesToConsider, err := w.getSimulatedBundles(env)
 	if err != nil {
-		return err, nil, nil, nil
+		return nil, nil, nil, err
 	}
 
-	builder := newGreedyBuilder(w.chain, w.chainConfig, w.blockList, env, w.config.BuilderTxSigningKey, interrupt)
+	var (
+		newEnv       *environment
+		blockBundles []types.SimulatedBundle
+		usedSbundle  []types.UsedSBundle
+	)
+
 	start := time.Now()
-	newEnv, blockBundles, usedSbundle := builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
+
+	switch w.flashbots.algoType {
+	case ALGO_GREEDY_BUCKETS:
+		validationConf := &algorithmConfig{
+			EnforceProfit:          true,
+			ExpectedProfit:         nil,
+			ProfitThresholdPercent: defaultProfitThreshold,
+		}
+		builder := newGreedyBucketsBuilder(
+			w.chain, w.chainConfig, validationConf, w.blockList, env,
+			w.config.BuilderTxSigningKey, interrupt,
+		)
+
+		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
+	case ALGO_GREEDY:
+		fallthrough
+	default:
+		builder := newGreedyBuilder(
+			w.chain, w.chainConfig, w.blockList, env,
+			w.config.BuilderTxSigningKey, interrupt,
+		)
+
+		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
+	}
+
 	if metrics.EnabledBuilder {
 		mergeAlgoTimer.Update(time.Since(start))
 	}
 	*env = *newEnv
 
-	return nil, blockBundles, bundlesToConsider, usedSbundle
+	return blockBundles, bundlesToConsider, usedSbundle, err
 }
 
 func (w *worker) getSimulatedBundles(env *environment) ([]types.SimulatedBundle, []*types.SimSBundle, error) {
@@ -1491,7 +1522,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 
 	orderCloseTime := time.Now()
 
-	err, blockBundles, allBundles, usedSbundles := w.fillTransactionsSelectAlgo(nil, work)
+	blockBundles, allBundles, usedSbundles, err := w.fillTransactionsSelectAlgo(nil, work)
 
 	if err != nil {
 		return nil, nil, err
@@ -1582,7 +1613,7 @@ func (w *worker) commitWork(interrupt *int32, noempty bool, timestamp int64) {
 	}
 
 	// Fill pending transactions from the txpool
-	err, _, _, _ = w.fillTransactionsSelectAlgo(interrupt, work)
+	_, _, _, err = w.fillTransactionsSelectAlgo(interrupt, work)
 	switch {
 	case err == nil:
 		// The entire block is filled, decrease resubmit interval in case
