@@ -30,6 +30,8 @@ import (
 )
 
 const (
+	DiscardRevertedHashesDefault = false
+
 	RateLimitIntervalDefault     = 500 * time.Millisecond
 	RateLimitBurstDefault        = 10
 	BlockResubmitIntervalDefault = 500 * time.Millisecond
