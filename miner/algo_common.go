@@ -207,6 +207,8 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 	// 2. if the transaction receipt status is failed
 	// we don't apply the transaction to the state and we don't add it to the newTxs, return early
 	if algoConf.DropTransactionOnRevert && (err != nil || (receipt != nil && receipt.Status == types.ReceiptStatusFailed)) {
+		// the StateDB for environment diff is already modified at this point, since it gets mutated when passed in to
+		// applyTransactionWithBlacklist, so we need to revert it
 		s, sdbErr := state.New(root, envDiff.state.Database(), chData.chain.Snapshots())
 		// if we cannot create a new state from the existing database, snapshots, and intermediate root hash,
 		// we panic because this is a fatal error
