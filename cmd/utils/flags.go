@@ -845,6 +845,13 @@ var (
 		Category: flags.BuilderCategory,
 	}
 
+	BuilderDiscardRevertedHashes = &cli.BoolFlag{
+		Name: "builder.discard_reverted_hashes",
+		Usage: "When enabled, if a transaction submitted as part of a bundle in a send bundle request is reverted, " +
+			"and its hash is specified as one that can revert in the request body, the builder will discard the hash of the reverted transaction from the submitted bundle." +
+			"For additional details on the structure of the request body, see https://docs.flashbots.net/flashbots-mev-share/searchers/understanding-bundles#bundle-definition",
+	}
+
 	BuilderEnableCancellations = &cli.BoolFlag{
 		Name:     "builder.cancellations",
 		Usage:    "Enable cancellations for the builder",
@@ -1668,6 +1675,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.BuilderRateLimitDuration = ctx.String(BuilderRateLimitDuration.Name)
 	cfg.BuilderRateLimitMaxBurst = ctx.Int(BuilderRateLimitMaxBurst.Name)
 	cfg.BuilderSubmissionOffset = ctx.Duration(BuilderSubmissionOffset.Name)
+	cfg.DiscardRevertedHashes = ctx.Bool(BuilderDiscardRevertedHashes.Name)
 	cfg.EnableCancellations = ctx.IsSet(BuilderEnableCancellations.Name)
 }
 

@@ -27,12 +27,10 @@ const (
 const defaultProfitPercentMinimum = 70
 
 var (
-	defaultProfitThreshold = big.NewInt(defaultProfitPercentMinimum)
 	defaultAlgorithmConfig = algorithmConfig{
 		DropTransactionOnRevert: false,
 		EnforceProfit:           false,
-		ExpectedProfit:          common.Big0,
-		ProfitThresholdPercent:  defaultProfitThreshold,
+		ProfitThresholdPercent:  defaultProfitPercentMinimum,
 	}
 )
 
@@ -63,10 +61,8 @@ type algorithmConfig struct {
 	// EnforceProfit is true if we want to enforce a minimum profit threshold
 	// for committing a transaction based on ProfitThresholdPercent
 	EnforceProfit bool
-	// ExpectedProfit should be set on a per transaction basis when profit is enforced
-	ExpectedProfit *big.Int
 	// ProfitThresholdPercent is the minimum profit threshold for committing a transaction
-	ProfitThresholdPercent *big.Int
+	ProfitThresholdPercent int
 }
 
 type chainData struct {
@@ -194,6 +190,7 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 		header   = envDiff.header
 		coinbase = &envDiff.baseEnvironment.coinbase
 		signer   = envDiff.baseEnvironment.signer
+		root     = envDiff.state.OriginalRoot()
 	)
 
 	gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
@@ -202,7 +199,6 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 	}
 
 	envDiff.state.SetTxContext(tx.Hash(), envDiff.baseEnvironment.tcount+len(envDiff.newTxs))
-
 	receipt, newState, err := applyTransactionWithBlacklist(signer, chData.chainConfig, chData.chain, coinbase,
 		envDiff.gasPool, envDiff.state, header, tx, &header.GasUsed, *chData.chain.GetVMConfig(), chData.blacklist)
 
@@ -211,6 +207,13 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 	// 2. if the transaction receipt status is failed
 	// we don't apply the transaction to the state and we don't add it to the newTxs, return early
 	if algoConf.DropTransactionOnRevert && (err != nil || (receipt != nil && receipt.Status == types.ReceiptStatusFailed)) {
+		s, sdbErr := state.New(root, envDiff.state.Database(), chData.chain.Snapshots())
+		// if we cannot create a new state from the existing database, snapshots, and intermediate root hash,
+		// we panic because this is a fatal error
+		if sdbErr != nil {
+			panic(sdbErr)
+		}
+		envDiff.state = s
 		return receipt, shiftTx, err
 	}
 
@@ -259,6 +262,9 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 // Commit Bundle to env diff
 func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chData chainData, interrupt *int32, algoConf algorithmConfig) error {
 	var (
+		// Store the initial value for DropTransactionOnRevert as it will be mutated in the loop depending on whether a given transaction is revertible or not.
+		// Only sbundles and bundles currently support specifying revertible transactions.
+		discard    = algoConf.DropTransactionOnRevert
 		coinbase   = envDiff.baseEnvironment.coinbase
 		tmpEnvDiff = envDiff.copy()
 
@@ -266,9 +272,11 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 
 		profitBefore = new(big.Int).Set(tmpEnvDiff.newProfit)
 
-		gasUsed          uint64
+		gasUsed uint64
+
 		hasErr           bool
 		hasReceiptFailed bool
+		canDiscard       bool
 	)
 
 	for _, tx := range bundle.OriginalBundle.Txs {
@@ -304,12 +312,23 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 			return errInterrupt
 		}
 
+		// if drop transaction on revert is enabled and the transaction is found in list of reverting transaction hashes,
+		// we can consider the transaction for discarding
+		canDiscard = discard && bundle.OriginalBundle.RevertingHash(tx.Hash())
+		algoConf.DropTransactionOnRevert = canDiscard
+
 		receipt, _, err := tmpEnvDiff.commitTx(tx, chData, algoConf)
+
+		// reset the drop transaction on revert flag for subsequent transactions
+		algoConf.DropTransactionOnRevert = discard
 
 		hasErr = err != nil
 		hasReceiptFailed = receipt != nil && receipt.Status == types.ReceiptStatusFailed
 
-		if algoConf.DropTransactionOnRevert && (hasErr || hasReceiptFailed) {
+		// if drop transaction on revert is enabled and the transaction is found in list of reverting transaction hashes,
+		// when there was an error applying the transaction OR
+		// the transaction failed, we skip the transaction and continue with the next one
+		if canDiscard && (hasErr || hasReceiptFailed) {
 			log.Trace("Failed to commit bundle transaction, but drop transaction on revert is enabled, skipping",
 				"bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err, "receipt-failed", hasReceiptFailed)
 			continue
@@ -333,7 +352,16 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 
 	bundleProfit := coinbaseBalanceDelta
 
-	bundleActualEffGP := bundleProfit.Div(bundleProfit, big.NewInt(int64(gasUsed)))
+	var (
+		gasUsedBigInt     = new(big.Int).SetUint64(gasUsed)
+		bundleActualEffGP *big.Int
+	)
+	if gasUsed == 0 {
+		bundleActualEffGP = common.Big0
+	} else {
+		bundleActualEffGP = bundleProfit.Div(bundleProfit, gasUsedBigInt)
+	}
+
 	bundleSimEffGP := new(big.Int).Set(bundle.MevGasPrice)
 
 	// allow >-1% divergence
@@ -351,11 +379,11 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	if algoConf.EnforceProfit {
 		// if profit is enforced between simulation and actual commit, only allow ProfitThresholdPercent divergence
 		simulatedBundleProfit := new(big.Int).Set(bundle.TotalEth)
-		actualBundleProfit := new(big.Int).Mul(bundleActualEffGP, big.NewInt(int64(gasUsed)))
+		actualBundleProfit := new(big.Int).Mul(bundleActualEffGP, gasUsedBigInt)
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
-		simulatedProfitMultiple := new(big.Int).Mul(simulatedBundleProfit, algoConf.ProfitThresholdPercent)
+		simulatedProfitMultiple := common.PercentOf(simulatedBundleProfit, algoConf.ProfitThresholdPercent)
 		actualProfitMultiple := new(big.Int).Mul(actualBundleProfit, common.Big100)
 
 		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
@@ -500,7 +528,7 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 	coinbaseBefore := tmpEnvDiff.state.GetBalance(tmpEnvDiff.header.Coinbase)
 	gasBefore := tmpEnvDiff.gasPool.Gas()
 
-	if err := tmpEnvDiff.commitSBundleInner(b.Bundle, chData, interrupt, key); err != nil {
+	if err := tmpEnvDiff.commitSBundleInner(b.Bundle, chData, interrupt, key, algoConf); err != nil {
 		return err
 	}
 
@@ -535,7 +563,7 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
-		simulatedProfitMultiple := new(big.Int).Mul(simulatedSbundleProfit, algoConf.ProfitThresholdPercent)
+		simulatedProfitMultiple := common.PercentOf(simulatedSbundleProfit, algoConf.ProfitThresholdPercent)
 		actualProfitMultiple := new(big.Int).Mul(actualSbundleProfit, common.Big100)
 
 		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
@@ -551,7 +579,9 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 	return nil
 }
 
-func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey) error {
+func (envDiff *environmentDiff) commitSBundleInner(
+	b *types.SBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey, algoConf algorithmConfig,
+) error {
 	// check inclusion
 	minBlock := b.Inclusion.BlockNumber
 	maxBlock := b.Inclusion.MaxBlockNumber
@@ -568,8 +598,9 @@ func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chai
 	}
 
 	var (
-		algoConf = defaultAlgorithmConfig
-
+		// Store the initial value for DropTransactionOnRevert as it will be mutated in the loop depending on whether a given transaction is revertible or not.
+		// Only sbundles and bundles currently support specifying revertible transactions.
+		discard                   = algoConf.DropTransactionOnRevert
 		totalProfit      *big.Int = new(big.Int)
 		refundableProfit *big.Int = new(big.Int)
 
@@ -582,7 +613,14 @@ func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chai
 		coinbaseBefore = envDiff.state.GetBalance(envDiff.header.Coinbase)
 
 		if el.Tx != nil {
+			// We only want to drop reverted transactions if they are specified as ones that can revert
+			// when they are submitted to the builder. Only bundles and sbundles currently support specifying
+			// revertible transactions.
+			algoConf.DropTransactionOnRevert = discard && el.CanRevert
 			receipt, _, err := envDiff.commitTx(el.Tx, chData, algoConf)
+			// reset value for subsequent transactions or bundles
+			algoConf.DropTransactionOnRevert = discard
+
 			if err != nil {
 				return err
 			}
@@ -590,7 +628,7 @@ func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chai
 				return errors.New("tx failed")
 			}
 		} else if el.Bundle != nil {
-			err := envDiff.commitSBundleInner(el.Bundle, chData, interrupt, key)
+			err := envDiff.commitSBundleInner(el.Bundle, chData, interrupt, key, algoConf)
 			if err != nil {
 				return err
 			}

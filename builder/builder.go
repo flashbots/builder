@@ -72,6 +72,7 @@ type Builder struct {
 	builderPublicKey            phase0.BLSPubKey
 	builderSigningDomain        phase0.Domain
 	builderResubmitInterval     time.Duration
+	discardRevertedHashes       bool
 
 	limiter                       *rate.Limiter
 	submissionOffsetFromEndOfSlot time.Duration
@@ -91,6 +92,7 @@ type BuilderArgs struct {
 	relay                         IRelay
 	builderSigningDomain          phase0.Domain
 	builderBlockResubmitInterval  time.Duration
+	discardRevertedHashes         bool
 	eth                           IEthereumService
 	dryRun                        bool
 	ignoreLatePayloadAttributes   bool
@@ -136,6 +138,7 @@ func NewBuilder(args BuilderArgs) (*Builder, error) {
 		builderPublicKey:              pk,
 		builderSigningDomain:          args.builderSigningDomain,
 		builderResubmitInterval:       args.builderBlockResubmitInterval,
+		discardRevertedHashes:         args.discardRevertedHashes,
 		submissionOffsetFromEndOfSlot: args.submissionOffsetFromEndOfSlot,
 
 		limiter:       args.limiter,

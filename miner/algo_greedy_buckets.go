@@ -34,8 +34,7 @@ func newGreedyBucketsBuilder(
 	if algoConf == nil {
 		algoConf = &algorithmConfig{
 			EnforceProfit:          true,
-			ExpectedProfit:         nil,
-			ProfitThresholdPercent: defaultProfitThreshold,
+			ProfitThresholdPercent: defaultProfitPercentMinimum,
 		}
 	}
 	return &greedyBucketsBuilder{
@@ -50,14 +49,8 @@ func newGreedyBucketsBuilder(
 
 // CutoffPriceFromOrder returns the cutoff price for a given order based on the cutoff percent.
 // For example, if the cutoff percent is 0.9, the cutoff price will be 90% of the order price, rounded down to the nearest integer.
-func CutoffPriceFromOrder(order *types.TxWithMinerFee, cutoffPercent *big.Float) *big.Int {
-	floorPrice := new(big.Float).
-		Mul(
-			new(big.Float).SetInt(order.Price()),
-			cutoffPercent,
-		)
-	round, _ := floorPrice.Int64()
-	return big.NewInt(round)
+func CutoffPriceFromOrder(order *types.TxWithMinerFee, cutoffPercent int) *big.Int {
+	return common.PercentOf(order.Price(), cutoffPercent)
 }
 
 // IsOrderInPriceRange returns true if the order price is greater than or equal to the minPrice.
@@ -71,9 +64,10 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 	gasUsedMap map[*types.TxWithMinerFee]uint64, retryMap map[*types.TxWithMinerFee]int, retryLimit int,
 ) ([]types.SimulatedBundle, []types.UsedSBundle) {
 	var (
+		algoConf = b.algoConf
+
 		usedBundles  []types.SimulatedBundle
 		usedSbundles []types.UsedSBundle
-		algoConf     = b.algoConf
 
 		CheckRetryOrderAndReinsert = func(
 			order *types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce,
@@ -100,6 +94,11 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 
 	for _, order := range transactions {
 		if tx := order.Tx(); tx != nil {
+			// We only want to drop reverted transactions if they are specified as ones that can revert
+			// when they are submitted to the builder. Only bundles and sbundles currently support specifying
+			// revertible transactions.
+			algoConf := b.algoConf
+			algoConf.DropTransactionOnRevert = false
 			receipt, skip, err := envDiff.commitTx(tx, b.chainData, algoConf)
 			if err != nil {
 				log.Trace("could not apply tx", "hash", tx.Hash(), "err", err)
@@ -201,10 +200,7 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 		usedBundles  []types.SimulatedBundle
 		usedSbundles []types.UsedSBundle
 		transactions []*types.TxWithMinerFee
-		percent      = new(big.Float).Quo(
-			new(big.Float).SetInt(b.algoConf.ProfitThresholdPercent),
-			new(big.Float).SetInt(common.Big100),
-		)
+		percent      = b.algoConf.ProfitThresholdPercent
 
 		SortInPlaceByProfit = func(baseFee *big.Int, transactions []*types.TxWithMinerFee, gasUsedMap map[*types.TxWithMinerFee]uint64) {
 			sort.SliceStable(transactions, func(i, j int) bool {

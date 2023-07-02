@@ -1399,19 +1399,17 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 		newEnv       *environment
 		blockBundles []types.SimulatedBundle
 		usedSbundle  []types.UsedSBundle
+		start        = time.Now()
 	)
-
-	start := time.Now()
-
 	switch w.flashbots.algoType {
 	case ALGO_GREEDY_BUCKETS:
-		validationConf := &algorithmConfig{
-			EnforceProfit:          true,
-			ExpectedProfit:         nil,
-			ProfitThresholdPercent: defaultProfitThreshold,
+		algoConf := &algorithmConfig{
+			DropTransactionOnRevert: w.flashbots.discardRevertedHashes,
+			EnforceProfit:           true,
+			ProfitThresholdPercent:  defaultProfitPercentMinimum,
 		}
 		builder := newGreedyBucketsBuilder(
-			w.chain, w.chainConfig, validationConf, w.blockList, env,
+			w.chain, w.chainConfig, algoConf, w.blockList, env,
 			w.config.BuilderTxSigningKey, interrupt,
 		)
 
@@ -1419,8 +1417,15 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 	case ALGO_GREEDY:
 		fallthrough
 	default:
+		// For default greedy builder, set algorithm configuration to default values,
+		// except DropTransactionOnRevert which is passed in from worker config
+		algoConf := &algorithmConfig{
+			DropTransactionOnRevert: w.flashbots.discardRevertedHashes,
+			EnforceProfit:           defaultAlgorithmConfig.EnforceProfit,
+			ProfitThresholdPercent:  defaultAlgorithmConfig.ProfitThresholdPercent,
+		}
 		builder := newGreedyBuilder(
-			w.chain, w.chainConfig, w.blockList, env,
+			w.chain, w.chainConfig, algoConf, w.blockList, env,
 			w.config.BuilderTxSigningKey, interrupt,
 		)
 

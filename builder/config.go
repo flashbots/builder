@@ -25,6 +25,7 @@ type Config struct {
 	BuilderRateLimitMaxBurst         int           `toml:",omitempty"`
 	BuilderRateLimitResubmitInterval string        `toml:",omitempty"`
 	BuilderSubmissionOffset          time.Duration `toml:",omitempty"`
+	DiscardRevertedHashes            bool          `toml:",omitempty"`
 	EnableCancellations              bool          `toml:",omitempty"`
 }
 

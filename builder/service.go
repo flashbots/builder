@@ -289,6 +289,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 		builderSigningDomain:          builderSigningDomain,
 		builderBlockResubmitInterval:  builderRateLimitInterval,
 		submissionOffsetFromEndOfSlot: submissionOffset,
+		discardRevertedHashes:         cfg.DiscardRevertedHashes,
 		ignoreLatePayloadAttributes:   cfg.IgnoreLatePayloadAttributes,
 		validator:                     validator,
 		beaconClient:                  beaconClient,
