@@ -327,9 +327,11 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 		hasErr = err != nil
 		hasReceiptFailed = receipt != nil && receipt.Status == types.ReceiptStatusFailed
 
-		// if drop transaction on revert is enabled and the transaction is found in list of reverting transaction hashes,
-		// when there was an error applying the transaction OR
-		// the transaction failed, we skip the transaction and continue with the next one
+		// if drop transaction on revert is enabled and the transaction is found in list of reverting transaction hashes:
+		// 1. when there was an error applying the transaction OR
+		// 2. the transaction failed
+		//
+		// we skip the transaction and continue with the next one
 		if canDiscard && (hasErr || hasReceiptFailed) {
 			log.Trace("Failed to commit bundle transaction, but drop transaction on revert is enabled, skipping",
 				"bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err, "receipt-failed", hasReceiptFailed)
