@@ -98,7 +98,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 			// when they are submitted to the builder. Only bundles and sbundles currently support specifying
 			// revertible transactions.
 			algoConf := b.algoConf
-			algoConf.DropTransactionOnRevert = false
+			algoConf.canRevert = false
 			receipt, skip, err := envDiff.commitTx(tx, b.chainData, algoConf)
 			if err != nil {
 				log.Trace("could not apply tx", "hash", tx.Hash(), "err", err)

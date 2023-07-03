@@ -58,6 +58,8 @@ type algorithmConfig struct {
 	// DropTransactionOnRevert is set when a transaction is allowed to revert and we wish to not only revert the transaction
 	// but discard it entirely
 	DropTransactionOnRevert bool
+
+	canRevert bool
 	// EnforceProfit is true if we want to enforce a minimum profit threshold
 	// for committing a transaction based on ProfitThresholdPercent
 	EnforceProfit bool
@@ -202,11 +204,14 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 	receipt, newState, err := applyTransactionWithBlacklist(signer, chData.chainConfig, chData.chain, coinbase,
 		envDiff.gasPool, envDiff.state, header, tx, &header.GasUsed, *chData.chain.GetVMConfig(), chData.blacklist)
 
-	// when drop transaction is enabled:
+	// when drop transaction is enabled, and transaction revert is enabled through bundle or sbundle:
 	// 1. if there was an error applying the transaction OR
 	// 2. if the transaction receipt status is failed
 	// we don't apply the transaction to the state and we don't add it to the newTxs, return early
-	if algoConf.DropTransactionOnRevert && (err != nil || (receipt != nil && receipt.Status == types.ReceiptStatusFailed)) {
+	// NOTE: We only drop transaction when its specified in reverting transaction hashes for bundles and sbundles.
+	//   Calling commitTx for a single transaction should set the boolean to false and not drop the transaction.
+	if algoConf.DropTransactionOnRevert && algoConf.canRevert &&
+		(err != nil || (receipt != nil && receipt.Status == types.ReceiptStatusFailed)) {
 		// the StateDB for environment diff is already modified at this point, since it gets mutated when passed in to
 		// applyTransactionWithBlacklist, so we need to revert it
 		s, sdbErr := state.New(root, envDiff.state.Database(), chData.chain.Snapshots())
@@ -266,9 +271,9 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	var (
 		// Store the initial value for DropTransactionOnRevert as it will be mutated in the loop depending on whether a given transaction is revertible or not.
 		// Only sbundles and bundles currently support specifying revertible transactions.
-		discard    = algoConf.DropTransactionOnRevert
-		coinbase   = envDiff.baseEnvironment.coinbase
-		tmpEnvDiff = envDiff.copy()
+		canRevertDefault = algoConf.canRevert
+		coinbase         = envDiff.baseEnvironment.coinbase
+		tmpEnvDiff       = envDiff.copy()
 
 		coinbaseBalanceBefore = tmpEnvDiff.state.GetBalance(coinbase)
 
@@ -316,13 +321,13 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 
 		// if drop transaction on revert is enabled and the transaction is found in list of reverting transaction hashes,
 		// we can consider the transaction for discarding
-		canDiscard = discard && bundle.OriginalBundle.RevertingHash(tx.Hash())
-		algoConf.DropTransactionOnRevert = canDiscard
+		algoConf.canRevert = bundle.OriginalBundle.RevertingHash(tx.Hash())
+		canDiscard = algoConf.DropTransactionOnRevert && algoConf.canRevert
 
 		receipt, _, err := tmpEnvDiff.commitTx(tx, chData, algoConf)
 
-		// reset the drop transaction on revert flag for subsequent transactions
-		algoConf.DropTransactionOnRevert = discard
+		// reset the canRevert flag for subsequent transactions
+		algoConf.canRevert = canRevertDefault
 
 		hasErr = err != nil
 		hasReceiptFailed = receipt != nil && receipt.Status == types.ReceiptStatusFailed
