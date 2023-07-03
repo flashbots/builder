@@ -53,7 +53,12 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
 		}
 
 		if tx := order.Tx(); tx != nil {
-			receipt, skip, err := envDiff.commitTx(tx, b.chainData, b.algoConf)
+			// We only want to drop reverted transactions if they are specified as ones that can revert
+			// when they are submitted to the builder. Only bundles and sbundles currently support specifying
+			// revertible transactions.
+			algoConf := b.algoConf
+			algoConf.DropTransactionOnRevert = false
+			receipt, skip, err := envDiff.commitTx(tx, b.chainData, algoConf)
 			switch skip {
 			case shiftTx:
 				orders.Shift()
