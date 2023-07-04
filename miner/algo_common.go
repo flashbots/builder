@@ -607,9 +607,9 @@ func (envDiff *environmentDiff) commitSBundleInner(
 	}
 
 	var (
-		// Store the initial value for DropTransactionOnRevert as it will be mutated in the loop depending on whether a given transaction is revertible or not.
+		// Store the initial value for canRevert as it will be mutated in the loop depending on whether a given transaction is revertible or not.
 		// Only sbundles and bundles currently support specifying revertible transactions.
-		discard                   = algoConf.DropTransactionOnRevert
+		canRevertDefault          = algoConf.canRevert
 		totalProfit      *big.Int = new(big.Int)
 		refundableProfit *big.Int = new(big.Int)
 
@@ -625,10 +625,10 @@ func (envDiff *environmentDiff) commitSBundleInner(
 			// We only want to drop reverted transactions if they are specified as ones that can revert
 			// when they are submitted to the builder. Only bundles and sbundles currently support specifying
 			// revertible transactions.
-			algoConf.DropTransactionOnRevert = discard && el.CanRevert
+			algoConf.canRevert = el.CanRevert
 			receipt, _, err := envDiff.commitTx(el.Tx, chData, algoConf)
 			// reset value for subsequent transactions or bundles
-			algoConf.DropTransactionOnRevert = discard
+			algoConf.canRevert = canRevertDefault
 
 			if err != nil {
 				return err
