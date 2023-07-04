@@ -89,7 +89,7 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
 			usedEntry := types.UsedSBundle{
 				Bundle: sbundle.Bundle,
 			}
-			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, defaultAlgorithmConfig)
+			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, b.algoConf)
 			orders.Pop()
 			if err != nil {
 				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
