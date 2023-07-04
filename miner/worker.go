@@ -1404,9 +1404,9 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 	switch w.flashbots.algoType {
 	case ALGO_GREEDY_BUCKETS:
 		algoConf := &algorithmConfig{
-			DropTransactionOnRevert: w.flashbots.discardRevertedHashes,
-			EnforceProfit:           true,
-			ProfitThresholdPercent:  defaultProfitPercentMinimum,
+			DropRevertibleTxOnErr:  w.flashbots.discardRevertedHashes,
+			EnforceProfit:          true,
+			ProfitThresholdPercent: defaultProfitPercentMinimum,
 		}
 		builder := newGreedyBucketsBuilder(
 			w.chain, w.chainConfig, algoConf, w.blockList, env,
@@ -1418,11 +1418,11 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 		fallthrough
 	default:
 		// For default greedy builder, set algorithm configuration to default values,
-		// except DropTransactionOnRevert which is passed in from worker config
+		// except DropRevertibleTxOnErr which is passed in from worker config
 		algoConf := &algorithmConfig{
-			DropTransactionOnRevert: w.flashbots.discardRevertedHashes,
-			EnforceProfit:           defaultAlgorithmConfig.EnforceProfit,
-			ProfitThresholdPercent:  defaultAlgorithmConfig.ProfitThresholdPercent,
+			DropRevertibleTxOnErr:  w.flashbots.discardRevertedHashes,
+			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
+			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
 		}
 		builder := newGreedyBuilder(
 			w.chain, w.chainConfig, algoConf, w.blockList, env,

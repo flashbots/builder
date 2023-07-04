@@ -51,6 +51,7 @@ var DefaultConfig = Config{
 	ValidationBlocklist:           "",
 	BuilderRateLimitDuration:      RateLimitIntervalDefault.String(),
 	BuilderRateLimitMaxBurst:      RateLimitBurstDefault,
+	DiscardRevertedHashes:         false,
 	EnableCancellations:           false,
 }
 

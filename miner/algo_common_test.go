@@ -234,7 +234,6 @@ func newEnvironment(data chainData, state *state.StateDB, coinbase common.Addres
 }
 
 func TestTxCommit(t *testing.T) {
-	algoConf := defaultAlgorithmConfig
 	statedb, chData, signers := genTestSetup()
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], GasLimit, big.NewInt(1))
@@ -242,7 +241,7 @@ func TestTxCommit(t *testing.T) {
 
 	tx := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
 
-	receipt, i, err := envDiff.commitTx(tx, chData, algoConf)
+	receipt, i, err := envDiff.commitTx(tx, chData)
 	if err != nil {
 		t.Fatal("can't commit transaction:", err)
 	}
@@ -325,7 +324,7 @@ func TestErrorTxCommit(t *testing.T) {
 	signers.nonces[1] = 10
 	tx := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
 
-	_, i, err := envDiff.commitTx(tx, chData, defaultAlgorithmConfig)
+	_, i, err := envDiff.commitTx(tx, chData)
 	if err == nil {
 		t.Fatal("committed incorrect transaction:", err)
 	}
@@ -359,7 +358,7 @@ func TestCommitTxOverGasLimit(t *testing.T) {
 	tx1 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
 	tx2 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
 
-	receipt, i, err := envDiff.commitTx(tx1, chData, defaultAlgorithmConfig)
+	receipt, i, err := envDiff.commitTx(tx1, chData)
 	if err != nil {
 		t.Fatal("can't commit transaction:", err)
 	}
@@ -374,7 +373,7 @@ func TestCommitTxOverGasLimit(t *testing.T) {
 		t.Fatal("Env diff gas pool is not drained")
 	}
 
-	_, _, err = envDiff.commitTx(tx2, chData, defaultAlgorithmConfig)
+	_, _, err = envDiff.commitTx(tx2, chData)
 	require.Error(t, err, "committed tx over gas limit")
 }
 
@@ -400,7 +399,7 @@ func TestErrorBundleCommit(t *testing.T) {
 		t.Fatal("Failed to simulate bundle", err)
 	}
 
-	_, _, err = envDiff.commitTx(tx0, chData, defaultAlgorithmConfig)
+	_, _, err = envDiff.commitTx(tx0, chData)
 	if err != nil {
 		t.Fatal("Failed to commit tx0", err)
 	}
@@ -441,7 +440,6 @@ func TestErrorBundleCommit(t *testing.T) {
 }
 
 func TestBlacklist(t *testing.T) {
-	algoConf := defaultAlgorithmConfig
 	statedb, chData, signers := genTestSetup()
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], GasLimit, big.NewInt(1))
@@ -459,13 +457,13 @@ func TestBlacklist(t *testing.T) {
 	balanceBefore := envDiff.state.GetBalance(signers.addresses[3])
 
 	tx := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[3], big.NewInt(77), []byte{})
-	_, _, err := envDiff.commitTx(tx, chData, algoConf)
+	_, _, err := envDiff.commitTx(tx, chData)
 	if err == nil {
 		t.Fatal("committed blacklisted transaction: to")
 	}
 
 	tx = signers.signTx(3, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[1], big.NewInt(88), []byte{})
-	_, _, err = envDiff.commitTx(tx, chData, algoConf)
+	_, _, err = envDiff.commitTx(tx, chData)
 	if err == nil {
 		t.Fatal("committed blacklisted transaction: sender")
 	}
@@ -474,19 +472,19 @@ func TestBlacklist(t *testing.T) {
 	calldata = append(calldata, signers.addresses[3].Bytes()...)
 
 	tx = signers.signTx(4, 40000, big.NewInt(0), big.NewInt(1), payProxyAddress, big.NewInt(99), calldata)
-	_, _, err = envDiff.commitTx(tx, chData, algoConf)
+	_, _, err = envDiff.commitTx(tx, chData)
 	if err == nil {
 		t.Fatal("committed blacklisted transaction: trace")
 	}
 
 	tx = signers.signTx(5, 40000, big.NewInt(0), big.NewInt(1), payProxyAddress, big.NewInt(0), calldata)
-	_, _, err = envDiff.commitTx(tx, chData, algoConf)
+	_, _, err = envDiff.commitTx(tx, chData)
 	if err == nil {
 		t.Fatal("committed blacklisted transaction: trace, zero value")
 	}
 
 	tx = signers.signTx(6, 30000, big.NewInt(0), big.NewInt(1), payProxyAddress, big.NewInt(99), calldata)
-	_, _, err = envDiff.commitTx(tx, chData, algoConf)
+	_, _, err = envDiff.commitTx(tx, chData)
 	if err == nil {
 		t.Fatal("committed blacklisted transaction: trace, failed tx")
 	}

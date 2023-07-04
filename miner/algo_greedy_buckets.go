@@ -94,12 +94,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 
 	for _, order := range transactions {
 		if tx := order.Tx(); tx != nil {
-			// We only want to drop reverted transactions if they are specified as ones that can revert
-			// when they are submitted to the builder. Only bundles and sbundles currently support specifying
-			// revertible transactions.
-			algoConf := b.algoConf
-			algoConf.canRevert = false
-			receipt, skip, err := envDiff.commitTx(tx, b.chainData, algoConf)
+			receipt, skip, err := envDiff.commitTx(tx, b.chainData)
 			if err != nil {
 				log.Trace("could not apply tx", "hash", tx.Hash(), "err", err)
 

@@ -110,10 +110,10 @@ var algoTests = []*algoTest{
 		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 	{
-		// Trivial bundle with one tx that reverts and is allowed to revert.
+		// Trivial bundle with one tx that has nonce error and fails.
 		//
-		// Bundle should NOT be included since DropTransactionOnRevert is enabled.
-		Name:   "atomic-bundle-revert-and-discard",
+		// Bundle should NOT be included since DropRevertibleTxOnErr is enabled.
+		Name:   "atomic-bundle-nonce-error-and-discard",
 		Header: &types.Header{GasLimit: 50_000},
 		Alloc: []core.GenesisAccount{
 			{Balance: big.NewInt(50_000)},
@@ -122,7 +122,7 @@ var algoTests = []*algoTest{
 		Bundles: func(acc accByIndex, sign signByIndex, txs txByAccIndexAndNonce) []*bundle {
 			return []*bundle{
 				{
-					Txs:                types.Transactions{sign(0, &types.LegacyTx{Nonce: 0, Gas: 50_000, To: acc(1), GasPrice: big.NewInt(1)})},
+					Txs:                types.Transactions{sign(0, &types.LegacyTx{Nonce: 1, Gas: 50_000, To: acc(1), GasPrice: big.NewInt(1)})},
 					RevertingTxIndices: []int{0},
 				},
 			}
@@ -130,9 +130,41 @@ var algoTests = []*algoTest{
 		WantProfit:          common.Big0,
 		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
 		AlgorithmConfig: algorithmConfig{
-			DropTransactionOnRevert: true,
-			EnforceProfit:           defaultAlgorithmConfig.EnforceProfit,
-			ProfitThresholdPercent:  defaultAlgorithmConfig.ProfitThresholdPercent,
+			DropRevertibleTxOnErr:  true,
+			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
+			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
+		},
+	},
+	{
+		// Bundle with two transactions - first tx will revert and second has nonce error
+		//
+		// Bundle SHOULD be included ONLY with first tx since DropRevertibleTxOnErr is enabled.
+		Name: "bundle-with-revert-tx-and-invalid-nonce-discard",
+		Header: &types.Header{
+			GasLimit: 3 * 21_000,
+		},
+		Alloc: []core.GenesisAccount{
+			{Balance: big.NewInt(3 * 21_000)},
+			{Code: contractRevert},
+		},
+		Bundles: func(acc accByIndex, sign signByIndex, txs txByAccIndexAndNonce) []*bundle {
+			return []*bundle{
+				{
+					Txs:                types.Transactions{sign(0, &types.LegacyTx{Nonce: 0, Gas: 21_000, To: acc(1), GasPrice: big.NewInt(1)})},
+					RevertingTxIndices: []int{0},
+				},
+				{
+					Txs:                types.Transactions{sign(0, &types.LegacyTx{Nonce: 2, Gas: 42_000, To: acc(1), GasPrice: big.NewInt(1)})},
+					RevertingTxIndices: []int{0},
+				},
+			}
+		},
+		WantProfit:          big.NewInt(21_000),
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		AlgorithmConfig: algorithmConfig{
+			DropRevertibleTxOnErr:  true,
+			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
+			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
 		},
 	},
 	{
