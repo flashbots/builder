@@ -25,7 +25,7 @@ type Config struct {
 	BuilderRateLimitMaxBurst         int           `toml:",omitempty"`
 	BuilderRateLimitResubmitInterval string        `toml:",omitempty"`
 	BuilderSubmissionOffset          time.Duration `toml:",omitempty"`
-	DiscardRevertedHashes            bool          `toml:",omitempty"`
+	DiscardRevertibleTxOnErr         bool          `toml:",omitempty"`
 	EnableCancellations              bool          `toml:",omitempty"`
 }
 
@@ -51,7 +51,7 @@ var DefaultConfig = Config{
 	ValidationBlocklist:           "",
 	BuilderRateLimitDuration:      RateLimitIntervalDefault.String(),
 	BuilderRateLimitMaxBurst:      RateLimitBurstDefault,
-	DiscardRevertedHashes:         false,
+	DiscardRevertibleTxOnErr:      false,
 	EnableCancellations:           false,
 }
 

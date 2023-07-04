@@ -179,7 +179,7 @@ var (
 		utils.BuilderRateLimitMaxBurst,
 		utils.BuilderBlockResubmitInterval,
 		utils.BuilderSubmissionOffset,
-		utils.BuilderDiscardRevertedHashes,
+		utils.BuilderDiscardRevertibleTxOnErr,
 		utils.BuilderEnableCancellations,
 	}
 
