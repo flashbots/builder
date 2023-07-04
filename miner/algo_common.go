@@ -209,7 +209,7 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 	// 2. if the transaction receipt status is failed
 	// we don't apply the transaction to the state and we don't add it to the newTxs, return early
 	// NOTE: We only drop transaction when its specified in reverting transaction hashes for bundles and sbundles.
-	//   Calling commitTx for a single transaction should set the boolean to false and not drop the transaction.
+	//   Calling commitTx for a single transaction should set canRevert to false and not drop the transaction.
 	if algoConf.DropTransactionOnRevert && algoConf.canRevert &&
 		(err != nil || (receipt != nil && receipt.Status == types.ReceiptStatusFailed)) {
 		// the StateDB for environment diff is already modified at this point, since it gets mutated when passed in to
