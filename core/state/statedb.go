@@ -129,12 +129,6 @@ type StateDB struct {
 	StorageDeleted int
 }
 
-// OriginalRoot returns the pre-state root hash before any changes were made.
-// NOTE: This method is not safe for concurrent use.
-func (s *StateDB) OriginalRoot() common.Hash {
-	return s.originalRoot
-}
-
 // New creates a new state from a given trie.
 func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) {
 	tr, err := db.OpenTrie(root)
