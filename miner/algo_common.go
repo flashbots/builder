@@ -64,7 +64,7 @@ type algorithmConfig struct {
 	// for committing a transaction based on ProfitThresholdPercent
 	EnforceProfit bool
 	// ProfitThresholdPercent is the minimum profit threshold for committing a transaction
-	ProfitThresholdPercent int
+	ProfitThresholdPercent int // 0-100, e.g. 70 means 70%
 }
 
 type chainData struct {
