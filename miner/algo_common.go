@@ -256,14 +256,14 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 		profitBefore = new(big.Int).Set(tmpEnvDiff.newProfit)
 
 		gasUsed uint64
-
-		hasCommitErr     bool
-		hasReceiptFailed bool
-		isRevertibleTx   bool
 	)
 
 	for _, tx := range bundle.OriginalBundle.Txs {
-		txHash := tx.Hash()
+		var (
+			txHash = tx.Hash()
+			// update isRevertibleTx if transaction is found in list of reverting transaction hashes
+			isRevertibleTx = bundle.OriginalBundle.RevertingHash(txHash)
+		)
 		if tmpEnvDiff.header.BaseFee != nil && tx.Type() == types.DynamicFeeTxType {
 			// Sanity check for extremely large numbers
 			if tx.GasFeeCap().BitLen() > 256 {
@@ -296,27 +296,20 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 			return errInterrupt
 		}
 
-		// update isRevertibleTx if transaction is found in list of reverting transaction hashes
-		isRevertibleTx = bundle.OriginalBundle.RevertingHash(txHash)
-
 		receipt, _, err := tmpEnvDiff.commitTx(tx, chData)
 
-		hasCommitErr = err != nil
-		hasReceiptFailed = receipt != nil && receipt.Status == types.ReceiptStatusFailed
+		if err != nil {
+			// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
+			if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
+				log.Info("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+					"tx", txHash, "err", err)
+				continue
+			}
 
-		// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
-		if algoConf.DropRevertibleTxOnErr && isRevertibleTx && hasCommitErr {
-			log.Warn("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
-				"tx", txHash, "err", err)
-			continue
-		}
-
-		if hasCommitErr {
 			log.Trace("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
 			return err
-		}
-
-		if hasReceiptFailed && !isRevertibleTx {
+		} else if receipt != nil && receipt.Status == types.ReceiptStatusFailed && !isRevertibleTx {
+			// if transaction reverted and isn't specified as reverting hash, return error
 			log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
 			return errors.New("bundle tx revert")
 		}
@@ -329,16 +322,8 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 
 	bundleProfit := coinbaseBalanceDelta
 
-	var (
-		gasUsedBigInt     = new(big.Int).SetUint64(gasUsed)
-		bundleActualEffGP *big.Int
-	)
-	if gasUsed == 0 {
-		bundleActualEffGP = common.Big0
-	} else {
-		bundleActualEffGP = bundleProfit.Div(bundleProfit, gasUsedBigInt)
-	}
-
+	gasUsedBigInt := new(big.Int).SetUint64(gasUsed)
+	bundleActualEffGP := bundleProfit.Div(bundleProfit, gasUsedBigInt)
 	bundleSimEffGP := new(big.Int).Set(bundle.MevGasPrice)
 
 	// allow >-1% divergence
@@ -593,7 +578,7 @@ func (envDiff *environmentDiff) commitSBundleInner(
 				// if drop enabled, and revertible tx has error on commit,
 				// we skip the transaction and continue with next one
 				if algoConf.DropRevertibleTxOnErr && el.CanRevert {
-					log.Warn("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+					log.Info("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
 						"tx", el.Tx.Hash(), "err", err)
 					continue
 				}
