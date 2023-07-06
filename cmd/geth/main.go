@@ -120,7 +120,6 @@ var (
 		utils.MinerEtherbaseFlag,
 		utils.MinerExtraDataFlag,
 		utils.MinerRecommitIntervalFlag,
-		utils.MinerNoVerifyFlag,
 		utils.MinerMaxMergedBundlesFlag,
 		utils.MinerBlocklistFileFlag,
 		utils.MinerNewPayloadTimeout,

@@ -510,11 +510,6 @@ var (
 		Value:    ethconfig.Defaults.Miner.Recommit,
 		Category: flags.MinerCategory,
 	}
-	MinerNoVerifyFlag = &cli.BoolFlag{
-		Name:     "miner.noverify",
-		Usage:    "Disable remote sealing verification",
-		Category: flags.MinerCategory,
-	}
 	MinerMaxMergedBundlesFlag = &cli.IntFlag{
 		Name:     "miner.maxmergedbundles",
 		Usage:    "flashbots - The maximum amount of bundles to merge. The miner will run this many workers in parallel to calculate if the full block is more profitable with these additional bundles.",
