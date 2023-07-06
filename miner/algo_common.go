@@ -128,8 +128,8 @@ func (e *environmentDiff) applyToBaseEnv() {
 	env.receipts = append(env.receipts, e.newReceipts...)
 }
 
-func checkInterrupt(i *int32) bool {
-	return i != nil && atomic.LoadInt32(i) != commitInterruptNone
+func checkInterrupt(i *atomic.Int32) bool {
+	return i != nil && i.Load() != commitInterruptNone
 }
 
 // Simulate bundle on top of current state without modifying it
@@ -164,7 +164,6 @@ func applyTransactionWithBlacklist(signer types.Signer, config *params.ChainConf
 	// there will be no difference in the result if precompile is not it the blocklist
 	touchTracer := logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, nil)
 	cfg.Tracer = touchTracer
-	cfg.Debug = true
 
 	hook := func() error {
 		for _, accessTuple := range touchTracer.AccessList() {
@@ -249,7 +248,7 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 }
 
 // Commit Bundle to env diff
-func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chData chainData, interrupt *int32, algoConf algorithmConfig) error {
+func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chData chainData, interrupt *atomic.Int32, algoConf algorithmConfig) error {
 	coinbase := envDiff.baseEnvironment.coinbase
 	tmpEnvDiff := envDiff.copy()
 
@@ -468,7 +467,7 @@ func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver
 	return receipt, nil
 }
 
-func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey, algoConf algorithmConfig) error {
+func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainData, interrupt *atomic.Int32, key *ecdsa.PrivateKey, algoConf algorithmConfig) error {
 	if key == nil {
 		return errors.New("no private key provided")
 	}
@@ -529,7 +528,7 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 	return nil
 }
 
-func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey) error {
+func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chainData, interrupt *atomic.Int32, key *ecdsa.PrivateKey) error {
 	// check inclusion
 	minBlock := b.Inclusion.BlockNumber
 	maxBlock := b.Inclusion.MaxBlockNumber

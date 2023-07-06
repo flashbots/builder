@@ -59,11 +59,11 @@ func (p *SBundlePool) ResetPoolData(pool *TxPool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.istanbul = pool.istanbul
-	p.eip2718 = pool.eip2718
-	p.eip1559 = pool.eip1559
-	p.shanghai = pool.shanghai
-	p.currentMaxGas = pool.currentMaxGas
+	p.istanbul = pool.istanbul.Load()
+	p.eip2718 = pool.eip2718.Load()
+	p.eip1559 = pool.eip1559.Load()
+	p.shanghai = pool.shanghai.Load()
+	p.currentMaxGas = pool.currentMaxGas.Load()
 }
 
 func (p *SBundlePool) Add(bundle *types.SBundle) error {

@@ -519,10 +519,10 @@ func recalcRecommit(minRecommit, prev time.Duration, target float64, inc bool) t
 func (w *worker) newWorkLoop(recommit time.Duration) {
 	defer w.wg.Done()
 	var (
-		runningInterrupt *atomic.Int32     // Running task interrupt
-		queuedInterrupt  *atomic.Int32     // Queued task interrupt
-		minRecommit      = recommit 	   // minimal resubmit interval specified by user.
-		timestamp        int64      	   // timestamp for each round of sealing.
+		runningInterrupt *atomic.Int32 // Running task interrupt
+		queuedInterrupt  *atomic.Int32 // Queued task interrupt
+		minRecommit      = recommit    // minimal resubmit interval specified by user.
+		timestamp        int64         // timestamp for each round of sealing.
 	)
 
 	timer := time.NewTimer(0)
@@ -647,7 +647,7 @@ func (w *worker) mainLoop() {
 		select {
 		case req := <-w.newWorkCh:
 			// Don't start if the work has already been interrupted
-			if req.interrupt == nil || atomic.LoadInt32(req.interrupt) == commitInterruptNone {
+			if req.interrupt == nil || req.interrupt.Load() == commitInterruptNone {
 				w.commitWork(req.interrupt, req.noempty, req.timestamp)
 			}
 
@@ -976,7 +976,6 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 	if len(w.blockList) != 0 {
 		tracer = logger.NewAccountTouchTracer()
 		config.Tracer = tracer
-		config.Debug = true
 		hook = func() error {
 			for _, address := range tracer.TouchedAddresses() {
 				if _, in := w.blockList[address]; in {
@@ -1017,7 +1016,7 @@ func (w *worker) commitBundle(env *environment, txs types.Transactions, interrup
 	for _, tx := range txs {
 		// Check interruption signal and abort building if it's fired.
 		if interrupt != nil {
-			if signal := atomic.LoadInt32(interrupt); signal != commitInterruptNone {
+			if signal := interrupt.Load(); signal != commitInterruptNone {
 				return signalToErr(signal)
 			}
 		}
@@ -1288,7 +1287,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	return env, nil
 }
 
-func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle, error) {
+func (w *worker) fillTransactionsSelectAlgo(interrupt *atomic.Int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle, error) {
 	var (
 		blockBundles []types.SimulatedBundle
 		allBundles   []types.SimulatedBundle
@@ -1371,7 +1370,7 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) ([]
 // fillTransactionsAlgoWorker retrieves the pending transactions and bundles from the txpool and fills them
 // into the given sealing block.
 // Returns error if any, otherwise the bundles that made it into the block and all bundles that passed simulation
-func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle, error) {
+func (w *worker) fillTransactionsAlgoWorker(interrupt *atomic.Int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle, error) {
 	// Split the pending transactions into locals and remotes
 	// Fill the block with all available pending transactions.
 	pending := w.eth.TxPool().Pending(true)
@@ -1863,7 +1862,6 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, sb
 			if len(w.blockList) != 0 {
 				tracer = logger.NewAccountTouchTracer()
 				config.Tracer = tracer
-				config.Debug = true
 			}
 			simRes, err := core.SimBundle(w.chainConfig, w.chain, &env.coinbase, gp, state, env.header, sbundle, 0, &tmpGasUsed, config, false)
 			if metrics.EnabledBuilder {
@@ -1965,7 +1963,6 @@ func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, stat
 		if len(w.blockList) != 0 {
 			tracer = logger.NewAccountTouchTracer()
 			config.Tracer = tracer
-			config.Debug = true
 		}
 		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, gasPool, state, env.header, tx, &tempGasUsed, config, nil)
 		if err != nil {

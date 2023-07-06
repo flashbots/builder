@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync/atomic"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -40,7 +41,7 @@ type signerList struct {
 	nonces    []uint64
 }
 
-func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, interrupt *int32) (types.SimulatedBundle, error) {
+func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, interrupt *atomic.Int32) (types.SimulatedBundle, error) {
 	stateDB := env.state.Copy()
 	gasPool := new(core.GasPool).AddGas(env.header.GasLimit)
 
@@ -213,7 +214,7 @@ func newEnvironment(data chainData, state *state.StateDB, coinbase common.Addres
 	currentBlock := data.chain.CurrentBlock()
 	// Note the passed coinbase may be different with header.Coinbase.
 	return &environment{
-		signer:    types.MakeSigner(data.chainConfig, currentBlock.Number),
+		signer:    types.MakeSigner(data.chainConfig, currentBlock.Number, currentBlock.Time),
 		state:     state,
 		gasPool:   new(core.GasPool).AddGas(gasLimit),
 		coinbase:  coinbase,

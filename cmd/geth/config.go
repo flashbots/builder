@@ -44,7 +44,6 @@ import (
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/naoina/toml"
-	"github.com/urfave/cli/v2"
 )
 
 var (

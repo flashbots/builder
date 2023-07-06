@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math/big"
 	"sort"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -22,14 +23,14 @@ type greedyBucketsBuilder struct {
 	inputEnvironment *environment
 	chainData        chainData
 	builderKey       *ecdsa.PrivateKey
-	interrupt        *int32
+	interrupt        *atomic.Int32
 	gasUsedMap       map[*types.TxWithMinerFee]uint64
 	algoConf         algorithmConfig
 }
 
 func newGreedyBucketsBuilder(
 	chain *core.BlockChain, chainConfig *params.ChainConfig, algoConf *algorithmConfig,
-	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32,
+	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *atomic.Int32,
 ) *greedyBucketsBuilder {
 	if algoConf == nil {
 		algoConf = &algorithmConfig{

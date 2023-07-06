@@ -114,7 +114,7 @@ func SimBundle(config *params.ChainConfig, bc *BlockChain, author *common.Addres
 	}
 
 	// estimate payout value and subtract from total profit
-	signer := types.MakeSigner(config, header.Number)
+	signer := types.MakeSigner(config, header.Number, header.Time)
 	for i, el := range refundPercents {
 		if !refundIdx[i] {
 			continue

@@ -2487,7 +2487,7 @@ func (bc *BlockChain) SetBlockValidatorAndProcessorForTesting(v Validator, p Pro
 
 func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Address, expectedProfit *big.Int, registeredGasLimit uint64, vmConfig vm.Config) error {
 	header := block.Header()
-	if err := bc.engine.VerifyHeader(bc, header, true); err != nil {
+	if err := bc.engine.VerifyHeader(bc, header); err != nil {
 		return err
 	}
 
@@ -2523,7 +2523,7 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 		return err
 	}
 
-	if bc.Config().IsShanghai(header.Time) {
+	if bc.Config().IsShanghai(header.Number, header.Time) {
 		if header.WithdrawalsHash == nil {
 			return fmt.Errorf("withdrawals hash is missing")
 		}

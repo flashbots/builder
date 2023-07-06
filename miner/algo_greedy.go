@@ -2,6 +2,7 @@ package miner
 
 import (
 	"crypto/ecdsa"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
@@ -19,12 +20,12 @@ type greedyBuilder struct {
 	inputEnvironment *environment
 	chainData        chainData
 	builderKey       *ecdsa.PrivateKey
-	interrupt        *int32
+	interrupt        *atomic.Int32
 }
 
 func newGreedyBuilder(
 	chain *core.BlockChain, chainConfig *params.ChainConfig,
-	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32,
+	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *atomic.Int32,
 ) *greedyBuilder {
 	return &greedyBuilder{
 		inputEnvironment: env,
