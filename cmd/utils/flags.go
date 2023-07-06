@@ -598,7 +598,7 @@ var (
 			"is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction " +
 			"is (1000 * 10%) = 100 wei.\n" +
 			"NOTE: This flag is only used when miner.algotype=greedy-buckets",
-		Value:    -1,
+		Value:    ethconfig.Defaults.Miner.PriceCutoffPercent,
 		Category: flags.MinerCategory,
 		EnvVars:  []string{"FLASHBOTS_MINER_PRICE_CUTOFF_PERCENT"},
 	}
