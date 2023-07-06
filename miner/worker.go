@@ -1405,13 +1405,24 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 
 	switch w.flashbots.algoType {
 	case ALGO_GREEDY_BUCKETS:
-		validationConf := &algorithmConfig{
+		var priceCutoffPercent int
+		if percent := w.config.PriceCutoffPercent; percent == -1 {
+			// default config percent value is -1, which means that the price cutoff percent is not set
+			priceCutoffPercent = defaultPriceCutoffPercent
+		} else if percent >= 0 && percent <= 100 {
+			priceCutoffPercent = percent
+		} else {
+			return nil, nil, nil, errors.New("invalid price cutoff percent - must be between 0 and 100")
+		}
+
+		algoConf := &algorithmConfig{
 			EnforceProfit:          true,
 			ExpectedProfit:         nil,
 			ProfitThresholdPercent: defaultProfitThreshold,
+			PriceCutoffPercent:     priceCutoffPercent,
 		}
 		builder := newGreedyBucketsBuilder(
-			w.chain, w.chainConfig, validationConf, w.blockList, env,
+			w.chain, w.chainConfig, algoConf, w.blockList, env,
 			w.config.BuilderTxSigningKey, interrupt,
 		)
 

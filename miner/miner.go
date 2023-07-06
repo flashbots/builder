@@ -98,6 +98,7 @@ type Config struct {
 	MaxMergedBundles    int
 	Blocklist           []common.Address `toml:",omitempty"`
 	NewPayloadTimeout   time.Duration    // The maximum time allowance for creating a new payload
+	PriceCutoffPercent  int              // Effective gas price cutoff % used for bucketing transactions by price (only useful in greedy-buckets AlgoType)
 }
 
 // DefaultConfig contains default settings for miner.
