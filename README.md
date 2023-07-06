@@ -130,6 +130,15 @@ $ geth --help
     --miner.extradata value
           Block extra data set by the miner (default = client version)
 
+    --miner.price_cutoff_percent value (default: 50)
+          flashbots - The minimum effective gas price threshold used for bucketing
+          transactions by price. For example if the top transaction in a list has an
+          effective gas price of 1000 wei and price_cutoff_percent is 10 (i.e. 10%), then
+          the minimum effective gas price included in the same bucket as the top
+          transaction is (1000 * 10%) = 100 wei.
+          NOTE: This flag is only used when
+          miner.algotype=greedy-buckets
+
    METRICS
 
    --metrics.builder value          (default: false)

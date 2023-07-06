@@ -548,7 +548,7 @@ var (
 	}
 	MinerAlgoTypeFlag = &cli.StringFlag{
 		Name:     "miner.algotype",
-		Usage:    "Block building algorithm to use [=mev-geth] (mev-geth, greedy)",
+		Usage:    "Block building algorithm to use [=mev-geth] (mev-geth, greedy, greedy-buckets)",
 		Value:    "mev-geth",
 		Category: flags.MinerCategory,
 	}
@@ -590,6 +590,17 @@ var (
 		Usage:    "Specify the maximum time allowance for creating a new payload",
 		Value:    ethconfig.Defaults.Miner.NewPayloadTimeout,
 		Category: flags.MinerCategory,
+	}
+	MinerPriceCutoffPercentFlag = &cli.IntFlag{
+		Name: "miner.price_cutoff_percent",
+		Usage: "flashbots - The minimum effective gas price threshold used for bucketing transactions by price. " +
+			"For example if the top transaction in a list has an effective gas price of 1000 wei and price_cutoff_percent " +
+			"is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction " +
+			"is (1000 * 10%) = 100 wei.\n" +
+			"NOTE: This flag is only used when miner.algotype=greedy-buckets",
+		Value:    ethconfig.Defaults.Miner.PriceCutoffPercent,
+		Category: flags.MinerCategory,
+		EnvVars:  []string{"FLASHBOTS_MINER_PRICE_CUTOFF_PERCENT"},
 	}
 
 	// Account settings
@@ -1893,6 +1904,8 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 			Fatalf("Failed to parse blocklist: %s", err)
 		}
 	}
+
+	cfg.PriceCutoffPercent = ctx.Int(MinerPriceCutoffPercentFlag.Name)
 }
 
 func setRequiredBlocks(ctx *cli.Context, cfg *ethconfig.Config) {
