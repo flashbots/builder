@@ -22,15 +22,21 @@ const (
 	popTx   = 2
 )
 
-// defaultProfitPercentMinimum is to ensure committed transactions, bundles, sbundles don't fall below this threshold
-// when profit is enforced
-const defaultProfitPercentMinimum = 70
+const (
+	// defaultProfitThresholdPercent is to ensure committed transactions, bundles, sbundles don't fall below this threshold
+	// when profit is enforced
+	defaultProfitThresholdPercent = 70
+
+	// defaultPriceCutoffPercent is for bucketing transactions by price, used for greedy buckets algorithm
+	defaultPriceCutoffPercent = 50
+)
 
 var (
 	defaultAlgorithmConfig = algorithmConfig{
 		DropRevertibleTxOnErr:  false,
 		EnforceProfit:          false,
-		ProfitThresholdPercent: defaultProfitPercentMinimum,
+		ProfitThresholdPercent: defaultProfitThresholdPercent,
+		PriceCutoffPercent:     defaultPriceCutoffPercent,
 	}
 )
 
@@ -63,8 +69,15 @@ type algorithmConfig struct {
 	// EnforceProfit is true if we want to enforce a minimum profit threshold
 	// for committing a transaction based on ProfitThresholdPercent
 	EnforceProfit bool
+
 	// ProfitThresholdPercent is the minimum profit threshold for committing a transaction
 	ProfitThresholdPercent int // 0-100, e.g. 70 means 70%
+
+	// PriceCutoffPercent is the minimum effective gas price threshold used for bucketing transactions by price.
+	// For example if the top transaction in a list has an effective gas price of 1000 wei and PriceCutoffPercent
+	// is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction
+	// is (1000 * 10%) = 100 wei.
+	PriceCutoffPercent int
 }
 
 type chainData struct {

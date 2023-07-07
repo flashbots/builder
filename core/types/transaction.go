@@ -535,7 +535,7 @@ func (t *TxWithMinerFee) Profit(baseFee *big.Int, gasUsed uint64) *big.Int {
 		}
 		return profit
 	} else if bundle := t.Bundle(); bundle != nil {
-		return bundle.TotalEth
+		return bundle.EthSentToCoinbase
 	} else if sbundle := t.SBundle(); sbundle != nil {
 		return sbundle.Profit
 	} else {

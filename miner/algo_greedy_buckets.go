@@ -34,7 +34,7 @@ func newGreedyBucketsBuilder(
 	if algoConf == nil {
 		algoConf = &algorithmConfig{
 			EnforceProfit:          true,
-			ProfitThresholdPercent: defaultProfitPercentMinimum,
+			ProfitThresholdPercent: defaultProfitThresholdPercent,
 		}
 	}
 	return &greedyBucketsBuilder{
@@ -48,7 +48,7 @@ func newGreedyBucketsBuilder(
 }
 
 // CutoffPriceFromOrder returns the cutoff price for a given order based on the cutoff percent.
-// For example, if the cutoff percent is 0.9, the cutoff price will be 90% of the order price, rounded down to the nearest integer.
+// For example, if the cutoff percent is 90, the cutoff price will be 90% of the order price, rounded down to the nearest integer.
 func CutoffPriceFromOrder(order *types.TxWithMinerFee, cutoffPercent int) *big.Int {
 	return common.PercentOf(order.Price(), cutoffPercent)
 }
@@ -190,12 +190,12 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 	const retryLimit = 1
 
 	var (
-		baseFee      = envDiff.baseEnvironment.header.BaseFee
-		retryMap     = make(map[*types.TxWithMinerFee]int)
-		usedBundles  []types.SimulatedBundle
-		usedSbundles []types.UsedSBundle
-		transactions []*types.TxWithMinerFee
-		percent      = b.algoConf.ProfitThresholdPercent
+		baseFee            = envDiff.baseEnvironment.header.BaseFee
+		retryMap           = make(map[*types.TxWithMinerFee]int)
+		usedBundles        []types.SimulatedBundle
+		usedSbundles       []types.UsedSBundle
+		transactions       []*types.TxWithMinerFee
+		priceCutoffPercent = b.algoConf.PriceCutoffPercent
 
 		SortInPlaceByProfit = func(baseFee *big.Int, transactions []*types.TxWithMinerFee, gasUsedMap map[*types.TxWithMinerFee]uint64) {
 			sort.SliceStable(transactions, func(i, j int) bool {
@@ -204,7 +204,7 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 		}
 	)
 
-	minPrice := CutoffPriceFromOrder(orders.Peek(), percent)
+	minPrice := CutoffPriceFromOrder(orders.Peek(), priceCutoffPercent)
 	for {
 		order := orders.Peek()
 		if order == nil {
@@ -232,7 +232,7 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 				usedSbundles = append(usedSbundles, sbundles...)
 				transactions = nil
 			}
-			minPrice = CutoffPriceFromOrder(order, percent)
+			minPrice = CutoffPriceFromOrder(order, priceCutoffPercent)
 		}
 	}
 

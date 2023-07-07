@@ -1403,10 +1403,16 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 	)
 	switch w.flashbots.algoType {
 	case ALGO_GREEDY_BUCKETS:
+		priceCutoffPercent := w.config.PriceCutoffPercent
+		if !(priceCutoffPercent >= 0 && priceCutoffPercent <= 100) {
+			return nil, nil, nil, errors.New("invalid price cutoff percent - must be between 0 and 100")
+		}
+
 		algoConf := &algorithmConfig{
 			DropRevertibleTxOnErr:  w.flashbots.discardRevertedHashes,
 			EnforceProfit:          true,
-			ProfitThresholdPercent: defaultProfitPercentMinimum,
+			ProfitThresholdPercent: defaultProfitThresholdPercent,
+			PriceCutoffPercent:     priceCutoffPercent,
 		}
 		builder := newGreedyBucketsBuilder(
 			w.chain, w.chainConfig, algoConf, w.blockList, env,
