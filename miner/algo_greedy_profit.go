@@ -88,7 +88,7 @@ func (b *greedyProfitBuilder) mergeOrdersIntoEnvDiff(
 		}
 
 		if tx := order.Tx(); tx != nil {
-			receipt, skip, err := envDiff.commitTx(tx, b.chainData)
+			_, skip, err := envDiff.commitTx(tx, b.chainData)
 			switch skip {
 			case shiftTx:
 				orders.Shift()
@@ -98,17 +98,17 @@ func (b *greedyProfitBuilder) mergeOrdersIntoEnvDiff(
 
 			if err != nil {
 				log.Trace("could not apply tx", "hash", tx.Hash(), "err", err)
-
-				// attempt to retry transaction commit up to retryLimit
-				// the gas used is set for the order to re-calculate profit of the transaction for subsequent retries
-				if receipt != nil {
-					// if the receipt is nil we don't attempt to retry the transaction - this is to mitigate abuse since
-					// without a receipt the default profit calculation for a transaction uses the gas limit which
-					// can cause the transaction to always be first in any profit-sorted transaction list
-					b.gasUsedMap[order] = receipt.GasUsed
-					CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
-				}
-				continue
+				//
+				//	// attempt to retry transaction commit up to retryLimit
+				//	// the gas used is set for the order to re-calculate profit of the transaction for subsequent retries
+				//	if receipt != nil {
+				//		// if the receipt is nil we don't attempt to retry the transaction - this is to mitigate abuse since
+				//		// without a receipt the default profit calculation for a transaction uses the gas limit which
+				//		// can cause the transaction to always be first in any profit-sorted transaction list
+				//		b.gasUsedMap[order] = receipt.GasUsed
+				//		CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
+				//	}
+				//	continue
 			}
 		} else if bundle := order.Bundle(); bundle != nil {
 			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, b.algoConf)
