@@ -179,6 +179,10 @@ func (tx *Transaction) UnmarshalBinary(b []byte) error {
 	return nil
 }
 
+func (tx *Transaction) Time() time.Time {
+	return tx.time
+}
+
 // decodeTyped decodes a typed transaction from the canonical format.
 func (tx *Transaction) decodeTyped(b []byte) (TxData, error) {
 	if len(b) <= 1 {
@@ -726,7 +730,7 @@ func (t *TransactionsByPriceAndNonce) Shift() {
 // the top of the transaction list is popped and pushed to the heap.
 // Note that this operation should only be performed when the head transaction on the heap is different from the
 // input transaction. This operation is useful in scenarios where the current best head transaction for an account
-// was already popped from the heap and we want to process the next one from the same account.
+// was already popped from the heap, and we want to process the next one from the same account.
 func (t *TransactionsByPriceAndNonce) ShiftAndPushByAccountForTx(tx *Transaction) {
 	if tx == nil {
 		return

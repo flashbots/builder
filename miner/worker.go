@@ -1311,7 +1311,7 @@ func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) 
 		err          error
 	)
 	switch w.flashbots.algoType {
-	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS:
+	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_PROFIT:
 		blockBundles, allBundles, usedSbundles, err = w.fillTransactionsAlgoWorker(interrupt, env)
 	case ALGO_MEV_GETH:
 		blockBundles, allBundles, err = w.fillTransactions(interrupt, env)
@@ -1404,6 +1404,19 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 	start := time.Now()
 
 	switch w.flashbots.algoType {
+	case ALGO_GREEDY_PROFIT:
+		algoConf := &algorithmConfig{
+			EnforceProfit:          true,
+			ExpectedProfit:         nil,
+			ProfitThresholdPercent: defaultProfitThreshold,
+			PriceCutoffPercent:     defaultPriceCutoffPercent,
+		}
+		builder, err := newGreedyProfitBuilder(w.chain, w.chainConfig, algoConf, w.blockList, env, w.config.BuilderTxSigningKey, interrupt)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+
+		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
 	case ALGO_GREEDY_BUCKETS:
 		priceCutoffPercent := w.config.PriceCutoffPercent
 		if !(priceCutoffPercent >= 0 && priceCutoffPercent <= 100) {
