@@ -50,7 +50,17 @@ func newGreedyBucketsBuilder(
 // CutoffPriceFromOrder returns the cutoff price for a given order based on the cutoff percent.
 // For example, if the cutoff percent is 90, the cutoff price will be 90% of the order price, rounded down to the nearest integer.
 func CutoffPriceFromOrder(order *types.TxWithMinerFee, cutoffPercent int) *big.Int {
-	return common.PercentOf(order.Price(), cutoffPercent)
+	percent := new(big.Float).Quo(
+		new(big.Float).SetInt64(int64(cutoffPercent)),
+		new(big.Float).SetInt(common.Big100),
+	)
+	floorPrice := new(big.Float).
+		Mul(
+			new(big.Float).SetInt(order.Price()),
+			percent,
+		)
+	round, _ := floorPrice.Int64()
+	return big.NewInt(round)
 }
 
 // IsOrderInPriceRange returns true if the order price is greater than or equal to the minPrice.
