@@ -3,14 +3,13 @@ package miner
 import (
 	"crypto/ecdsa"
 	"errors"
-	"math/big"
-	"sort"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"math/big"
+	"sort"
 )
 
 // / To use it:
@@ -114,10 +113,10 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 				orders.ShiftAndPushByAccountForTx(tx)
 			}
 
-			effGapPrice, err := tx.EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
-			if err == nil {
-				log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
-			}
+			//effGapPrice, err := tx.EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
+			//if err == nil {
+			//	log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
+			//}
 		} else if bundle := order.Bundle(); bundle != nil {
 			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, algoConf)
 			if err != nil {
@@ -138,8 +137,8 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 				continue
 			}
 
-			log.Trace("Included bundle", "bundleEGP", bundle.MevGasPrice.String(),
-				"gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.TotalEth))
+			//log.Trace("Included bundle", "bundleEGP", bundle.MevGasPrice.String(),
+			//	"gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.TotalEth))
 			usedBundles = append(usedBundles, *bundle)
 		} else if sbundle := order.SBundle(); sbundle != nil {
 			usedEntry := types.UsedSBundle{
@@ -147,7 +146,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 			}
 			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, algoConf)
 			if err != nil {
-				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
+				//log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
 
 				var e *lowProfitError
 				if errors.As(err, &e) {
@@ -164,6 +163,9 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 						usedEntry.Success = false
 						usedSbundles = append(usedSbundles, usedEntry)
 					}
+				} else {
+					usedEntry.Success = false
+					usedSbundles = append(usedSbundles, usedEntry)
 				}
 				continue
 			}
@@ -177,6 +179,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 			panic("unsupported order type found")
 		}
 	}
+
 	return usedBundles, usedSbundles
 }
 
