@@ -50,17 +50,7 @@ func newGreedyBucketsBuilder(
 // CutoffPriceFromOrder returns the cutoff price for a given order based on the cutoff percent.
 // For example, if the cutoff percent is 90, the cutoff price will be 90% of the order price, rounded down to the nearest integer.
 func CutoffPriceFromOrder(order *types.TxWithMinerFee, cutoffPercent int) *big.Int {
-	percent := new(big.Float).Quo(
-		new(big.Float).SetInt64(int64(cutoffPercent)),
-		new(big.Float).SetInt(common.Big100),
-	)
-	floorPrice := new(big.Float).
-		Mul(
-			new(big.Float).SetInt(order.Price()),
-			percent,
-		)
-	round, _ := floorPrice.Int64()
-	return big.NewInt(round)
+	return common.PercentOf(order.Price(), cutoffPercent)
 }
 
 // IsOrderInPriceRange returns true if the order price is greater than or equal to the minPrice.
@@ -123,10 +113,10 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 				orders.ShiftAndPushByAccountForTx(tx)
 			}
 
-			//effGapPrice, err := tx.EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
-			//if err == nil {
-			//	log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
-			//}
+			effGapPrice, err := tx.EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
+			if err == nil {
+				log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
+			}
 		} else if bundle := order.Bundle(); bundle != nil {
 			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, algoConf)
 			if err != nil {
@@ -147,8 +137,8 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 				continue
 			}
 
-			//log.Trace("Included bundle", "bundleEGP", bundle.MevGasPrice.String(),
-			//	"gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.TotalEth))
+			log.Trace("Included bundle", "bundleEGP", bundle.MevGasPrice.String(),
+				"gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.TotalEth))
 			usedBundles = append(usedBundles, *bundle)
 		} else if sbundle := order.SBundle(); sbundle != nil {
 			usedEntry := types.UsedSBundle{
@@ -156,7 +146,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 			}
 			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, algoConf)
 			if err != nil {
-				//log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
+				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
 
 				var e *lowProfitError
 				if errors.As(err, &e) {
