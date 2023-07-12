@@ -23,7 +23,6 @@ type greedyProfitBuilder struct {
 	chainData        chainData
 	builderKey       *ecdsa.PrivateKey
 	interrupt        *int32
-	gasUsedMap       map[*types.TxWithMinerFee]uint64
 	algoConf         algorithmConfig
 }
 
@@ -39,7 +38,6 @@ func newGreedyProfitBuilder(
 		chainData:        chainData{chainConfig: chainConfig, chain: chain, blacklist: blacklist},
 		builderKey:       key,
 		interrupt:        interrupt,
-		gasUsedMap:       make(map[*types.TxWithMinerFee]uint64),
 		algoConf:         *algoConf,
 	}, nil
 }
@@ -56,7 +54,7 @@ func (b *greedyProfitBuilder) mergeOrdersIntoEnvDiff(
 	var (
 		usedBundles  []types.SimulatedBundle
 		usedSbundles []types.UsedSBundle
-		retryMap     = make(map[*types.TxWithMinerFee]int)
+		retryMap     = make(map[*types.TxWithMinerFee]int, orders.Len())
 
 		CheckRetryOrderAndReinsert = func(
 			order *types.TxWithMinerFee, orders *txsByProfitAndTime,
@@ -88,7 +86,7 @@ func (b *greedyProfitBuilder) mergeOrdersIntoEnvDiff(
 		}
 
 		if tx := order.Tx(); tx != nil {
-			_, skip, err := envDiff.commitTx(tx, b.chainData)
+			receipt, skip, err := envDiff.commitTx(tx, b.chainData)
 			switch skip {
 			case shiftTx:
 				orders.Shift()
@@ -98,17 +96,15 @@ func (b *greedyProfitBuilder) mergeOrdersIntoEnvDiff(
 
 			if err != nil {
 				log.Trace("could not apply tx", "hash", tx.Hash(), "err", err)
-				//
-				//	// attempt to retry transaction commit up to retryLimit
-				//	// the gas used is set for the order to re-calculate profit of the transaction for subsequent retries
-				//	if receipt != nil {
-				//		// if the receipt is nil we don't attempt to retry the transaction - this is to mitigate abuse since
-				//		// without a receipt the default profit calculation for a transaction uses the gas limit which
-				//		// can cause the transaction to always be first in any profit-sorted transaction list
-				//		b.gasUsedMap[order] = receipt.GasUsed
-				//		CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
-				//	}
-				//	continue
+				// attempt to retry transaction commit up to retryLimit
+				// the gas used is set for the order to re-calculate profit of the transaction for subsequent retries
+				if receipt != nil {
+					// if the receipt is nil we don't attempt to retry the transaction - this is to mitigate abuse since
+					// without a receipt the default profit calculation for a transaction uses the gas limit which
+					// can cause the transaction to always be first in any profit-sorted transaction list
+					orders.GasUsedMap[order] = receipt.GasUsed
+					CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
+				}
 			}
 		} else if bundle := order.Bundle(); bundle != nil {
 			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, b.algoConf)
@@ -218,10 +214,11 @@ func newTransactionsByProfitAndNonce(
 	}
 
 	h := txsByProfitAndTime{
-		Entries: heads,
-		BaseFee: baseFee,
-		Txs:     txs,
-		Signer:  signer,
+		Entries:    heads,
+		BaseFee:    baseFee,
+		Txs:        txs,
+		Signer:     signer,
+		GasUsedMap: make(map[*types.TxWithMinerFee]uint64, len(heads)),
 	}
 	heap.Init(&h)
 
@@ -231,10 +228,11 @@ func newTransactionsByProfitAndNonce(
 // txsByProfitAndTime implements both the sort and the heap interface, making it useful
 // for all at once sorting as well as individually adding and removing elements.
 type txsByProfitAndTime struct {
-	Txs     map[common.Address]types.Transactions // Per account nonce-sorted list of transactions
-	Entries []*types.TxWithMinerFee
-	BaseFee *big.Int     // Current base fee
-	Signer  types.Signer // Signer for the set of transactions
+	Txs        map[common.Address]types.Transactions // Per account nonce-sorted list of transactions
+	Entries    []*types.TxWithMinerFee
+	BaseFee    *big.Int     // Current base fee
+	Signer     types.Signer // Signer for the set of transactions
+	GasUsedMap map[*types.TxWithMinerFee]uint64
 }
 
 func (t *txsByProfitAndTime) Len() int { return len(t.Entries) }
@@ -242,7 +240,9 @@ func (t *txsByProfitAndTime) Len() int { return len(t.Entries) }
 func (t *txsByProfitAndTime) Less(i, j int) bool {
 	// If the profits are equal, use the time the transaction was first seen for
 	// deterministic sorting
-	cmp := t.Entries[i].Profit(t.BaseFee, 0).Cmp(t.Entries[j].Profit(t.BaseFee, 0))
+	cmp := t.Entries[i].Profit(t.BaseFee, t.GasUsedMap[t.Entries[i]]).Cmp(
+		t.Entries[j].Profit(t.BaseFee, t.GasUsedMap[t.Entries[j]]))
+
 	if cmp == 0 {
 		if txI, txJ := t.Entries[i].Tx(), t.Entries[j].Tx(); txI != nil && txJ != nil {
 			return txI.Time().Before(txJ.Time())
