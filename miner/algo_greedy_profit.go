@@ -52,8 +52,8 @@ func (b *greedyProfitBuilder) mergeOrdersIntoEnvDiff(
 	const retryLimit = 1
 
 	var (
-		usedBundles  []types.SimulatedBundle
-		usedSbundles []types.UsedSBundle
+		usedBundles  = make([]types.SimulatedBundle, 0, orders.Len())
+		usedSbundles = make([]types.UsedSBundle, 0, orders.Len())
 		retryMap     = make(map[*types.TxWithMinerFee]int, orders.Len())
 
 		CheckRetryOrderAndReinsert = func(
@@ -102,7 +102,7 @@ func (b *greedyProfitBuilder) mergeOrdersIntoEnvDiff(
 					// if the receipt is nil we don't attempt to retry the transaction - this is to mitigate abuse since
 					// without a receipt the default profit calculation for a transaction uses the gas limit which
 					// can cause the transaction to always be first in any profit-sorted transaction list
-					orders.GasUsedMap[order] = receipt.GasUsed
+					orders.ProfitMap[order.Hash()] = *order.Profit(envDiff.header.BaseFee, receipt.GasUsed)
 					CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
 				}
 			}
@@ -184,12 +184,14 @@ func newTransactionsByProfitAndNonce(
 	bundles []types.SimulatedBundle, sbundles []*types.SimSBundle, baseFee *big.Int) *txsByProfitAndTime {
 	// Initialize a profit and received time based heap with the head transactions
 	heads := make([]*types.TxWithMinerFee, 0, len(txs)+len(bundles)+len(sbundles))
+	profits := make(map[common.Hash]big.Int, len(txs)+len(bundles)+len(sbundles))
 
 	for i := range sbundles {
 		wrapped, err := types.NewSBundleWithMinerFee(sbundles[i], baseFee)
 		if err != nil {
 			continue
 		}
+		profits[sbundles[i].Bundle.Hash()] = *sbundles[i].Profit
 		heads = append(heads, wrapped)
 	}
 
@@ -198,6 +200,7 @@ func newTransactionsByProfitAndNonce(
 		if err != nil {
 			continue
 		}
+		profits[bundles[i].OriginalBundle.Hash] = *bundles[i].EthSentToCoinbase
 		heads = append(heads, wrapped)
 	}
 
@@ -209,16 +212,17 @@ func newTransactionsByProfitAndNonce(
 			delete(txs, from)
 			continue
 		}
+		profits[accTxs[0].Hash()] = *wrapped.Profit(baseFee, 0)
 		heads = append(heads, wrapped)
 		txs[from] = accTxs[1:]
 	}
 
 	h := txsByProfitAndTime{
-		Entries:    heads,
-		BaseFee:    baseFee,
-		Txs:        txs,
-		Signer:     signer,
-		GasUsedMap: make(map[*types.TxWithMinerFee]uint64, len(heads)),
+		Entries:   heads,
+		BaseFee:   baseFee,
+		Txs:       txs,
+		Signer:    signer,
+		ProfitMap: profits,
 	}
 	heap.Init(&h)
 
@@ -228,11 +232,11 @@ func newTransactionsByProfitAndNonce(
 // txsByProfitAndTime implements both the sort and the heap interface, making it useful
 // for all at once sorting as well as individually adding and removing elements.
 type txsByProfitAndTime struct {
-	Txs        map[common.Address]types.Transactions // Per account nonce-sorted list of transactions
-	Entries    []*types.TxWithMinerFee
-	BaseFee    *big.Int     // Current base fee
-	Signer     types.Signer // Signer for the set of transactions
-	GasUsedMap map[*types.TxWithMinerFee]uint64
+	Txs       map[common.Address]types.Transactions // Per account nonce-sorted list of transactions
+	Entries   []*types.TxWithMinerFee
+	BaseFee   *big.Int     // Current base fee
+	Signer    types.Signer // Signer for the set of transactions
+	ProfitMap map[common.Hash]big.Int
 }
 
 func (t *txsByProfitAndTime) Len() int { return len(t.Entries) }
@@ -240,15 +244,45 @@ func (t *txsByProfitAndTime) Len() int { return len(t.Entries) }
 func (t *txsByProfitAndTime) Less(i, j int) bool {
 	// If the profits are equal, use the time the transaction was first seen for
 	// deterministic sorting
-	cmp := t.Entries[i].Profit(t.BaseFee, t.GasUsedMap[t.Entries[i]]).Cmp(
-		t.Entries[j].Profit(t.BaseFee, t.GasUsedMap[t.Entries[j]]))
+	var (
+		iOrder, jOrder   = t.Entries[i], t.Entries[j]
+		iProfit, jProfit = t.ProfitMap[iOrder.Hash()], t.ProfitMap[jOrder.Hash()]
+		cmp              = (&iProfit).Cmp(&jProfit)
+	)
 
 	if cmp == 0 {
-		if txI, txJ := t.Entries[i].Tx(), t.Entries[j].Tx(); txI != nil && txJ != nil {
-			return txI.Time().Before(txJ.Time())
-		} else if bundleI, bundleJ := t.Entries[i].Bundle(), t.Entries[j].Bundle(); bundleI != nil && bundleJ != nil {
-			return bundleI.TotalGasUsed <= bundleJ.TotalGasUsed
-		} else if t.Entries[i].Bundle() != nil {
+		var (
+			iTx, iBundle, iSBundle = iOrder.Tx(), iOrder.Bundle(), iOrder.SBundle()
+			jTx, jBundle, jSBundle = jOrder.Tx(), jOrder.Bundle(), jOrder.SBundle()
+		)
+		if iTx != nil {
+			if jTx != nil {
+				return iTx.Time().Before(jTx.Time())
+			}
+			return true
+		}
+
+		if iBundle != nil {
+			if jBundle != nil {
+				return iBundle.TotalGasUsed <= jBundle.TotalGasUsed
+			}
+
+			if jSBundle != nil {
+				return iBundle.MevGasPrice.Cmp(jSBundle.MevGasPrice) <= 0
+			}
+
+			return false
+		}
+
+		if iSBundle != nil {
+			if jSBundle != nil {
+				return iSBundle.MevGasPrice.Cmp(jSBundle.MevGasPrice) <= 0
+			}
+
+			if jBundle != nil {
+				return iSBundle.MevGasPrice.Cmp(jBundle.MevGasPrice) <= 0
+			}
+
 			return false
 		}
 

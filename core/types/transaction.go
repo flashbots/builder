@@ -529,6 +529,18 @@ func (t *TxWithMinerFee) Price() *big.Int {
 	return new(big.Int).Set(t.minerFee)
 }
 
+func (t *TxWithMinerFee) Hash() common.Hash {
+	if tx := t.Tx(); tx != nil {
+		return tx.Hash()
+	} else if bundle := t.Bundle(); bundle != nil {
+		return bundle.OriginalBundle.Hash
+	} else if sbundle := t.SBundle(); sbundle != nil {
+		return sbundle.Bundle.Hash()
+	} else {
+		panic("hash called on unsupported order type")
+	}
+}
+
 func (t *TxWithMinerFee) Profit(baseFee *big.Int, gasUsed uint64) *big.Int {
 	if tx := t.Tx(); tx != nil {
 		profit := new(big.Int).Sub(tx.GasPrice(), baseFee)
