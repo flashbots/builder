@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 	"math/big"
+	"sync"
 )
 
 // / To use it:
@@ -24,6 +25,18 @@ type greedyProfitBuilder struct {
 	builderKey       *ecdsa.PrivateKey
 	interrupt        *int32
 	algoConf         algorithmConfig
+}
+
+var heapPool = sync.Pool{
+	New: func() interface{} {
+		return &txsByProfitAndTime{
+			Txs:       make(map[common.Address]types.Transactions, 256),
+			Entries:   make([]*types.TxWithMinerFee, 0, 256),
+			BaseFee:   new(big.Int),
+			Signer:    nil,
+			ProfitMap: make(map[common.Hash]big.Int, 256),
+		}
+	},
 }
 
 func newGreedyProfitBuilder(
@@ -172,19 +185,33 @@ func (b *greedyProfitBuilder) mergeOrdersIntoEnvDiff(
 }
 
 func (b *greedyProfitBuilder) buildBlock(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
-	orders := newTransactionsByProfitAndNonce(b.inputEnvironment.signer, transactions, simBundles, simSBundles, b.inputEnvironment.header.BaseFee)
+	t := heapPool.Get().(*txsByProfitAndTime)
+	for k := range t.Txs {
+		delete(t.Txs, k)
+	}
+	t.Entries = t.Entries[:0]
+	t.BaseFee = b.inputEnvironment.header.BaseFee
+	t.Signer = b.inputEnvironment.signer
+	for k := range t.ProfitMap {
+		delete(t.ProfitMap, k)
+	}
+	defer heapPool.Put(t)
+	//orders := newTransactionsByProfitAndNonce(t, b.inputEnvironment.signer, transactions, simBundles, simSBundles, b.inputEnvironment.header.BaseFee)
+	newTransactionsByProfitAndNonce(t, b.inputEnvironment.signer, transactions, simBundles, simSBundles, b.inputEnvironment.header.BaseFee)
 	envDiff := newEnvironmentDiff(b.inputEnvironment.copy())
-	usedBundles, usedSbundles := b.mergeOrdersIntoEnvDiff(envDiff, orders)
+	usedBundles, usedSbundles := b.mergeOrdersIntoEnvDiff(envDiff, t)
 	envDiff.applyToBaseEnv()
 	return envDiff.baseEnvironment, usedBundles, usedSbundles
 }
 
 func newTransactionsByProfitAndNonce(
-	signer types.Signer, txs map[common.Address]types.Transactions,
-	bundles []types.SimulatedBundle, sbundles []*types.SimSBundle, baseFee *big.Int) *txsByProfitAndTime {
+	t *txsByProfitAndTime, signer types.Signer, txs map[common.Address]types.Transactions,
+	bundles []types.SimulatedBundle, sbundles []*types.SimSBundle, baseFee *big.Int) {
 	// Initialize a profit and received time based heap with the head transactions
-	heads := make([]*types.TxWithMinerFee, 0, len(txs)+len(bundles)+len(sbundles))
-	profits := make(map[common.Hash]big.Int, len(txs)+len(bundles)+len(sbundles))
+	heads := t.Entries
+	profits := t.ProfitMap
+	//heads := make([]*types.TxWithMinerFee, 0, len(txs)+len(bundles)+len(sbundles))
+	//profits := make(map[common.Hash]big.Int, len(txs)+len(bundles)+len(sbundles))
 
 	for i := range sbundles {
 		wrapped, err := types.NewSBundleWithMinerFee(sbundles[i], baseFee)
@@ -217,16 +244,17 @@ func newTransactionsByProfitAndNonce(
 		txs[from] = accTxs[1:]
 	}
 
-	h := txsByProfitAndTime{
-		Entries:   heads,
-		BaseFee:   baseFee,
-		Txs:       txs,
-		Signer:    signer,
-		ProfitMap: profits,
-	}
-	heap.Init(&h)
-
-	return &h
+	//h := txsByProfitAndTime{
+	//	Entries:   heads,
+	//	BaseFee:   baseFee,
+	//	Txs:       txs,
+	//	Signer:    signer,
+	//	ProfitMap: profits,
+	//}
+	t.Entries = heads
+	t.ProfitMap = profits
+	heap.Init(t)
+	//return t
 }
 
 // txsByProfitAndTime implements both the sort and the heap interface, making it useful
