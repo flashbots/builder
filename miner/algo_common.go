@@ -313,7 +313,7 @@ func (envDiff *environmentDiff) _bundle(bundle *types.SimulatedBundle, chData ch
 				statedb     = envDiff.state
 				chainConfig = chData.chainConfig
 
-				//snap = envDiff.state.Snapshot()
+				snap = envDiff.state.Snapshot()
 			)
 			msg, err := core.TransactionToMessage(tx, types.MakeSigner(chData.chainConfig, header.Number), baseFee)
 			if err != nil {
@@ -327,13 +327,13 @@ func (envDiff *environmentDiff) _bundle(bundle *types.SimulatedBundle, chData ch
 			vmenv.Reset(txContext, statedb)
 			result, err := core.ApplyMessage(vmenv, msg, gasPool)
 			if err != nil {
-				//statedb.RevertToSnapshot(snap)
+				statedb.RevertToSnapshot(snap)
 				return nil, 0, 0, err
 			}
 
 			err = hook()
 			if err != nil {
-				//statedb.RevertToSnapshot(snap)
+				statedb.RevertToSnapshot(snap)
 				return nil, 0, 0, err
 			}
 
@@ -365,6 +365,7 @@ func (envDiff *environmentDiff) _bundle(bundle *types.SimulatedBundle, chData ch
 		}
 	)
 
+	envDiff.state.Finalise(true)
 	var (
 		gp = new(core.GasPool).AddGas(envDiff.gasPool.Gas())
 		//cumulativeGas uint64
