@@ -287,7 +287,7 @@ func (t *txsByProfitAndTime) Less(i, j int) bool {
 			if jTx != nil {
 				return iTx.Time().Before(jTx.Time())
 			}
-			return true
+			return false
 		}
 
 		if iBundle != nil {
@@ -299,7 +299,7 @@ func (t *txsByProfitAndTime) Less(i, j int) bool {
 				return iBundle.MevGasPrice.Cmp(jSBundle.MevGasPrice) <= 0
 			}
 
-			return false
+			return true
 		}
 
 		if iSBundle != nil {
@@ -311,10 +311,10 @@ func (t *txsByProfitAndTime) Less(i, j int) bool {
 				return iSBundle.MevGasPrice.Cmp(jBundle.MevGasPrice) <= 0
 			}
 
-			return false
+			return true
 		}
 
-		return true
+		return false
 	}
 
 	return cmp > 0

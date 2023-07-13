@@ -316,7 +316,7 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 
 	// allow >-1% divergence
 	actualEGP := new(big.Int).Mul(bundleActualEffGP, common.Big100)  // bundle actual effective gas price * 100
-	simulatedEGP := new(big.Int).Mul(bundleSimEffGP, big.NewInt(90)) // bundle simulated effective gas price * 90
+	simulatedEGP := new(big.Int).Mul(bundleSimEffGP, big.NewInt(99)) // bundle simulated effective gas price * 99
 
 	if simulatedEGP.Cmp(actualEGP) > 0 {
 		log.Trace("Bundle underpays after inclusion", "bundle", bundle.OriginalBundle.Hash)
