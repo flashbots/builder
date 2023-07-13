@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/crypto"
 	"math/big"
 	"sync/atomic"
 
@@ -102,30 +103,30 @@ func newEnvironmentDiff(env *environment) *environmentDiff {
 	}
 }
 
-func (e *environmentDiff) copy() *environmentDiff {
-	gasPool := new(core.GasPool).AddGas(e.gasPool.Gas())
+func (envDiff *environmentDiff) copy() *environmentDiff {
+	gasPool := new(core.GasPool).AddGas(envDiff.gasPool.Gas())
 
 	return &environmentDiff{
-		baseEnvironment: e.baseEnvironment.copy(),
-		header:          types.CopyHeader(e.header),
+		baseEnvironment: envDiff.baseEnvironment.copy(),
+		header:          types.CopyHeader(envDiff.header),
 		gasPool:         gasPool,
-		state:           e.state.Copy(),
-		newProfit:       new(big.Int).Set(e.newProfit),
-		newTxs:          e.newTxs[:],
-		newReceipts:     e.newReceipts[:],
+		state:           envDiff.state.Copy(),
+		newProfit:       new(big.Int).Set(envDiff.newProfit),
+		newTxs:          envDiff.newTxs[:],
+		newReceipts:     envDiff.newReceipts[:],
 	}
 }
 
-func (e *environmentDiff) applyToBaseEnv() {
-	env := e.baseEnvironment
-	env.gasPool = new(core.GasPool).AddGas(e.gasPool.Gas())
-	env.header = e.header
+func (envDiff *environmentDiff) applyToBaseEnv() {
+	env := envDiff.baseEnvironment
+	env.gasPool = new(core.GasPool).AddGas(envDiff.gasPool.Gas())
+	env.header = envDiff.header
 	env.state.StopPrefetcher()
-	env.state = e.state
-	env.profit.Add(env.profit, e.newProfit)
-	env.tcount += len(e.newTxs)
-	env.txs = append(env.txs, e.newTxs...)
-	env.receipts = append(env.receipts, e.newReceipts...)
+	env.state = envDiff.state
+	env.profit.Add(env.profit, envDiff.newProfit)
+	env.tcount += len(envDiff.newTxs)
+	env.txs = append(env.txs, envDiff.newTxs...)
+	env.receipts = append(env.receipts, envDiff.newReceipts...)
 }
 
 func checkInterrupt(i *int32) bool {
@@ -246,6 +247,214 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 	envDiff.newReceipts = append(envDiff.newReceipts, receipt)
 
 	return receipt, shiftTx, nil
+}
+
+func (envDiff *environmentDiff) _bundle(bundle *types.SimulatedBundle, chData chainData, interrupt *int32, algoConf algorithmConfig) error {
+	// we don't want to finalize until all the transactions in the bundle have been successfully applied, otherwise snapshot fails
+	var (
+		coinbase = envDiff.baseEnvironment.coinbase
+
+		//coinbaseBalanceBefore = envDiff.state.GetBalance(coinbase)
+
+		//profitBefore = new(big.Int).Set(envDiff.newProfit)
+		hasBaseFee = envDiff.header.BaseFee != nil
+
+		//gasUsed   uint64
+		bundleErr error
+
+		TryApply = func(
+			envDiff *environmentDiff, chData chainData, header *types.Header,
+			baseFee *big.Int, tx *types.Transaction,
+			vmConf vm.Config, gp *core.GasPool,
+		) (*types.Receipt, uint64, uint64, error) { // receipt, cumulativeGas, gasPool, error
+			envDiff.state.SetTxContext(tx.Hash(), envDiff.baseEnvironment.tcount+len(envDiff.newTxs))
+
+			blacklist := chData.blacklist
+			if len(blacklist) == 0 {
+				// TODO: apply transaction without blacklist
+			}
+
+			sender, err := types.Sender(envDiff.baseEnvironment.signer, tx)
+			if err != nil {
+				return nil, 0, 0, err
+			}
+
+			if _, in := blacklist[sender]; in {
+				return nil, 0, 0, errors.New("blacklist violation, tx.sender")
+			}
+
+			if to := tx.To(); to != nil {
+				if _, in := blacklist[*to]; in {
+					return nil, 0, 0, errors.New("blacklist violation, tx.to")
+				}
+			}
+
+			// we set precompile to nil, but they are set in the validation code
+			// there will be no difference in the result if precompile is not it the blocklist
+			touchTracer := logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, nil)
+			vmConf.Tracer = touchTracer
+			vmConf.Debug = true
+
+			var (
+				hook = func() error {
+					for _, accessTuple := range touchTracer.AccessList() {
+						if _, in := blacklist[accessTuple.Address]; in {
+							return errors.New("blacklist violation, tx trace")
+						}
+					}
+					return nil
+				}
+
+				used    = header.GasUsed
+				gasPool = new(core.GasPool).AddGas(gp.Gas())
+
+				bc          = chData.chain
+				author      = coinbase
+				statedb     = envDiff.state
+				chainConfig = chData.chainConfig
+
+				//snap = envDiff.state.Snapshot()
+			)
+			msg, err := core.TransactionToMessage(tx, types.MakeSigner(chData.chainConfig, header.Number), baseFee)
+			if err != nil {
+				return nil, 0, 0, err
+			}
+			// Create a new context to be used in the EVM environment
+			blockContext := core.NewEVMBlockContext(header, bc, &author)
+			vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, chainConfig, vmConf)
+
+			txContext := core.NewEVMTxContext(msg)
+			vmenv.Reset(txContext, statedb)
+			result, err := core.ApplyMessage(vmenv, msg, gasPool)
+			if err != nil {
+				//statedb.RevertToSnapshot(snap)
+				return nil, 0, 0, err
+			}
+
+			err = hook()
+			if err != nil {
+				//statedb.RevertToSnapshot(snap)
+				return nil, 0, 0, err
+			}
+
+			used += result.UsedGas
+
+			// Create a new receipt for the transaction, storing the intermediate root and gas used
+			// by the tx.
+			receipt := &types.Receipt{Type: tx.Type(), PostState: make([]byte, 0), CumulativeGasUsed: used}
+			if result.Failed() {
+				receipt.Status = types.ReceiptStatusFailed
+			} else {
+				receipt.Status = types.ReceiptStatusSuccessful
+			}
+			receipt.TxHash = tx.Hash()
+			receipt.GasUsed = result.UsedGas
+
+			// If the transaction created a contract, store the creation address in the receipt.
+			if msg.To == nil {
+				receipt.ContractAddress = crypto.CreateAddress(vmenv.TxContext.Origin, tx.Nonce())
+			}
+
+			// Set the receipt logs and create the bloom filter.
+			receipt.Logs = statedb.GetLogs(tx.Hash(), header.Number.Uint64(), header.Hash())
+			receipt.Bloom = types.CreateBloom(types.Receipts{receipt})
+			receipt.BlockHash = header.Hash()
+			receipt.BlockNumber = header.Number
+			receipt.TransactionIndex = uint(statedb.TxIndex())
+			return receipt, used, gasPool.Gas(), nil
+		}
+	)
+
+	var (
+		gp = new(core.GasPool).AddGas(envDiff.gasPool.Gas())
+		//cumulativeGas uint64
+		txs         = make([]*types.Transaction, 0, len(bundle.OriginalBundle.Txs))
+		receipts    = make([]*types.Receipt, 0, len(bundle.OriginalBundle.Txs))
+		gasUsed     uint64
+		profitTally = new(big.Int)
+
+		snap = envDiff.state.Snapshot()
+
+		header = types.CopyHeader(envDiff.header)
+	)
+	for _, tx := range bundle.OriginalBundle.Txs {
+		if hasBaseFee && tx.Type() == types.DynamicFeeTxType {
+			// Sanity check for extremely large numbers
+			if tx.GasFeeCap().BitLen() > 256 {
+				bundleErr = core.ErrFeeCapVeryHigh
+				break
+			}
+			if tx.GasTipCap().BitLen() > 256 {
+				bundleErr = core.ErrTipVeryHigh
+				break
+			}
+
+			// Ensure gasFeeCap is greater than or equal to gasTipCap.
+			if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
+				bundleErr = core.ErrTipAboveFeeCap
+				break
+			}
+		}
+
+		if tx.Value().Sign() == -1 {
+			bundleErr = core.ErrNegativeValue
+			break
+		}
+
+		gasPrice, err := tx.EffectiveGasTip(envDiff.header.BaseFee)
+		if err != nil {
+			bundleErr = err
+			break
+		}
+
+		_, err = types.Sender(envDiff.baseEnvironment.signer, tx)
+		if err != nil {
+			bundleErr = err
+			break
+		}
+
+		if checkInterrupt(interrupt) {
+			bundleErr = errInterrupt
+			break
+		}
+
+		// Try committing the transaction but without finalisation
+		receipt, cumulative, gasPool, err := TryApply(envDiff, chData, header,
+			header.BaseFee, tx, *chData.chain.GetVMConfig(), envDiff.gasPool)
+		if err != nil {
+			bundleErr = err
+			break
+		}
+
+		if receipt.Status != types.ReceiptStatusSuccessful && !bundle.OriginalBundle.RevertingHash(tx.Hash()) {
+			bundleErr = errors.New("bundle tx revert")
+			break
+		}
+
+		// Update the gas pool and the cumulative gas used
+		gp.SetGas(gasPool)
+		profitTally.Add(profitTally, new(big.Int).Mul(gasPrice, new(big.Int).SetUint64(receipt.GasUsed)))
+		header.GasUsed = cumulative
+		//cumulativeGas = cumulative
+		txs = append(txs, tx)
+		receipts = append(receipts, receipt)
+		gasUsed += receipt.GasUsed
+	}
+
+	if bundleErr != nil {
+		envDiff.state.RevertToSnapshot(snap)
+		return bundleErr
+	}
+	// skip profit calculation for now cause that gets complicated
+	// TODO: actually if we tally up the profit diffs and egp diffs we can calculate the profit without finalizing state
+	envDiff.state.Finalise(true)
+	envDiff.gasPool.SetGas(gp.Gas())
+	envDiff.newTxs = append(envDiff.newTxs, txs...)
+	envDiff.newReceipts = append(envDiff.newReceipts, receipts...)
+	envDiff.newProfit = new(big.Int).Add(envDiff.newProfit, profitTally)
+	//envDiff.header.GasUsed += cumulativeGas
+	envDiff.header.GasUsed = header.GasUsed
+	return nil
 }
 
 // Commit Bundle to env diff

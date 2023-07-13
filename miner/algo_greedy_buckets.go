@@ -119,7 +119,8 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 				log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
 			}
 		} else if bundle := order.Bundle(); bundle != nil {
-			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, algoConf)
+			//err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, algoConf)
+			err := envDiff._bundle(bundle, b.chainData, b.interrupt, algoConf)
 			if err != nil {
 				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
 

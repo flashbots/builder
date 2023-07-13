@@ -543,7 +543,7 @@ func TestGetSealingWorkAlgosWithProfit(t *testing.T) {
 		testConfig.BuilderTxSigningKey, err = crypto.GenerateKey()
 		require.NoError(t, err)
 		testConfig.AlgoType = algoType
-		t.Logf("running for %d", algoType)
+		t.Logf("running for %s", algoType.String())
 		testBundles(t)
 	}
 }
