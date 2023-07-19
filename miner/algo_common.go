@@ -451,8 +451,10 @@ func (envDiff *environmentDiff) _bundle(bundle *types.SimulatedBundle, chData ch
 
 	if bundleErr != nil {
 		for i := len(accessLists) - 1; i > 0; i-- {
+			prev := envDiff.state.AccessList().Copy()
 			envDiff.state.RevertToSnapshotWithAccessList(revisions[i], accessLists[i])
-			envDiff.state.SetAccessList(accessLists[i])
+			envDiff.state.SetAccessList(prev)
+			//envDiff.state.SetAccessList(accessLists[i])
 		}
 
 		if len(accessLists) > 1 {
