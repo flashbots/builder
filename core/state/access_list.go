@@ -78,34 +78,6 @@ func (al *accessList) Copy() *accessList {
 	return cp
 }
 
-func (al *accessList) Append(other *accessList) *accessList {
-	for k, v := range other.addresses {
-		if _, exists := al.addresses[k]; !exists {
-			al.addresses[k] = v
-		}
-	}
-
-	for i, slotMap := range other.slots {
-		var newSlotMap map[common.Hash]struct{}
-		if i >= len(al.slots) {
-			newSlotMap = make(map[common.Hash]struct{}, len(slotMap))
-		} else {
-			newSlotMap = al.slots[i]
-		}
-
-		for k := range slotMap {
-			newSlotMap[k] = struct{}{}
-		}
-
-		if i >= len(al.slots) {
-			al.slots = append(al.slots, newSlotMap)
-		} else {
-			al.slots[i] = newSlotMap
-		}
-	}
-	return al
-}
-
 // AddAddress adds an address to the access list, and returns 'true' if the operation
 // caused a change (addr was not previously in the list).
 func (al *accessList) AddAddress(address common.Address) bool {

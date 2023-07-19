@@ -455,7 +455,11 @@ func (envDiff *environmentDiff) _bundle(bundle *types.SimulatedBundle, chData ch
 			envDiff.state.RevertToSnapshotWithAccessList(revisions[i], accessLists[i])
 			envDiff.state.SetAccessList(accessLists[i])
 		}
-		envDiff.state.RevertToSnapshot(revisions[0])
+
+		if len(accessLists) > 1 {
+			envDiff.state.RevertToSnapshotWithAccessList(revisions[0], accessLists[1])
+		}
+		//envDiff.state.RevertToSnapshot(revisions[0])
 		envDiff.state.SetAccessList(originalAccessList)
 		//envDiff.state.RevertToSnapshotWithAccessList(snap, tmpAccessList.Append(envDiff.state.AccessList()))
 		//envDiff.state.SetAccessList(originalAccessList)
