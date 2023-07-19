@@ -17,12 +17,19 @@
 package state
 
 import (
+	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 )
 
 type accessList struct {
 	addresses map[common.Address]int
 	slots     []map[common.Hash]struct{}
+}
+
+type AccessLists []*accessList
+
+func (als AccessLists) Append(al *accessList) AccessLists {
+	return append(als, al)
 }
 
 // ContainsAddress returns true if the address is in the access list.
@@ -55,13 +62,13 @@ func newAccessList() *accessList {
 }
 
 // Copy creates an independent copy of an accessList.
-func (a *accessList) Copy() *accessList {
+func (al *accessList) Copy() *accessList {
 	cp := newAccessList()
-	for k, v := range a.addresses {
+	for k, v := range al.addresses {
 		cp.addresses[k] = v
 	}
-	cp.slots = make([]map[common.Hash]struct{}, len(a.slots))
-	for i, slotMap := range a.slots {
+	cp.slots = make([]map[common.Hash]struct{}, len(al.slots))
+	for i, slotMap := range al.slots {
 		newSlotmap := make(map[common.Hash]struct{}, len(slotMap))
 		for k := range slotMap {
 			newSlotmap[k] = struct{}{}
@@ -69,6 +76,34 @@ func (a *accessList) Copy() *accessList {
 		cp.slots[i] = newSlotmap
 	}
 	return cp
+}
+
+func (al *accessList) Append(other *accessList) *accessList {
+	for k, v := range other.addresses {
+		if _, exists := al.addresses[k]; !exists {
+			al.addresses[k] = v
+		}
+	}
+
+	for i, slotMap := range other.slots {
+		var newSlotMap map[common.Hash]struct{}
+		if i >= len(al.slots) {
+			newSlotMap = make(map[common.Hash]struct{}, len(slotMap))
+		} else {
+			newSlotMap = al.slots[i]
+		}
+
+		for k := range slotMap {
+			newSlotMap[k] = struct{}{}
+		}
+
+		if i >= len(al.slots) {
+			al.slots = append(al.slots, newSlotMap)
+		} else {
+			al.slots[i] = newSlotMap
+		}
+	}
+	return al
 }
 
 // AddAddress adds an address to the access list, and returns 'true' if the operation
@@ -114,7 +149,8 @@ func (al *accessList) DeleteSlot(address common.Address, slot common.Hash) {
 	idx, addrOk := al.addresses[address]
 	// There are two ways this can fail
 	if !addrOk {
-		panic("reverting slot change, address not present in list")
+		panic(fmt.Sprintf("reverting slot change, address %x not present in list", address))
+		//panic("reverting slot change, address not present in list")
 	}
 	slotmap := al.slots[idx]
 	delete(slotmap, slot)

@@ -374,10 +374,15 @@ func (envDiff *environmentDiff) _bundle(bundle *types.SimulatedBundle, chData ch
 		gasUsed     uint64
 		profitTally = new(big.Int)
 
-		snap = envDiff.state.Snapshot()
+		originalAccessList = envDiff.state.AccessList().Copy()
+		snap               = envDiff.state.Snapshot()
+		accessLists        = make(state.AccessLists, 0, len(bundle.OriginalBundle.Txs))
+		revisions          = make([]int, 0, len(bundle.OriginalBundle.Txs))
 
 		header = types.CopyHeader(envDiff.header)
 	)
+	accessLists = accessLists.Append(originalAccessList)
+	revisions = append(revisions, snap)
 	for _, tx := range bundle.OriginalBundle.Txs {
 		if hasBaseFee && tx.Type() == types.DynamicFeeTxType {
 			// Sanity check for extremely large numbers
@@ -427,6 +432,9 @@ func (envDiff *environmentDiff) _bundle(bundle *types.SimulatedBundle, chData ch
 			break
 		}
 
+		accessLists = accessLists.Append(envDiff.state.AccessList().Copy())
+		revisions = append(revisions, envDiff.state.Snapshot())
+
 		if receipt.Status != types.ReceiptStatusSuccessful && !bundle.OriginalBundle.RevertingHash(tx.Hash()) {
 			bundleErr = errors.New("bundle tx revert")
 			break
@@ -443,7 +451,15 @@ func (envDiff *environmentDiff) _bundle(bundle *types.SimulatedBundle, chData ch
 	}
 
 	if bundleErr != nil {
-		envDiff.state.RevertToSnapshot(snap)
+		for i := len(accessLists) - 1; i > 0; i-- {
+			envDiff.state.RevertToSnapshotWithAccessList(revisions[i], accessLists[i])
+			envDiff.state.SetAccessList(accessLists[i])
+		}
+		envDiff.state.RevertToSnapshot(revisions[0])
+		envDiff.state.SetAccessList(originalAccessList)
+		//envDiff.state.RevertToSnapshotWithAccessList(snap, tmpAccessList.Append(envDiff.state.AccessList()))
+		//envDiff.state.SetAccessList(originalAccessList)
+		//envDiff.state.RevertToSnapshot(snap)
 		return bundleErr
 	}
 	// skip profit calculation for now cause that gets complicated

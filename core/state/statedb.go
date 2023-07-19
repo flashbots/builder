@@ -833,6 +833,17 @@ func (s *StateDB) RevertToSnapshot(revid int) {
 	s.validRevisions = s.validRevisions[:idx]
 }
 
+func (s *StateDB) RevertToSnapshotWithAccessList(revid int, accessList *accessList) {
+	prev := s.accessList
+	s.accessList = accessList
+	s.RevertToSnapshot(revid)
+	s.accessList = prev
+}
+
+func (s *StateDB) SetAccessList(accessList *accessList) {
+	s.accessList = accessList
+}
+
 // GetRefund returns the current value of the refund counter.
 func (s *StateDB) GetRefund() uint64 {
 	return s.refund
@@ -1180,4 +1191,8 @@ func (s *StateDB) convertAccountSet(set map[common.Address]struct{}) map[common.
 		}
 	}
 	return ret
+}
+
+func (s *StateDB) AccessList() *accessList {
+	return s.accessList
 }
