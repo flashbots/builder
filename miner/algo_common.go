@@ -453,6 +453,7 @@ func (envDiff *environmentDiff) _bundle(bundle *types.SimulatedBundle, chData ch
 	if bundleErr != nil {
 		for i := len(accessLists) - 2; i > 0; i-- {
 			envDiff.state.RevertToSnapshotWithAccessList(revisions[i], accessLists[i+1])
+			envDiff.state.SetAccessList(accessLists[i])
 		}
 
 		if len(accessLists) > 1 {
