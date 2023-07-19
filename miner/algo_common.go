@@ -427,13 +427,12 @@ func (envDiff *environmentDiff) _bundle(bundle *types.SimulatedBundle, chData ch
 		// Try committing the transaction but without finalisation
 		receipt, cumulative, gasPool, err := TryApply(envDiff, chData, header,
 			header.BaseFee, tx, *chData.chain.GetVMConfig(), envDiff.gasPool)
+		accessLists = accessLists.Append(envDiff.state.AccessList().Copy())
+		revisions = append(revisions, envDiff.state.Snapshot())
 		if err != nil {
 			bundleErr = err
 			break
 		}
-
-		accessLists = accessLists.Append(envDiff.state.AccessList().Copy())
-		revisions = append(revisions, envDiff.state.Snapshot())
 
 		if receipt.Status != types.ReceiptStatusSuccessful && !bundle.OriginalBundle.RevertingHash(tx.Hash()) {
 			bundleErr = errors.New("bundle tx revert")
