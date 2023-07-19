@@ -449,12 +449,10 @@ func (envDiff *environmentDiff) _bundle(bundle *types.SimulatedBundle, chData ch
 		gasUsed += receipt.GasUsed
 	}
 
+	accessLists = accessLists.Append(envDiff.state.AccessList().Copy())
 	if bundleErr != nil {
-		for i := len(accessLists) - 1; i > 0; i-- {
-			prev := envDiff.state.AccessList().Copy()
-			envDiff.state.RevertToSnapshotWithAccessList(revisions[i], accessLists[i])
-			envDiff.state.SetAccessList(prev)
-			//envDiff.state.SetAccessList(accessLists[i])
+		for i := len(accessLists) - 2; i > 0; i-- {
+			envDiff.state.RevertToSnapshotWithAccessList(revisions[i], accessLists[i+1])
 		}
 
 		if len(accessLists) > 1 {
