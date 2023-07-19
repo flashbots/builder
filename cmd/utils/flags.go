@@ -1688,6 +1688,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.BuilderRateLimitMaxBurst = ctx.Int(BuilderRateLimitMaxBurst.Name)
 	cfg.BuilderSubmissionOffset = ctx.Duration(BuilderSubmissionOffset.Name)
 	cfg.EnableCancellations = ctx.IsSet(BuilderEnableCancellations.Name)
+	cfg.BuilderRateLimitResubmitInterval = ctx.String(BuilderBlockResubmitInterval.Name)
 }
 
 // SetNodeConfig applies node-related command line flags to the config.
