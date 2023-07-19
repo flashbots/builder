@@ -109,6 +109,9 @@ type StateDB struct {
 	validRevisions []revision
 	nextRevisionId int
 
+	// Multi-Transaction Snapshot
+	multiTxSnapshot *MultiTxSnapshot
+
 	// Measurements gathered during execution for debugging purposes
 	AccountReads         time.Duration
 	AccountHashes        time.Duration
@@ -833,17 +836,6 @@ func (s *StateDB) RevertToSnapshot(revid int) {
 	s.validRevisions = s.validRevisions[:idx]
 }
 
-func (s *StateDB) RevertToSnapshotWithAccessList(revid int, accessList *accessList) {
-	prev := s.accessList
-	s.accessList = accessList
-	s.RevertToSnapshot(revid)
-	s.accessList = prev
-}
-
-func (s *StateDB) SetAccessList(accessList *accessList) {
-	s.accessList = accessList
-}
-
 // GetRefund returns the current value of the refund counter.
 func (s *StateDB) GetRefund() uint64 {
 	return s.refund
@@ -853,6 +845,9 @@ func (s *StateDB) GetRefund() uint64 {
 // the journal as well as the refunds. Finalise, however, will not push any updates
 // into the tries just yet. Only IntermediateRoot or Commit will do that.
 func (s *StateDB) Finalise(deleteEmptyObjects bool) {
+	if multiSnap := s.multiTxSnapshot; multiSnap != nil {
+		multiSnap.updateFromJournal(s.journal)
+	}
 	addressesToPrefetch := make([][]byte, 0, len(s.journal.dirties))
 	for addr := range s.journal.dirties {
 		obj, exist := s.stateObjects[addr]
@@ -866,6 +861,10 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			continue
 		}
 		if obj.suicided || (deleteEmptyObjects && obj.empty()) {
+			if multiSnap := s.multiTxSnapshot; multiSnap != nil {
+				multiSnap.updateObjectDeleted(obj.address, obj.deleted)
+			}
+
 			obj.deleted = true
 
 			// We need to maintain account deletions explicitly (will remain
@@ -882,6 +881,11 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			}
 		} else {
 			obj.finalise(true) // Prefetch slots in the background
+		}
+		if multiSnap := s.multiTxSnapshot; multiSnap != nil {
+			_, wasPending := s.stateObjectsPending[addr]
+			_, wasDirty := s.stateObjectsDirty[addr]
+			multiSnap.updatePendingStatus(addr, wasPending, wasDirty)
 		}
 		s.stateObjectsPending[addr] = struct{}{}
 		s.stateObjectsDirty[addr] = struct{}{}
@@ -904,6 +908,10 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
+
+	if s.multiTxSnapshot != nil {
+		s.multiTxSnapshot.invalid = true
+	}
 
 	// If there was a trie prefetcher operating, it gets aborted and irrevocably
 	// modified after we start retrieving tries. Remove it from the statedb after
@@ -1195,4 +1203,33 @@ func (s *StateDB) convertAccountSet(set map[common.Address]struct{}) map[common.
 
 func (s *StateDB) AccessList() *accessList {
 	return s.accessList
+}
+
+// MultiTxSnapshot creates new checkpoint for multi txs reverts
+func (s *StateDB) MultiTxSnapshot() error {
+	if s.multiTxSnapshot != nil {
+		return errors.New("multi tx snapshot already exists")
+	}
+	s.multiTxSnapshot = NewMultiTxSnapshot()
+	return nil
+}
+
+func (s *StateDB) MultiTxSnapshotRevert() error {
+	if s.multiTxSnapshot == nil {
+		return errors.New("multi tx snapshot does not exist")
+	}
+	if s.multiTxSnapshot.invalid {
+		return errors.New("multi tx snapshot is invalid")
+	}
+	s.multiTxSnapshot.revertState(s)
+	s.multiTxSnapshot = nil
+	return nil
+}
+
+func (s *StateDB) MultiTxSnapshotDiscard() error {
+	if s.multiTxSnapshot == nil {
+		return errors.New("multi tx snapshot does not exist")
+	}
+	s.multiTxSnapshot = nil
+	return nil
 }

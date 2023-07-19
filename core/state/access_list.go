@@ -17,19 +17,12 @@
 package state
 
 import (
-	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 )
 
 type accessList struct {
 	addresses map[common.Address]int
 	slots     []map[common.Hash]struct{}
-}
-
-type AccessLists []*accessList
-
-func (als AccessLists) Append(al *accessList) AccessLists {
-	return append(als, al)
 }
 
 // ContainsAddress returns true if the address is in the access list.
@@ -121,8 +114,7 @@ func (al *accessList) DeleteSlot(address common.Address, slot common.Hash) {
 	idx, addrOk := al.addresses[address]
 	// There are two ways this can fail
 	if !addrOk {
-		panic(fmt.Sprintf("reverting slot change, address %x not present in list", address))
-		//panic("reverting slot change, address not present in list")
+		panic("reverting slot change, address not present in list")
 	}
 	slotmap := al.slots[idx]
 	delete(slotmap, slot)
