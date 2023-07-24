@@ -125,7 +125,6 @@ var (
 		utils.MinerNotifyFlag,
 		utils.MinerGasLimitFlag,
 		utils.MinerGasPriceFlag,
-		utils.MinerAlgoTypeFlag,
 		utils.MinerEtherbaseFlag,
 		utils.MinerExtraDataFlag,
 		utils.MinerRecommitIntervalFlag,
@@ -133,7 +132,6 @@ var (
 		utils.MinerMaxMergedBundlesFlag,
 		utils.MinerBlocklistFileFlag,
 		utils.MinerNewPayloadTimeout,
-		utils.MinerPriceCutoffPercentFlag,
 		utils.NATFlag,
 		utils.NoDiscoverFlag,
 		utils.DiscoveryV5Flag,
@@ -159,6 +157,8 @@ var (
 
 	builderApiFlags = []cli.Flag{
 		utils.BuilderEnabled,
+		utils.BuilderAlgoTypeFlag,
+		utils.BuilderPriceCutoffPercentFlag,
 		utils.BuilderEnableValidatorChecks,
 		utils.BuilderBlockValidationBlacklistSourceFilePath,
 		utils.BuilderEnableLocalRelay,

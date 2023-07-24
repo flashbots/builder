@@ -546,12 +546,6 @@ var (
 		Value:    ethconfig.Defaults.Miner.GasPrice,
 		Category: flags.MinerCategory,
 	}
-	MinerAlgoTypeFlag = &cli.StringFlag{
-		Name:     "miner.algotype",
-		Usage:    "Block building algorithm to use [=mev-geth] (mev-geth, greedy, greedy-buckets)",
-		Value:    "mev-geth",
-		Category: flags.MinerCategory,
-	}
 	MinerEtherbaseFlag = &cli.StringFlag{
 		Name:     "miner.etherbase",
 		Usage:    "0x prefixed public address for block mining rewards",
@@ -590,17 +584,6 @@ var (
 		Usage:    "Specify the maximum time allowance for creating a new payload",
 		Value:    ethconfig.Defaults.Miner.NewPayloadTimeout,
 		Category: flags.MinerCategory,
-	}
-	MinerPriceCutoffPercentFlag = &cli.IntFlag{
-		Name: "miner.price_cutoff_percent",
-		Usage: "flashbots - The minimum effective gas price threshold used for bucketing transactions by price. " +
-			"For example if the top transaction in a list has an effective gas price of 1000 wei and price_cutoff_percent " +
-			"is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction " +
-			"is (1000 * 10%) = 100 wei.\n" +
-			"NOTE: This flag is only used when miner.algotype=greedy-buckets",
-		Value:    ethconfig.Defaults.Miner.PriceCutoffPercent,
-		Category: flags.MinerCategory,
-		EnvVars:  []string{"FLASHBOTS_MINER_PRICE_CUTOFF_PERCENT"},
 	}
 
 	// Account settings
@@ -709,6 +692,32 @@ var (
 		Usage:    "Enable the builder",
 		Category: flags.BuilderCategory,
 	}
+
+	// BuilderAlgoTypeFlag replaces MinerAlgoTypeFlag to move away from deprecated miner package
+	// Note: builder.algotype was previously miner.algotype - this flag is still propagated to the miner configuration,
+	// see setMiner in cmd/utils/flags.go
+	BuilderAlgoTypeFlag = &cli.StringFlag{
+		Name:     "builder.algotype",
+		Usage:    "Block building algorithm to use [=mev-geth] (mev-geth, greedy, greedy-buckets)",
+		Value:    "mev-geth",
+		Category: flags.BuilderCategory,
+	}
+
+	// BuilderPriceCutoffPercentFlag replaces MinerPriceCutoffPercentFlag to move away from deprecated miner package
+	// Note: builder.price_cutoff_percent was previously miner.price_cutoff_percent -
+	// this flag is still propagated to the miner configuration, see setMiner in cmd/utils/flags.go
+	BuilderPriceCutoffPercentFlag = &cli.IntFlag{
+		Name: "builder.price_cutoff_percent",
+		Usage: "flashbots - The minimum effective gas price threshold used for bucketing transactions by price. " +
+			"For example if the top transaction in a list has an effective gas price of 1000 wei and price_cutoff_percent " +
+			"is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction " +
+			"is (1000 * 10%) = 100 wei.\n" +
+			"NOTE: This flag is only used when miner.algotype=greedy-buckets",
+		Value:    ethconfig.Defaults.Miner.PriceCutoffPercent,
+		Category: flags.BuilderCategory,
+		EnvVars:  []string{"FLASHBOTS_BUILDER_PRICE_CUTOFF_PERCENT"},
+	}
+
 	BuilderEnableValidatorChecks = &cli.BoolFlag{
 		Name:     "builder.validator_checks",
 		Usage:    "Enable the validator checks",
@@ -1876,10 +1885,10 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	if ctx.IsSet(MinerGasPriceFlag.Name) {
 		cfg.GasPrice = flags.GlobalBig(ctx, MinerGasPriceFlag.Name)
 	}
-	if ctx.IsSet(MinerAlgoTypeFlag.Name) {
-		algoType, err := miner.AlgoTypeFlagToEnum(ctx.String(MinerAlgoTypeFlag.Name))
+	if ctx.IsSet(BuilderAlgoTypeFlag.Name) {
+		algoType, err := miner.AlgoTypeFlagToEnum(ctx.String(BuilderAlgoTypeFlag.Name))
 		if err != nil {
-			Fatalf("Invalid algo in --miner.algotype: %s", ctx.String(MinerAlgoTypeFlag.Name))
+			Fatalf("Invalid algo in --builder.algotype: %s", ctx.String(BuilderAlgoTypeFlag.Name))
 		}
 		cfg.AlgoType = algoType
 	}
@@ -1906,7 +1915,7 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 		}
 	}
 
-	cfg.PriceCutoffPercent = ctx.Int(MinerPriceCutoffPercentFlag.Name)
+	cfg.PriceCutoffPercent = ctx.Int(BuilderPriceCutoffPercentFlag.Name)
 }
 
 func setRequiredBlocks(ctx *cli.Context, cfg *ethconfig.Config) {

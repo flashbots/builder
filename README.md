@@ -38,6 +38,9 @@ $ geth --help
     --builder                      (default: false)
           Enable the builder
 
+    --builder.algotype value       (default: "mev-geth")
+          Block building algorithm to use [=mev-geth] (mev-geth, greedy, greedy-buckets)
+   
     --builder.beacon_endpoints value (default: "http://127.0.0.1:5052")
           Comma separated list of beacon endpoints to connect to for beacon chain data
           [$BUILDER_BEACON_ENDPOINTS]
@@ -73,6 +76,15 @@ $ geth --help
 
     --builder.no_bundle_fetcher    (default: false)
           Disable the bundle fetcher
+
+    --builder.price_cutoff_percent value (default: 50)
+          flashbots - The minimum effective gas price threshold used for bucketing
+          transactions by price. For example if the top transaction in a list has an
+          effective gas price of 1000 wei and price_cutoff_percent is 10 (i.e. 10%), then
+          the minimum effective gas price included in the same bucket as the top
+          transaction is (1000 * 10%) = 100 wei.
+          NOTE: This flag is only used when
+          miner.algotype=greedy-buckets [$FLASHBOTS_BUILDER_PRICE_CUTOFF_PERCENT]
 
     --builder.rate_limit_duration value (default: "500ms")
           Determines rate limit of events processed by builder. For example, a value of
