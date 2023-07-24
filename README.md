@@ -121,7 +121,7 @@ $ geth --help
     MINER
 
     --miner.algotype value         (default: "mev-geth")
-          Block building algorithm to use [=mev-geth] (mev-geth, greedy)
+          Block building algorithm to use [=mev-geth] (mev-geth, greedy, greedy-buckets)
 
     --miner.blocklist value
           flashbots - Path to JSON file with list of blocked addresses. Miner will ignore
