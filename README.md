@@ -84,7 +84,7 @@ $ geth --help
           the minimum effective gas price included in the same bucket as the top
           transaction is (1000 * 10%) = 100 wei.
           NOTE: This flag is only used when
-          miner.algotype=greedy-buckets [$FLASHBOTS_BUILDER_PRICE_CUTOFF_PERCENT]
+          builder.algotype=greedy-buckets [$FLASHBOTS_BUILDER_PRICE_CUTOFF_PERCENT]
 
     --builder.rate_limit_duration value (default: "500ms")
           Determines rate limit of events processed by builder. For example, a value of
