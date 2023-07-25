@@ -712,7 +712,7 @@ var (
 			"For example if the top transaction in a list has an effective gas price of 1000 wei and price_cutoff_percent " +
 			"is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction " +
 			"is (1000 * 10%) = 100 wei.\n" +
-			"NOTE: This flag is only used when miner.algotype=greedy-buckets",
+			"NOTE: This flag is only used when builder.algotype=greedy-buckets",
 		Value:    ethconfig.Defaults.Miner.PriceCutoffPercent,
 		Category: flags.BuilderCategory,
 		EnvVars:  []string{"FLASHBOTS_BUILDER_PRICE_CUTOFF_PERCENT"},
