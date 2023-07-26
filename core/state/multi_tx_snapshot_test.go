@@ -3,18 +3,23 @@ package state
 import (
 	"bytes"
 	"fmt"
-	"github.com/ethereum/go-ethereum/common"
 	"math/big"
 	"math/rand"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var (
 	addrs []common.Address
 	keys  []common.Hash
+
+	rng *rand.Rand
 )
 
 func init() {
+	rng = rand.New(rand.NewSource(0))
+
 	for i := 0; i < 20; i++ {
 		addrs = append(addrs, common.HexToAddress(fmt.Sprintf("0x%02x", i)))
 	}
@@ -69,7 +74,7 @@ func verifyObservableAccountState(s *StateDB, state *observableAccountState) err
 	if s.GetNonce(state.address) != state.nonce {
 		return fmt.Errorf("nonce mismatch %v != %v", s.GetNonce(state.address), state.nonce)
 	}
-	if bytes.Compare(s.GetCode(state.address), state.code) != 0 {
+	if !bytes.Equal(s.GetCode(state.address), state.code) {
 		return fmt.Errorf("code mismatch %v != %v", s.GetCode(state.address), state.code)
 	}
 	if s.GetCodeHash(state.address) != state.codeHash {
@@ -102,7 +107,10 @@ func verifyObservableAccountState(s *StateDB, state *observableAccountState) err
 
 func randomBytes(n int) []byte {
 	b := make([]byte, n)
-	rand.Read(b)
+	_, err := rng.Read(b)
+	if err != nil {
+		panic(err)
+	}
 	return b
 }
 
@@ -122,9 +130,9 @@ func randFillAccountState(addr common.Address, s *StateDB) {
 }
 
 func randFillAccount(addr common.Address, s *StateDB) {
-	s.SetNonce(addr, rand.Uint64())
-	s.SetBalance(addr, big.NewInt(rand.Int63()))
-	s.SetCode(addr, randomBytes(rand.Intn(100)))
+	s.SetNonce(addr, rng.Uint64())
+	s.SetBalance(addr, big.NewInt(rng.Int63()))
+	s.SetCode(addr, randomBytes(rng.Intn(100)))
 	randFillAccountState(addr, s)
 }
 
@@ -139,49 +147,47 @@ func prepareInitialState(s *StateDB) {
 		afterCommitHooks = append(afterCommitHooks, afterCommit)
 	}
 
-	rand.Seed(0)
-
 	addAccount(func(addr common.Address, s *StateDB) {
-		s.SetNonce(addr, rand.Uint64())
+		s.SetNonce(addr, rng.Uint64())
 	}, nil)
 	addAccount(nil, func(addr common.Address, s *StateDB) {
-		s.SetNonce(addr, rand.Uint64())
+		s.SetNonce(addr, rng.Uint64())
 	})
 	addAccount(func(addr common.Address, s *StateDB) {
-		s.SetNonce(addr, rand.Uint64())
+		s.SetNonce(addr, rng.Uint64())
 	}, func(addr common.Address, s *StateDB) {
-		s.SetNonce(addr, rand.Uint64())
+		s.SetNonce(addr, rng.Uint64())
 	})
 
 	addAccount(func(addr common.Address, s *StateDB) {
-		s.SetBalance(addr, big.NewInt(rand.Int63()))
+		s.SetBalance(addr, big.NewInt(rng.Int63()))
 	}, nil)
 	addAccount(nil, func(addr common.Address, s *StateDB) {
-		s.SetBalance(addr, big.NewInt(rand.Int63()))
+		s.SetBalance(addr, big.NewInt(rng.Int63()))
 	})
 	addAccount(func(addr common.Address, s *StateDB) {
-		s.SetBalance(addr, big.NewInt(rand.Int63()))
+		s.SetBalance(addr, big.NewInt(rng.Int63()))
 	}, func(addr common.Address, s *StateDB) {
-		s.SetBalance(addr, big.NewInt(rand.Int63()))
+		s.SetBalance(addr, big.NewInt(rng.Int63()))
 	})
 
 	addAccount(func(addr common.Address, s *StateDB) {
-		s.SetCode(addr, randomBytes(rand.Intn(100)))
+		s.SetCode(addr, randomBytes(rng.Intn(100)))
 	}, nil)
 	addAccount(nil, func(addr common.Address, s *StateDB) {
-		s.SetCode(addr, randomBytes(rand.Intn(100)))
+		s.SetCode(addr, randomBytes(rng.Intn(100)))
 	})
 	addAccount(func(addr common.Address, s *StateDB) {
-		s.SetCode(addr, randomBytes(rand.Intn(100)))
+		s.SetCode(addr, randomBytes(rng.Intn(100)))
 		s.SetCode(addr, nil)
 	}, func(addr common.Address, s *StateDB) {
-		s.SetCode(addr, randomBytes(rand.Intn(100)))
+		s.SetCode(addr, randomBytes(rng.Intn(100)))
 	})
 	addAccount(func(addr common.Address, s *StateDB) {
-		s.SetCode(addr, randomBytes(rand.Intn(100)))
+		s.SetCode(addr, randomBytes(rng.Intn(100)))
 		s.Suicide(addr)
 	}, func(addr common.Address, s *StateDB) {
-		s.SetCode(addr, randomBytes(rand.Intn(100)))
+		s.SetCode(addr, randomBytes(rng.Intn(100)))
 	})
 
 	addAccount(func(addr common.Address, s *StateDB) {
@@ -277,7 +283,7 @@ func testMutliTxSnapshot(t *testing.T, actions func(s *StateDB)) {
 	if len(s.state.stateObjectsPending) != len(pendingAddressesBefore) {
 		t.Error("pending state objects count mismatch", "got", len(s.state.stateObjectsPending), "expected", len(pendingAddressesBefore))
 	}
-	for k, _ := range s.state.stateObjectsPending {
+	for k := range s.state.stateObjectsPending {
 		if _, ok := pendingAddressesBefore[k]; !ok {
 			t.Error("stateObjectsPending mismatch, before was nil", "address", k)
 		}
@@ -285,7 +291,7 @@ func testMutliTxSnapshot(t *testing.T, actions func(s *StateDB)) {
 	if len(s.state.stateObjectsDirty) != len(dirtyAddressesBefore) {
 		t.Error("dirty state objects count mismatch", "got", len(s.state.stateObjectsDirty), "expected", len(dirtyAddressesBefore))
 	}
-	for k, _ := range s.state.stateObjectsDirty {
+	for k := range s.state.stateObjectsDirty {
 		if _, ok := dirtyAddressesBefore[k]; !ok {
 			t.Error("stateObjectsDirty mismatch, before was nil", "address", k)
 		}

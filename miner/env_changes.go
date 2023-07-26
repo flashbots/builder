@@ -4,12 +4,13 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"math/big"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/log"
-	"math/big"
 )
 
 // envChanges is a helper struct to apply and revert changes to the environment
@@ -283,7 +284,6 @@ func (c *envChanges) CommitSBundle(sbundle *types.SimSBundle, chData chainData, 
 }
 
 func (c *envChanges) commitSBundle(sbundle *types.SBundle, chData chainData, key *ecdsa.PrivateKey, algoConf algorithmConfig) error {
-
 	var (
 		// check inclusion
 		minBlock = sbundle.Inclusion.BlockNumber
@@ -396,7 +396,6 @@ func (c *envChanges) revert() error {
 func (c *envChanges) rollback(
 	gasUsedBefore uint64, gasPoolBefore *core.GasPool, profitBefore *big.Int,
 	txsBefore []*types.Transaction, receiptsBefore []*types.Receipt) {
-
 	c.usedGas = gasUsedBefore
 	c.gasPool = gasPoolBefore
 	c.txs = txsBefore

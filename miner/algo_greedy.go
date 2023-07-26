@@ -28,7 +28,6 @@ func newGreedyBuilder(
 	chain *core.BlockChain, chainConfig *params.ChainConfig, algoConf *algorithmConfig,
 	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32,
 ) (*greedyBuilder, error) {
-
 	if algoConf == nil {
 		return nil, errNoAlgorithmConfig
 	}

@@ -50,7 +50,6 @@ func newGreedyBucketsBuilder(
 	if algoConf.EnableMultiTxSnap {
 		buildBlockFunc = func(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle,
 			transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
-
 			orders := types.NewTransactionsByPriceAndNonce(builder.inputEnvironment.signer, transactions,
 				simBundles, simSBundles, builder.inputEnvironment.header.BaseFee)
 
@@ -69,7 +68,6 @@ func newGreedyBucketsBuilder(
 	} else {
 		buildBlockFunc = func(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle,
 			transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
-
 			orders := types.NewTransactionsByPriceAndNonce(builder.inputEnvironment.signer, transactions,
 				simBundles, simSBundles, builder.inputEnvironment.header.BaseFee)
 
@@ -88,7 +86,6 @@ func newGreedyBucketsBuilder(
 func CheckRetryOrderAndReinsert(
 	order *types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce,
 	retryMap map[*types.TxWithMinerFee]int, retryLimit int) bool {
-
 	var isRetryable bool = false
 	if retryCount, exists := retryMap[order]; exists {
 		if retryCount != retryLimit {
@@ -281,6 +278,5 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 
 func (b *greedyBucketsBuilder) buildBlock(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle,
 	transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
-
 	return b.buildBlockFunc(simBundles, simSBundles, transactions)
 }

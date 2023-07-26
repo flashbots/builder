@@ -299,11 +299,10 @@ func BuildMultiTxSnapBlock(
 	chData chainData,
 	algoConf algorithmConfig,
 	orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle, error) {
-
 	var (
 		usedBundles      []types.SimulatedBundle
 		usedSbundles     []types.UsedSBundle
-		orderFailed      = false
+		orderFailed      bool
 		buildBlockErrors []error
 	)
 
