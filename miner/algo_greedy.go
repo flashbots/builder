@@ -20,18 +20,59 @@ type greedyBuilder struct {
 	chainData        chainData
 	builderKey       *ecdsa.PrivateKey
 	interrupt        *int32
+	buildBlockFunc   BuildBlockFunc
+	algoConf         algorithmConfig
 }
 
 func newGreedyBuilder(
-	chain *core.BlockChain, chainConfig *params.ChainConfig,
+	chain *core.BlockChain, chainConfig *params.ChainConfig, algoConf *algorithmConfig,
 	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32,
-) *greedyBuilder {
-	return &greedyBuilder{
+) (*greedyBuilder, error) {
+
+	if algoConf == nil {
+		return nil, errNoAlgorithmConfig
+	}
+
+	builder := &greedyBuilder{
 		inputEnvironment: env,
-		chainData:        chainData{chainConfig, chain, blacklist},
+		chainData:        chainData{chainConfig: chainConfig, chain: chain, blacklist: blacklist},
 		builderKey:       key,
 		interrupt:        interrupt,
+		algoConf:         *algoConf,
 	}
+	// Initialize block builder function
+	var buildBlockFunc BuildBlockFunc
+	if algoConf.EnableMultiTxSnap {
+		buildBlockFunc = func(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
+			orders := types.NewTransactionsByPriceAndNonce(builder.inputEnvironment.signer, transactions,
+				simBundles, simSBundles, builder.inputEnvironment.header.BaseFee)
+
+			usedBundles, usedSbundles, err := BuildMultiTxSnapBlock(
+				builder.inputEnvironment,
+				builder.builderKey,
+				builder.chainData,
+				builder.algoConf,
+				orders,
+			)
+			if err != nil {
+				log.Debug("Error(s) building multi-tx snapshot block", "err", err)
+			}
+			return builder.inputEnvironment, usedBundles, usedSbundles
+		}
+	} else {
+		buildBlockFunc = func(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
+			orders := types.NewTransactionsByPriceAndNonce(builder.inputEnvironment.signer, transactions,
+				simBundles, simSBundles, builder.inputEnvironment.header.BaseFee)
+
+			envDiff := newEnvironmentDiff(builder.inputEnvironment.copy())
+			usedBundles, usedSbundles := builder.mergeOrdersIntoEnvDiff(envDiff, orders)
+			envDiff.applyToBaseEnv()
+			return envDiff.baseEnvironment, usedBundles, usedSbundles
+		}
+	}
+
+	builder.buildBlockFunc = buildBlockFunc
+	return builder, nil
 }
 
 func (b *greedyBuilder) mergeOrdersIntoEnvDiff(

@@ -84,21 +84,22 @@ func AlgoTypeFlagToEnum(algoString string) (AlgoType, error) {
 
 // Config is the configuration parameters of mining.
 type Config struct {
-	Etherbase           common.Address    `toml:",omitempty"` // Public address for block mining rewards (default = first account)
-	Notify              []string          `toml:",omitempty"` // HTTP URL list to be notified of new work packages (only useful in ethash).
-	NotifyFull          bool              `toml:",omitempty"` // Notify with pending block headers instead of work packages
-	ExtraData           hexutil.Bytes     `toml:",omitempty"` // Block extra data set by the miner
-	GasFloor            uint64            // Target gas floor for mined blocks.
-	GasCeil             uint64            // Target gas ceiling for mined blocks.
-	GasPrice            *big.Int          // Minimum gas price for mining a transaction
-	AlgoType            AlgoType          // Algorithm to use for block building
-	Recommit            time.Duration     // The time interval for miner to re-create mining work.
-	Noverify            bool              // Disable remote mining solution verification(only useful in ethash).
-	BuilderTxSigningKey *ecdsa.PrivateKey `toml:",omitempty"` // Signing key of builder coinbase to make transaction to validator
-	MaxMergedBundles    int
-	Blocklist           []common.Address `toml:",omitempty"`
-	NewPayloadTimeout   time.Duration    // The maximum time allowance for creating a new payload
-	PriceCutoffPercent  int              // Effective gas price cutoff % used for bucketing transactions by price (only useful in greedy-buckets AlgoType)
+	Etherbase                      common.Address    `toml:",omitempty"` // Public address for block mining rewards (default = first account)
+	Notify                         []string          `toml:",omitempty"` // HTTP URL list to be notified of new work packages (only useful in ethash).
+	NotifyFull                     bool              `toml:",omitempty"` // Notify with pending block headers instead of work packages
+	ExtraData                      hexutil.Bytes     `toml:",omitempty"` // Block extra data set by the miner
+	GasFloor                       uint64            // Target gas floor for mined blocks.
+	GasCeil                        uint64            // Target gas ceiling for mined blocks.
+	GasPrice                       *big.Int          // Minimum gas price for mining a transaction
+	AlgoType                       AlgoType          // Algorithm to use for block building
+	Recommit                       time.Duration     // The time interval for miner to re-create mining work.
+	Noverify                       bool              // Disable remote mining solution verification(only useful in ethash).
+	BuilderTxSigningKey            *ecdsa.PrivateKey `toml:",omitempty"` // Signing key of builder coinbase to make transaction to validator
+	MaxMergedBundles               int
+	Blocklist                      []common.Address `toml:",omitempty"`
+	NewPayloadTimeout              time.Duration    // The maximum time allowance for creating a new payload
+	PriceCutoffPercent             int              // Effective gas price cutoff % used for bucketing transactions by price (only useful in greedy-buckets AlgoType)
+	EnableMultiTransactionSnapshot bool             // Enable block building with multi-transaction snapshots to reduce state copying (note: experimental)
 }
 
 // DefaultConfig contains default settings for miner.
@@ -110,9 +111,10 @@ var DefaultConfig = Config{
 	// consensus-layer usually will wait a half slot of time(6s)
 	// for payload generation. It should be enough for Geth to
 	// run 3 rounds.
-	Recommit:           2 * time.Second,
-	NewPayloadTimeout:  2 * time.Second,
-	PriceCutoffPercent: defaultPriceCutoffPercent,
+	Recommit:                       2 * time.Second,
+	NewPayloadTimeout:              2 * time.Second,
+	PriceCutoffPercent:             defaultPriceCutoffPercent,
+	EnableMultiTransactionSnapshot: defaultAlgorithmConfig.EnableMultiTxSnap,
 }
 
 // Miner creates blocks and searches for proof-of-work values.

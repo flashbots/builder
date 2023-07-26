@@ -24,8 +24,10 @@ type MultiTxSnapshot struct {
 
 	accountNotPending map[common.Address]struct{}
 	accountNotDirty   map[common.Address]struct{}
+	// TODO: snapdestructs, snapaccount storage
 }
 
+// NewMultiTxSnapshot creates a new MultiTxSnapshot
 func NewMultiTxSnapshot() *MultiTxSnapshot {
 	return &MultiTxSnapshot{
 		numLogsAdded:      make(map[common.Hash]int),

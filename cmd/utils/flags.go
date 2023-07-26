@@ -709,6 +709,14 @@ var (
 		Usage:    "Enable the builder",
 		Category: flags.BuilderCategory,
 	}
+	BuilderEnableMultiTxSnapshot = &cli.BoolFlag{
+		Name: "builder.multi_tx_snapshot",
+		Usage: "Enable multi-transaction snapshots for block building, " +
+			"which decrease amount of state copying on bundle reverts (note: experimental)",
+		EnvVars:  []string{"BUILDER_MULTI_TX_SNAPSHOT"},
+		Value:    ethconfig.Defaults.Miner.EnableMultiTransactionSnapshot,
+		Category: flags.BuilderCategory,
+	}
 	BuilderEnableValidatorChecks = &cli.BoolFlag{
 		Name:     "builder.validator_checks",
 		Usage:    "Enable the validator checks",
@@ -1906,6 +1914,7 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	}
 
 	cfg.PriceCutoffPercent = ctx.Int(MinerPriceCutoffPercentFlag.Name)
+	cfg.EnableMultiTransactionSnapshot = ctx.Bool(BuilderEnableMultiTxSnapshot.Name)
 }
 
 func setRequiredBlocks(ctx *cli.Context, cfg *ethconfig.Config) {

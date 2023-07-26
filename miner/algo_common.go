@@ -44,11 +44,11 @@ var (
 
 var emptyCodeHash = common.HexToHash("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
 
-var errInterrupt = errors.New("miner worker interrupted")
-
-// BuildBlockFunc is the function signature for building a block
-type BuildBlockFunc func(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle,
-	transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle)
+var (
+	errInterrupt         = errors.New("miner worker interrupted")
+	errNoAlgorithmConfig = errors.New("no algorithm configuration specified")
+	errNoPrivateKey      = errors.New("no private key provided")
+)
 
 // lowProfitError is returned when an order is not committed due to low profit or low effective gas price
 type lowProfitError struct {
@@ -66,75 +66,55 @@ func (e *lowProfitError) Error() string {
 	)
 }
 
-type algorithmConfig struct {
-	// EnforceProfit is true if we want to enforce a minimum profit threshold
-	// for committing a transaction based on ProfitThresholdPercent
-	EnforceProfit bool
-	// ExpectedProfit should be set on a per transaction basis when profit is enforced
-	ExpectedProfit *big.Int
-	// ProfitThresholdPercent is the minimum profit threshold for committing a transaction
-	ProfitThresholdPercent *big.Int
-	// PriceCutoffPercent is the minimum effective gas price threshold used for bucketing transactions by price.
-	// For example if the top transaction in a list has an effective gas price of 1000 wei and PriceCutoffPercent
-	// is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction
-	// is (1000 * 10%) = 100 wei.
-	PriceCutoffPercent int
-
-	EnableMultiTxSnap bool
-}
-
-type chainData struct {
-	chainConfig *params.ChainConfig
-	chain       *core.BlockChain
-	blacklist   map[common.Address]struct{}
-}
-
-type environmentDiff struct {
-	baseEnvironment *environment
-	header          *types.Header
-	gasPool         *core.GasPool  // available gas used to pack transactions
-	state           *state.StateDB // apply state changes here
-	newProfit       *big.Int
-	newTxs          []*types.Transaction
-	newReceipts     []*types.Receipt
-}
-
-func newEnvironmentDiff(env *environment) *environmentDiff {
-	gasPool := new(core.GasPool).AddGas(env.gasPool.Gas())
-	return &environmentDiff{
-		baseEnvironment: env,
-		header:          types.CopyHeader(env.header),
-		gasPool:         gasPool,
-		state:           env.state.Copy(),
-		newProfit:       new(big.Int),
+type (
+	algorithmConfig struct {
+		// EnforceProfit is true if we want to enforce a minimum profit threshold
+		// for committing a transaction based on ProfitThresholdPercent
+		EnforceProfit bool
+		// ExpectedProfit should be set on a per-transaction basis when profit is enforced
+		ExpectedProfit *big.Int
+		// ProfitThresholdPercent is the minimum profit threshold for committing a transaction
+		ProfitThresholdPercent *big.Int
+		// PriceCutoffPercent is the minimum effective gas price threshold used for bucketing transactions by price.
+		// For example if the top transaction in a list has an effective gas price of 1000 wei and PriceCutoffPercent
+		// is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction
+		// is (1000 * 10%) = 100 wei.
+		PriceCutoffPercent int
+		// EnableMultiTxSnap is true if we want to use multi-transaction snapshot
+		// for committing transactions (note: experimental)
+		EnableMultiTxSnap bool
 	}
-}
 
-func (envDiff *environmentDiff) copy() *environmentDiff {
-	gasPool := new(core.GasPool).AddGas(envDiff.gasPool.Gas())
-
-	return &environmentDiff{
-		baseEnvironment: envDiff.baseEnvironment.copy(),
-		header:          types.CopyHeader(envDiff.header),
-		gasPool:         gasPool,
-		state:           envDiff.state.Copy(),
-		newProfit:       new(big.Int).Set(envDiff.newProfit),
-		newTxs:          envDiff.newTxs[:],
-		newReceipts:     envDiff.newReceipts[:],
+	chainData struct {
+		chainConfig *params.ChainConfig
+		chain       *core.BlockChain
+		blacklist   map[common.Address]struct{}
 	}
-}
 
-func (envDiff *environmentDiff) applyToBaseEnv() {
-	env := envDiff.baseEnvironment
-	env.gasPool = new(core.GasPool).AddGas(envDiff.gasPool.Gas())
-	env.header = envDiff.header
-	env.state.StopPrefetcher()
-	env.state = envDiff.state
-	env.profit.Add(env.profit, envDiff.newProfit)
-	env.tcount += len(envDiff.newTxs)
-	env.txs = append(env.txs, envDiff.newTxs...)
-	env.receipts = append(env.receipts, envDiff.newReceipts...)
-}
+	// BuildBlockFunc is the function signature for building a block
+	BuildBlockFunc func(
+		simBundles []types.SimulatedBundle,
+		simSBundles []*types.SimSBundle,
+		transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle)
+
+	// CommitTxFunc is the function signature for committing a transaction
+	CommitTxFunc func(*types.Transaction, chainData) (*types.Receipt, int, error)
+
+	// PayoutTransactionParams holds parameters for committing a payout transaction, used in commitPayoutTx
+	PayoutTransactionParams struct {
+		Amount        *big.Int
+		BaseFee       *big.Int
+		ChainData     chainData
+		Gas           uint64
+		CommitFn      CommitTxFunc
+		Receiver      common.Address
+		Sender        common.Address
+		SenderBalance *big.Int
+		SenderNonce   uint64
+		Signer        types.Signer
+		PrivateKey    *ecdsa.PrivateKey
+	}
+)
 
 func checkInterrupt(i *int32) bool {
 	return i != nil && atomic.LoadInt32(i) != commitInterruptNone
@@ -198,165 +178,6 @@ func applyTransactionWithBlacklist(signer types.Signer, config *params.ChainConf
 	return receipt, statedb, err
 }
 
-// commit tx to envDiff
-func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
-	header := envDiff.header
-	coinbase := &envDiff.baseEnvironment.coinbase
-	signer := envDiff.baseEnvironment.signer
-
-	gasPrice, err := tx.EffectiveGasTip(header.BaseFee)
-	if err != nil {
-		return nil, shiftTx, err
-	}
-
-	envDiff.state.SetTxContext(tx.Hash(), envDiff.baseEnvironment.tcount+len(envDiff.newTxs))
-
-	receipt, newState, err := applyTransactionWithBlacklist(signer, chData.chainConfig, chData.chain, coinbase,
-		envDiff.gasPool, envDiff.state, header, tx, &header.GasUsed, *chData.chain.GetVMConfig(), chData.blacklist)
-
-	envDiff.state = newState
-	if err != nil {
-		switch {
-		case errors.Is(err, core.ErrGasLimitReached):
-			// Pop the current out-of-gas transaction without shifting in the next from the account
-			from, _ := types.Sender(signer, tx)
-			log.Trace("Gas limit exceeded for current block", "sender", from)
-			return receipt, popTx, err
-
-		case errors.Is(err, core.ErrNonceTooLow):
-			// New head notification data race between the transaction pool and miner, shift
-			from, _ := types.Sender(signer, tx)
-			log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
-			return receipt, shiftTx, err
-
-		case errors.Is(err, core.ErrNonceTooHigh):
-			// Reorg notification data race between the transaction pool and miner, skip account =
-			from, _ := types.Sender(signer, tx)
-			log.Trace("Skipping account with hight nonce", "sender", from, "nonce", tx.Nonce())
-			return receipt, popTx, err
-
-		case errors.Is(err, core.ErrTxTypeNotSupported):
-			// Pop the unsupported transaction without shifting in the next from the account
-			from, _ := types.Sender(signer, tx)
-			log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
-			return receipt, popTx, err
-
-		default:
-			// Strange error, discard the transaction and get the next in line (note, the
-			// nonce-too-high clause will prevent us from executing in vain).
-			log.Trace("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
-			return receipt, shiftTx, err
-		}
-	}
-
-	envDiff.newProfit = envDiff.newProfit.Add(envDiff.newProfit, gasPrice.Mul(gasPrice, big.NewInt(int64(receipt.GasUsed))))
-	envDiff.newTxs = append(envDiff.newTxs, tx)
-	envDiff.newReceipts = append(envDiff.newReceipts, receipt)
-
-	return receipt, shiftTx, nil
-}
-
-// Commit Bundle to env diff
-func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chData chainData, interrupt *int32, algoConf algorithmConfig) error {
-	coinbase := envDiff.baseEnvironment.coinbase
-	tmpEnvDiff := envDiff.copy()
-
-	coinbaseBalanceBefore := tmpEnvDiff.state.GetBalance(coinbase)
-
-	profitBefore := new(big.Int).Set(tmpEnvDiff.newProfit)
-	var gasUsed uint64
-
-	for _, tx := range bundle.OriginalBundle.Txs {
-		if tmpEnvDiff.header.BaseFee != nil && tx.Type() == types.DynamicFeeTxType {
-			// Sanity check for extremely large numbers
-			if tx.GasFeeCap().BitLen() > 256 {
-				return core.ErrFeeCapVeryHigh
-			}
-			if tx.GasTipCap().BitLen() > 256 {
-				return core.ErrTipVeryHigh
-			}
-			// Ensure gasFeeCap is greater than or equal to gasTipCap.
-			if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
-				return core.ErrTipAboveFeeCap
-			}
-		}
-
-		if tx.Value().Sign() == -1 {
-			return core.ErrNegativeValue
-		}
-
-		_, err := tx.EffectiveGasTip(envDiff.header.BaseFee)
-		if err != nil {
-			return err
-		}
-
-		_, err = types.Sender(envDiff.baseEnvironment.signer, tx)
-		if err != nil {
-			return err
-		}
-
-		if checkInterrupt(interrupt) {
-			return errInterrupt
-		}
-
-		receipt, _, err := tmpEnvDiff.commitTx(tx, chData)
-
-		if err != nil {
-			log.Trace("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
-			return err
-		}
-
-		if receipt.Status != types.ReceiptStatusSuccessful && !bundle.OriginalBundle.RevertingHash(tx.Hash()) {
-			log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
-			return errors.New("bundle tx revert")
-		}
-
-		gasUsed += receipt.GasUsed
-	}
-	coinbaseBalanceAfter := tmpEnvDiff.state.GetBalance(coinbase)
-	coinbaseBalanceDelta := new(big.Int).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
-	tmpEnvDiff.newProfit.Add(profitBefore, coinbaseBalanceDelta)
-
-	bundleProfit := coinbaseBalanceDelta
-
-	bundleActualEffGP := bundleProfit.Div(bundleProfit, big.NewInt(int64(gasUsed)))
-	bundleSimEffGP := new(big.Int).Set(bundle.MevGasPrice)
-
-	// allow >-1% divergence
-	actualEGP := new(big.Int).Mul(bundleActualEffGP, common.Big100)  // bundle actual effective gas price * 100
-	simulatedEGP := new(big.Int).Mul(bundleSimEffGP, big.NewInt(99)) // bundle simulated effective gas price * 99
-
-	if simulatedEGP.Cmp(actualEGP) > 0 {
-		log.Trace("Bundle underpays after inclusion", "bundle", bundle.OriginalBundle.Hash)
-		return &lowProfitError{
-			ExpectedEffectiveGasPrice: bundleSimEffGP,
-			ActualEffectiveGasPrice:   bundleActualEffGP,
-		}
-	}
-
-	if algoConf.EnforceProfit {
-		// if profit is enforced between simulation and actual commit, only allow ProfitThresholdPercent divergence
-		simulatedBundleProfit := new(big.Int).Set(bundle.TotalEth)
-		actualBundleProfit := new(big.Int).Mul(bundleActualEffGP, big.NewInt(int64(gasUsed)))
-
-		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
-		// lower due to transaction ordering
-		simulatedProfitMultiple := new(big.Int).Mul(simulatedBundleProfit, algoConf.ProfitThresholdPercent)
-		actualProfitMultiple := new(big.Int).Mul(actualBundleProfit, common.Big100)
-
-		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
-			log.Trace("Lower bundle profit found after inclusion", "bundle", bundle.OriginalBundle.Hash)
-			return &lowProfitError{
-				ExpectedProfit: simulatedBundleProfit,
-				ActualProfit:   actualBundleProfit,
-			}
-		}
-	}
-
-	*envDiff = *tmpEnvDiff
-	return nil
-}
-
 func estimatePayoutTxGas(env *environment, sender, receiver common.Address, prv *ecdsa.PrivateKey, chData chainData) (uint64, bool, error) {
 	if codeHash := env.state.GetCodeHash(receiver); codeHash == (common.Hash{}) || codeHash == emptyCodeHash {
 		return params.TxGas, true, nil
@@ -388,6 +209,43 @@ func applyPayoutTx(envDiff *environmentDiff, sender, receiver common.Address, ga
 		return nil, fmt.Errorf("payment tx failed")
 	}
 	return rec, nil
+}
+
+func commitPayoutTx(parameters PayoutTransactionParams) (*types.Receipt, error) {
+	if parameters.Gas < params.TxGas {
+		return nil, errors.New("not enough gas for intrinsic gas cost")
+	}
+
+	requiredBalance := new(big.Int).Mul(parameters.BaseFee, new(big.Int).SetUint64(parameters.Gas))
+	requiredBalance = requiredBalance.Add(requiredBalance, parameters.Amount)
+	if requiredBalance.Cmp(parameters.SenderBalance) > 0 {
+		return nil, errors.New("not enough balance")
+	}
+
+	tx, err := types.SignNewTx(parameters.PrivateKey, parameters.Signer, &types.DynamicFeeTx{
+		ChainID:   parameters.ChainData.chainConfig.ChainID,
+		Nonce:     parameters.SenderNonce,
+		GasTipCap: new(big.Int),
+		GasFeeCap: parameters.BaseFee,
+		Gas:       parameters.Gas,
+		To:        &parameters.Receiver,
+		Value:     parameters.Amount,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	txSender, err := types.Sender(parameters.Signer, tx)
+	if err != nil {
+		return nil, err
+	}
+
+	if txSender != parameters.Sender {
+		return nil, errors.New("incorrect sender private key")
+	}
+
+	receipt, _, err := parameters.CommitFn(tx, parameters.ChainData)
+	return receipt, err
 }
 
 func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint64, isEOA bool, availableFunds *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
@@ -433,208 +291,90 @@ func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint6
 	return nil, err
 }
 
-func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver common.Address, gas uint64, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
-	senderBalance := envDiff.state.GetBalance(sender)
-
-	if gas < params.TxGas {
-		return nil, errors.New("not enough gas for intrinsic gas cost")
-	}
-
-	requiredBalance := new(big.Int).Mul(envDiff.header.BaseFee, new(big.Int).SetUint64(gas))
-	requiredBalance = requiredBalance.Add(requiredBalance, amount)
-	if requiredBalance.Cmp(senderBalance) > 0 {
-		return nil, errors.New("not enough balance")
-	}
-
-	signer := envDiff.baseEnvironment.signer
-	tx, err := types.SignNewTx(prv, signer, &types.DynamicFeeTx{
-		ChainID:   chData.chainConfig.ChainID,
-		Nonce:     envDiff.state.GetNonce(sender),
-		GasTipCap: new(big.Int),
-		GasFeeCap: envDiff.header.BaseFee,
-		Gas:       gas,
-		To:        &receiver,
-		Value:     amount,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	txSender, err := types.Sender(signer, tx)
-	if err != nil {
-		return nil, err
-	}
-	if txSender != sender {
-		return nil, errors.New("incorrect sender private key")
-	}
-
-	receipt, _, err := envDiff.commitTx(tx, chData)
-	if err != nil {
-		return nil, err
-	}
-
-	return receipt, nil
-}
-
-func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey, algoConf algorithmConfig) error {
-	if key == nil {
-		return errors.New("no private key provided")
-	}
-
-	tmpEnvDiff := envDiff.copy()
-
-	coinbaseBefore := tmpEnvDiff.state.GetBalance(tmpEnvDiff.header.Coinbase)
-	gasBefore := tmpEnvDiff.gasPool.Gas()
-
-	if err := tmpEnvDiff.commitSBundleInner(b.Bundle, chData, interrupt, key); err != nil {
-		return err
-	}
-
-	coinbaseAfter := tmpEnvDiff.state.GetBalance(tmpEnvDiff.header.Coinbase)
-	gasAfter := tmpEnvDiff.gasPool.Gas()
-
-	coinbaseDelta := new(big.Int).Sub(coinbaseAfter, coinbaseBefore)
-	gasDelta := new(big.Int).SetUint64(gasBefore - gasAfter)
-
-	if coinbaseDelta.Cmp(common.Big0) < 0 {
-		return errors.New("coinbase balance decreased")
-	}
-
-	gotEGP := new(big.Int).Div(coinbaseDelta, gasDelta)
-	simEGP := new(big.Int).Set(b.MevGasPrice)
-
-	// allow > 1% difference
-	actualEGP := new(big.Int).Mul(gotEGP, big.NewInt(101))
-	simulatedEGP := new(big.Int).Mul(simEGP, common.Big100)
-
-	if simulatedEGP.Cmp(actualEGP) > 0 {
-		return &lowProfitError{
-			ExpectedEffectiveGasPrice: simEGP,
-			ActualEffectiveGasPrice:   gotEGP,
-		}
-	}
-
-	if algoConf.EnforceProfit {
-		// if profit is enforced between simulation and actual commit, only allow >-1% divergence
-		simulatedSbundleProfit := new(big.Int).Set(b.Profit)
-		actualSbundleProfit := new(big.Int).Set(coinbaseDelta)
-
-		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
-		// lower due to transaction ordering
-		simulatedProfitMultiple := new(big.Int).Mul(simulatedSbundleProfit, algoConf.ProfitThresholdPercent)
-		actualProfitMultiple := new(big.Int).Mul(actualSbundleProfit, common.Big100)
-
-		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
-			log.Trace("Lower sbundle profit found after inclusion", "sbundle", b.Bundle.Hash())
-			return &lowProfitError{
-				ExpectedProfit: simulatedSbundleProfit,
-				ActualProfit:   actualSbundleProfit,
-			}
-		}
-	}
-
-	*envDiff = *tmpEnvDiff
-	return nil
-}
-
-func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey) error {
-	// check inclusion
-	minBlock := b.Inclusion.BlockNumber
-	maxBlock := b.Inclusion.MaxBlockNumber
-	if current := envDiff.header.Number.Uint64(); current < minBlock || current > maxBlock {
-		return fmt.Errorf("bundle inclusion block number out of range: %d <= %d <= %d", minBlock, current, maxBlock)
-	}
-
-	// extract constraints into convenient format
-	refundIdx := make([]bool, len(b.Body))
-	refundPercents := make([]int, len(b.Body))
-	for _, el := range b.Validity.Refund {
-		refundIdx[el.BodyIdx] = true
-		refundPercents[el.BodyIdx] = el.Percent
-	}
+// BuildMultiTxSnapBlock attempts to build a block with input orders using state.MultiTxSnapshot. If a failure occurs attempting to commit a given order,
+// it reverts to previous state and the next order is attempted.
+func BuildMultiTxSnapBlock(
+	inputEnvironment *environment,
+	key *ecdsa.PrivateKey,
+	chData chainData,
+	algoConf algorithmConfig,
+	orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle, error) {
 
 	var (
-		totalProfit      *big.Int = new(big.Int)
-		refundableProfit *big.Int = new(big.Int)
+		usedBundles      []types.SimulatedBundle
+		usedSbundles     []types.UsedSBundle
+		orderFailed      = false
+		buildBlockErrors []error
 	)
 
-	var (
-		coinbaseDelta  = new(big.Int)
-		coinbaseBefore *big.Int
-	)
-	// insert body and check it
-	for i, el := range b.Body {
-		coinbaseDelta.Set(common.Big0)
-		coinbaseBefore = envDiff.state.GetBalance(envDiff.header.Coinbase)
+	for {
+		order := orders.Peek()
+		if order == nil {
+			break
+		}
 
-		if el.Tx != nil {
-			receipt, _, err := envDiff.commitTx(el.Tx, chData)
-			if err != nil {
-				return err
+		orderFailed = false
+		changes, err := newEnvChanges(inputEnvironment)
+		// if changes cannot be instantiated, return early
+		if err != nil {
+			log.Error("Failed to create changes", "err", err)
+			return nil, nil, err
+		}
+
+		// TODO: add support for retry logic
+		if tx := order.Tx(); tx != nil {
+			_, skip, err := changes.commitTx(tx, chData)
+			switch skip {
+			case shiftTx:
+				orders.Shift()
+			case popTx:
+				orders.Pop()
 			}
-			if receipt.Status != types.ReceiptStatusSuccessful && !el.CanRevert {
-				return errors.New("tx failed")
-			}
-		} else if el.Bundle != nil {
-			err := envDiff.commitSBundleInner(el.Bundle, chData, interrupt, key)
+
 			if err != nil {
-				return err
+				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to commit tx: %w", err))
+				orderFailed = true
+			}
+		} else if bundle := order.Bundle(); bundle != nil {
+			err = changes.commitBundle(bundle, chData)
+			orders.Pop()
+			if err != nil {
+				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to commit bundle: %w", err))
+				orderFailed = true
+			} else {
+				usedBundles = append(usedBundles, *bundle)
+			}
+		} else if sbundle := order.SBundle(); sbundle != nil {
+			usedEntry := types.UsedSBundle{
+				Bundle: sbundle.Bundle,
+			}
+			err = changes.CommitSBundle(sbundle, chData, key, algoConf)
+			if err != nil {
+				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to commit sbundle: %w", err))
+				orderFailed = true
+				usedEntry.Success = false
+			} else {
+				usedEntry.Success = true
+			}
+			usedSbundles = append(usedSbundles, usedEntry)
+		} else {
+			// note: this should never happen because we should not be inserting invalid transaction types into
+			// the orders heap
+			panic("unsupported order type found")
+		}
+
+		if orderFailed {
+			if err = changes.revert(); err != nil {
+				log.Error("Failed to revert changes with multi-transaction snapshot", "err", err)
+				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to revert changes: %w", err))
 			}
 		} else {
-			return errors.New("invalid body element")
-		}
-
-		coinbaseDelta.Set(envDiff.state.GetBalance(envDiff.header.Coinbase))
-		coinbaseDelta.Sub(coinbaseDelta, coinbaseBefore)
-
-		totalProfit.Add(totalProfit, coinbaseDelta)
-		if !refundIdx[i] {
-			refundableProfit.Add(refundableProfit, coinbaseDelta)
-		}
-	}
-
-	// enforce constraints
-	coinbaseDelta.Set(common.Big0)
-	coinbaseBefore = envDiff.state.GetBalance(envDiff.header.Coinbase)
-	for i, el := range refundPercents {
-		if !refundIdx[i] {
-			continue
-		}
-		refundConfig, err := types.GetRefundConfig(&b.Body[i], envDiff.baseEnvironment.signer)
-		if err != nil {
-			return err
-		}
-
-		maxPayoutCost := new(big.Int).Set(core.SbundlePayoutMaxCost)
-		maxPayoutCost.Mul(maxPayoutCost, big.NewInt(int64(len(refundConfig))))
-		maxPayoutCost.Mul(maxPayoutCost, envDiff.header.BaseFee)
-
-		allocatedValue := common.PercentOf(refundableProfit, el)
-		allocatedValue.Sub(allocatedValue, maxPayoutCost)
-
-		if allocatedValue.Cmp(common.Big0) < 0 {
-			return fmt.Errorf("negative payout")
-		}
-
-		for _, refund := range refundConfig {
-			refundValue := common.PercentOf(allocatedValue, refund.Percent)
-			refundReceiver := refund.Address
-			rec, err := envDiff.commitPayoutTx(refundValue, envDiff.header.Coinbase, refundReceiver, core.SbundlePayoutMaxCostInt, key, chData)
-			if err != nil {
-				return err
+			if err = changes.apply(); err != nil {
+				log.Error("Failed to apply changes with multi-transaction snapshot", "err", err)
+				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to apply changes: %w", err))
 			}
-			if rec.Status != types.ReceiptStatusSuccessful {
-				return fmt.Errorf("refund tx failed")
-			}
-			log.Trace("Committed kickback", "payout", ethIntToFloat(allocatedValue), "receiver", refundReceiver)
 		}
 	}
-	coinbaseDelta.Set(envDiff.state.GetBalance(envDiff.header.Coinbase))
-	coinbaseDelta.Sub(coinbaseDelta, coinbaseBefore)
-	totalProfit.Add(totalProfit, coinbaseDelta)
 
-	if totalProfit.Cmp(common.Big0) < 0 {
-		return fmt.Errorf("negative profit")
-	}
-	return nil
+	return usedBundles, usedSbundles, errors.Join(buildBlockErrors...)
 }

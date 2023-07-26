@@ -36,7 +36,10 @@ func TestBuildBlockGasLimit(t *testing.T) {
 			}
 			result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
 		case ALGO_GREEDY:
-			builder := newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
+			builder, err := newGreedyBuilder(chData.chain, chData.chainConfig, &defaultAlgorithmConfig, nil, env, nil, nil)
+			if err != nil {
+				t.Fatalf("Error creating greedy builder: %v", err)
+			}
 			result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
 		}
 

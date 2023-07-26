@@ -13,8 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 )
 
-var errNoAlgorithmConfig = errors.New("no algorithm config specified")
-
 // / To use it:
 // / 1. Copy relevant data from the worker
 // / 2. Call buildBlock
@@ -46,6 +44,8 @@ func newGreedyBucketsBuilder(
 		gasUsedMap:       make(map[*types.TxWithMinerFee]uint64),
 		algoConf:         *algoConf,
 	}
+
+	// Initialize block builder function
 	var buildBlockFunc BuildBlockFunc
 	if algoConf.EnableMultiTxSnap {
 		buildBlockFunc = func(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle,
@@ -54,7 +54,16 @@ func newGreedyBucketsBuilder(
 			orders := types.NewTransactionsByPriceAndNonce(builder.inputEnvironment.signer, transactions,
 				simBundles, simSBundles, builder.inputEnvironment.header.BaseFee)
 
-			usedBundles, usedSbundles := builder.buildMultiTxSnapBlock(orders)
+			usedBundles, usedSbundles, err := BuildMultiTxSnapBlock(
+				builder.inputEnvironment,
+				builder.builderKey,
+				builder.chainData,
+				builder.algoConf,
+				orders,
+			)
+			if err != nil {
+				log.Debug("Error(s) building multi-tx snapshot block", "err", err)
+			}
 			return builder.inputEnvironment, usedBundles, usedSbundles
 		}
 	} else {
@@ -274,67 +283,4 @@ func (b *greedyBucketsBuilder) buildBlock(simBundles []types.SimulatedBundle, si
 	transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
 
 	return b.buildBlockFunc(simBundles, simSBundles, transactions)
-}
-
-func (b *greedyBucketsBuilder) buildMultiTxSnapBlock(orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle) {
-	var (
-		usedBundles  []types.SimulatedBundle
-		usedSbundles []types.UsedSBundle
-		orderFailed  = false
-	)
-
-	for {
-		order := orders.Peek()
-		if order == nil {
-			break
-		}
-
-		orderFailed = false
-		changes, err := newOrderApplyChanges(b.inputEnvironment)
-		if err != nil {
-			log.Error("Failed to create changes", "err", err)
-			return usedBundles, usedSbundles
-		}
-
-		if tx := order.Tx(); tx != nil {
-			_, skip, err := changes.commitTx(tx, b.chainData)
-			switch skip {
-			case shiftTx:
-				orders.Shift()
-			case popTx:
-				orders.Pop()
-			}
-
-			if err != nil {
-				log.Trace("Failed to commit tx with multi-transaction snapshot", "hash", tx.Hash(), "err", err)
-				orderFailed = true
-			}
-		} else if bundle := order.Bundle(); bundle != nil {
-			err = changes.commitBundle(bundle, b.chainData)
-			orders.Pop()
-			if err != nil {
-				log.Trace("Failed to commit bundle with multi-transaction snapshot", "bundle", bundle.OriginalBundle.Hash, "err", err)
-				orderFailed = true
-			} else {
-				usedBundles = append(usedBundles, *bundle)
-			}
-		} else if sbundle := order.SBundle(); sbundle != nil {
-
-		} else {
-			// note: this should never happen because we should not be inserting invalid transaction types into
-			// the orders heap
-			panic("unsupported order type found")
-		}
-
-		if orderFailed {
-			if err = changes.revert(); err != nil {
-				log.Error("Failed to revert changes with multi-transaction snapshot", "err", err)
-			}
-		} else {
-			if err = changes.apply(); err != nil {
-				log.Error("Failed to apply changes with multi-transaction snapshot", "err", err)
-			}
-		}
-	}
-	return usedBundles, usedSbundles
 }

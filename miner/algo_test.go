@@ -235,7 +235,10 @@ func runAlgoTest(algo AlgoType, config *params.ChainConfig, alloc core.GenesisAl
 		}
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	case ALGO_GREEDY:
-		builder := newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
+		builder, err := newGreedyBuilder(chData.chain, chData.chainConfig, &defaultAlgorithmConfig, nil, env, nil, nil)
+		if err != nil {
+			return nil, err
+		}
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	}
 	return resultEnv.profit, nil

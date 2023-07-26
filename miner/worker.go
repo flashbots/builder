@@ -1415,7 +1415,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 			ExpectedProfit:         nil,
 			ProfitThresholdPercent: defaultProfitThreshold,
 			PriceCutoffPercent:     priceCutoffPercent,
-			EnableMultiTxSnap:      true,
+			EnableMultiTxSnap:      w.config.EnableMultiTransactionSnapshot,
 		}
 		builder, err := newGreedyBucketsBuilder(
 			w.chain, w.chainConfig, algoConf, w.blockList, env,
@@ -1429,10 +1429,16 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 	case ALGO_GREEDY:
 		fallthrough
 	default:
-		builder := newGreedyBuilder(
-			w.chain, w.chainConfig, w.blockList, env,
-			w.config.BuilderTxSigningKey, interrupt,
+		algoConf := &defaultAlgorithmConfig
+		algoConf.EnableMultiTxSnap = w.config.EnableMultiTransactionSnapshot
+
+		builder, err := newGreedyBuilder(
+			w.chain, w.chainConfig, algoConf, w.blockList,
+			env, w.config.BuilderTxSigningKey, interrupt,
 		)
+		if err != nil {
+			return nil, nil, nil, err
+		}
 
 		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
 	}
