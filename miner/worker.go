@@ -1509,7 +1509,8 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 			totalSbundles++
 		}
 
-		log.Info("Block finalized and assembled", "height", block.Number().String(), "blockProfit", ethIntToFloat(profit),
+		log.Info("Block finalized and assembled",
+			"height", block.Number().String(), "blockProfit", ethIntToFloat(profit),
 			"txs", len(env.txs), "bundles", len(blockBundles), "okSbundles", okSbundles, "totalSbundles", totalSbundles,
 			"gasUsed", block.GasUsed(), "time", time.Since(start))
 		if metrics.EnabledBuilder {

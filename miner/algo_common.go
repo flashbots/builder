@@ -80,8 +80,8 @@ type (
 		// is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction
 		// is (1000 * 10%) = 100 wei.
 		PriceCutoffPercent int
-		// EnableMultiTxSnap is true if we want to use multi-transaction snapshot
-		// for committing transactions (note: experimental)
+		// EnableMultiTxSnap is true if we want to use multi-transaction snapshot for committing transactions,
+		// which reduce state copies when reverting failed bundles (note: experimental)
 		EnableMultiTxSnap bool
 	}
 

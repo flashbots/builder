@@ -1201,10 +1201,6 @@ func (s *StateDB) convertAccountSet(set map[common.Address]struct{}) map[common.
 	return ret
 }
 
-func (s *StateDB) AccessList() *accessList {
-	return s.accessList
-}
-
 // MultiTxSnapshot creates new checkpoint for multi txs reverts
 func (s *StateDB) MultiTxSnapshot() error {
 	if s.multiTxSnapshot != nil {

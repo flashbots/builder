@@ -62,7 +62,7 @@ func newGreedyBucketsBuilder(
 				orders,
 			)
 			if err != nil {
-				log.Debug("Error(s) building multi-tx snapshot block", "err", err)
+				log.Trace("Error(s) building multi-tx snapshot block", "err", err)
 			}
 			return builder.inputEnvironment, usedBundles, usedSbundles
 		}
