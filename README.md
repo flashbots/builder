@@ -48,6 +48,10 @@ $ geth --help
     --builder.bellatrix_fork_version value (default: "0x02000000")
           Bellatrix fork version. [$BUILDER_BELLATRIX_FORK_VERSION]
 
+    --builder.blacklist value     
+          Path to file containing blacklisted addresses, json-encoded list of strings.
+          Builder will ignore transactions that touch mentioned addresses.
+   
     --builder.block_resubmit_interval value (default: "500ms")
           Determines the interval at which builder will resubmit block submissions
           [$FLASHBOTS_BUILDER_RATE_LIMIT_RESUBMIT_INTERVAL]
@@ -123,21 +127,19 @@ $ geth --help
           blocks. For example, if a slot is 12 seconds long, and the offset is 2 seconds,
           the builder will submit blocks at 10 seconds into the slot.
           [$FLASHBOTS_BUILDER_SUBMISSION_OFFSET]
-
-    --builder.validation_blacklist value
-          Path to file containing blacklisted addresses, json-encoded list of strings
-
+   
     --builder.validator_checks     (default: false)
           Enable the validator checks
 
     MINER
 
     --miner.algotype value         (default: "mev-geth")
-          Block building algorithm to use [=mev-geth] (mev-geth, greedy, greedy-buckets)
+          [NOTE: Deprecated, please use builder.algotype instead] Block building algorithm
+          to use [=mev-geth] (mev-geth, greedy, greedy-buckets)
 
-    --miner.blocklist value
-          flashbots - Path to JSON file with list of blocked addresses. Miner will ignore
-          txs that touch mentioned addresses.
+    --miner.blocklist value       
+          [NOTE: Deprecated, please use builder.blacklist] flashbots - Path to JSON file with
+          list of blocked addresses. Miner will ignore txs that touch mentioned addresses.
 
     --miner.extradata value
           Block extra data set by the miner (default = client version)

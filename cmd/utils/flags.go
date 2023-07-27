@@ -546,6 +546,12 @@ var (
 		Value:    ethconfig.Defaults.Miner.GasPrice,
 		Category: flags.MinerCategory,
 	}
+	MinerAlgoTypeFlag = &cli.StringFlag{
+		Name:     "miner.algotype",
+		Usage:    "[NOTE: Deprecated, please use builder.algotype instead] Block building algorithm to use [=mev-geth] (mev-geth, greedy, greedy-buckets)",
+		Value:    "mev-geth",
+		Category: flags.MinerCategory,
+	}
 	MinerEtherbaseFlag = &cli.StringFlag{
 		Name:     "miner.etherbase",
 		Usage:    "0x prefixed public address for block mining rewards",
@@ -575,7 +581,7 @@ var (
 	}
 	MinerBlocklistFileFlag = &cli.StringFlag{
 		Name:     "miner.blocklist",
-		Usage:    "flashbots - Path to JSON file with list of blocked addresses. Miner will ignore txs that touch mentioned addresses.",
+		Usage:    "[NOTE: Deprecated, please use builder.blacklist] flashbots - Path to JSON file with list of blocked addresses. Miner will ignore txs that touch mentioned addresses.",
 		Value:    "",
 		Category: flags.MinerCategory,
 	}
@@ -724,8 +730,9 @@ var (
 		Category: flags.BuilderCategory,
 	}
 	BuilderBlockValidationBlacklistSourceFilePath = &cli.StringFlag{
-		Name:     "builder.validation_blacklist",
-		Usage:    "Path to file containing blacklisted addresses, json-encoded list of strings",
+		Name: "builder.blacklist",
+		Usage: "Path to file containing blacklisted addresses, json-encoded list of strings. " +
+			"Builder will ignore transactions that touch mentioned addresses.",
 		Value:    "",
 		Category: flags.BuilderCategory,
 	}
@@ -1684,7 +1691,15 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.BeaconEndpoints = strings.Split(ctx.String(BuilderBeaconEndpoints.Name), ",")
 	cfg.RemoteRelayEndpoint = ctx.String(BuilderRemoteRelayEndpoint.Name)
 	cfg.SecondaryRemoteRelayEndpoints = strings.Split(ctx.String(BuilderSecondaryRemoteRelayEndpoints.Name), ",")
-	cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
+	// NOTE: This flag is deprecated and will be removed in the future in favor of BuilderBlockValidationBlacklistSourceFilePath
+	if ctx.IsSet(MinerBlocklistFileFlag.Name) {
+		cfg.ValidationBlocklist = ctx.String(MinerBlocklistFileFlag.Name)
+	}
+
+	// NOTE: This flag takes precedence and will overwrite value set by MinerBlocklistFileFlag
+	if ctx.IsSet(BuilderBlockValidationBlacklistSourceFilePath.Name) {
+		cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
+	}
 	cfg.BuilderRateLimitDuration = ctx.String(BuilderRateLimitDuration.Name)
 	cfg.BuilderRateLimitMaxBurst = ctx.Int(BuilderRateLimitMaxBurst.Name)
 	cfg.BuilderSubmissionOffset = ctx.Duration(BuilderSubmissionOffset.Name)
@@ -1885,6 +1900,15 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	if ctx.IsSet(MinerGasPriceFlag.Name) {
 		cfg.GasPrice = flags.GlobalBig(ctx, MinerGasPriceFlag.Name)
 	}
+	// NOTE: This flag is deprecated and will be removed in the future.
+	if ctx.IsSet(MinerAlgoTypeFlag.Name) {
+		algoType, err := miner.AlgoTypeFlagToEnum(ctx.String(BuilderAlgoTypeFlag.Name))
+		if err != nil {
+			Fatalf("Invalid algo in --builder.algotype: %s", ctx.String(BuilderAlgoTypeFlag.Name))
+		}
+		cfg.AlgoType = algoType
+	}
+	// NOTE: BuilderAlgoTypeFlag takes precedence and will overwrite value set by MinerAlgoTypeFlag.
 	if ctx.IsSet(BuilderAlgoTypeFlag.Name) {
 		algoType, err := miner.AlgoTypeFlagToEnum(ctx.String(BuilderAlgoTypeFlag.Name))
 		if err != nil {
@@ -1904,7 +1928,20 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 
 	cfg.MaxMergedBundles = ctx.Int(MinerMaxMergedBundlesFlag.Name)
 
+	// NOTE: This flag is deprecated and will be removed in the future in favor of BuilderBlockValidationBlacklistSourceFilePath
 	if ctx.IsSet(MinerBlocklistFileFlag.Name) {
+		bytes, err := os.ReadFile(ctx.String(MinerBlocklistFileFlag.Name))
+		if err != nil {
+			Fatalf("Failed to read blocklist file: %s", err)
+		}
+
+		if err := json.Unmarshal(bytes, &cfg.Blocklist); err != nil {
+			Fatalf("Failed to parse blocklist: %s", err)
+		}
+	}
+
+	// NOTE: This flag takes precedence and will overwrite value set by MinerBlocklistFileFlag
+	if ctx.IsSet(BuilderBlockValidationBlacklistSourceFilePath.Name) {
 		bytes, err := os.ReadFile(ctx.String(MinerBlocklistFileFlag.Name))
 		if err != nil {
 			Fatalf("Failed to read blocklist file: %s", err)
