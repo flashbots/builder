@@ -1904,7 +1904,7 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	if ctx.IsSet(MinerAlgoTypeFlag.Name) {
 		algoType, err := miner.AlgoTypeFlagToEnum(ctx.String(BuilderAlgoTypeFlag.Name))
 		if err != nil {
-			Fatalf("Invalid algo in --builder.algotype: %s", ctx.String(BuilderAlgoTypeFlag.Name))
+			Fatalf("Invalid algo in --miner.algotype: %s", ctx.String(BuilderAlgoTypeFlag.Name))
 		}
 		cfg.AlgoType = algoType
 	}
