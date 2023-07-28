@@ -141,25 +141,38 @@ func TestAlgo(t *testing.T) {
 
 	for _, test := range algoTests {
 		for _, algo := range test.SupportedAlgorithms {
-			testName := fmt.Sprintf("%s-%s", test.Name, algo.String())
-			t.Run(testName, func(t *testing.T) {
-				alloc, txPool, bundles, err := test.build(signer, 1)
-				if err != nil {
-					t.Fatalf("Build: %v", err)
-				}
-				simBundles, err := simulateBundles(config, test.Header, alloc, bundles)
-				if err != nil {
-					t.Fatalf("Simulate Bundles: %v", err)
-				}
+			// test with multi-tx-snapshot enabled and disabled (default)
+			multiSnapDisabled := defaultAlgorithmConfig
+			multiSnapDisabled.EnableMultiTxSnap = false
 
-				gotProfit, err := runAlgoTest(algo, config, alloc, txPool, simBundles, test.Header, 1)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if test.WantProfit.Cmp(gotProfit) != 0 {
-					t.Fatalf("Profit: want %v, got %v", test.WantProfit, gotProfit)
-				}
-			})
+			multiSnapEnabled := defaultAlgorithmConfig
+			multiSnapEnabled.EnableMultiTxSnap = true
+
+			algoConfigs := []algorithmConfig{
+				multiSnapEnabled,
+				multiSnapDisabled,
+			}
+			for _, algoConf := range algoConfigs {
+				testName := fmt.Sprintf("%s-%s-%t", test.Name, algo.String(), algoConf.EnableMultiTxSnap)
+
+				t.Run(testName, func(t *testing.T) {
+					alloc, txPool, bundles, err := test.build(signer, 1)
+					if err != nil {
+						t.Fatalf("Build: %v", err)
+					}
+					simBundles, err := simulateBundles(config, test.Header, alloc, bundles)
+					if err != nil {
+						t.Fatalf("Simulate Bundles: %v", err)
+					}
+					gotProfit, err := runAlgoTest(algo, algoConf, config, alloc, txPool, simBundles, test.Header, 1)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if test.WantProfit.Cmp(gotProfit) != 0 {
+						t.Fatalf("Profit: want %v, got %v", test.WantProfit, gotProfit)
+					}
+				})
+			}
 		}
 	}
 }
@@ -203,7 +216,7 @@ func BenchmarkAlgo(b *testing.B) {
 							}
 						}()
 
-						gotProfit, err := runAlgoTest(algo, config, alloc, txPoolCopy, simBundles, test.Header, scale)
+						gotProfit, err := runAlgoTest(algo, defaultAlgorithmConfig, config, alloc, txPoolCopy, simBundles, test.Header, scale)
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -218,7 +231,7 @@ func BenchmarkAlgo(b *testing.B) {
 }
 
 // runAlgo executes a single algoTest case and returns the profit.
-func runAlgoTest(algo AlgoType, config *params.ChainConfig, alloc core.GenesisAlloc,
+func runAlgoTest(algo AlgoType, algoConf algorithmConfig, config *params.ChainConfig, alloc core.GenesisAlloc,
 	txPool map[common.Address]types.Transactions, bundles []types.SimulatedBundle, header *types.Header, scale int) (gotProfit *big.Int, err error) {
 	var (
 		statedb, chData = genTestSetupWithAlloc(config, alloc)
@@ -229,13 +242,13 @@ func runAlgoTest(algo AlgoType, config *params.ChainConfig, alloc core.GenesisAl
 	// build block
 	switch algo {
 	case ALGO_GREEDY_BUCKETS:
-		builder, err := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, &defaultAlgorithmConfig, nil, env, nil, nil)
+		builder, err := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
 		if err != nil {
 			return nil, err
 		}
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	case ALGO_GREEDY:
-		builder, err := newGreedyBuilder(chData.chain, chData.chainConfig, &defaultAlgorithmConfig, nil, env, nil, nil)
+		builder, err := newGreedyBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
 		if err != nil {
 			return nil, err
 		}
