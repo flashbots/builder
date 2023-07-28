@@ -300,12 +300,9 @@ func BuildMultiTxSnapBlock(
 	algoConf algorithmConfig,
 	orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle, error) {
 
-	const retryLimit = 1
-
 	var (
 		usedBundles      []types.SimulatedBundle
 		usedSbundles     []types.UsedSBundle
-		retryMap         = make(map[*types.TxWithMinerFee]int)
 		orderFailed      bool
 		buildBlockErrors []error
 	)
@@ -342,59 +339,24 @@ func BuildMultiTxSnapBlock(
 			orders.Pop()
 			if err != nil {
 				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
-
-				var e *lowProfitError
-				if errors.As(err, &e) {
-					if e.ActualEffectiveGasPrice != nil {
-						order.SetPrice(e.ActualEffectiveGasPrice)
-					}
-
-					if e.ActualProfit != nil {
-						order.SetProfit(e.ActualProfit)
-					}
-
-					CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
-				}
 				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to commit bundle: %w", err))
 				orderFailed = true
 			} else {
 				usedBundles = append(usedBundles, *bundle)
 			}
 		} else if sbundle := order.SBundle(); sbundle != nil {
-			usedEntry := types.UsedSBundle{
-				Bundle: sbundle.Bundle,
-			}
 			err = changes.CommitSBundle(sbundle, chData, key, algoConf)
-			var (
-				success   = err == nil
-				canAppend = true // only append if we are not retrying the bundle
-			)
+			usedEntry := types.UsedSBundle{
+				Bundle:  sbundle.Bundle,
+				Success: err == nil,
+			}
 			if err != nil {
 				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
 
-				var e *lowProfitError
-				if errors.As(err, &e) {
-					if e.ActualEffectiveGasPrice != nil {
-						order.SetPrice(e.ActualEffectiveGasPrice)
-					}
-
-					if e.ActualProfit != nil {
-						order.SetProfit(e.ActualProfit)
-					}
-
-					// if the sbundle was not included due to low profit, we can retry the bundle
-					if ok := CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit); ok {
-						// don't append the sbundle to usedSbundles if we are retrying the bundle
-						canAppend = false
-					}
-				}
 				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to commit sbundle: %w", err))
 				orderFailed = true
 			}
-			if canAppend {
-				usedEntry.Success = success
-				usedSbundles = append(usedSbundles, usedEntry)
-			}
+			usedSbundles = append(usedSbundles, usedEntry)
 		} else {
 			// note: this should never happen because we should not be inserting invalid transaction types into
 			// the orders heap
