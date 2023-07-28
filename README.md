@@ -183,8 +183,7 @@ See the [metrics docs](https://geth.ethereum.org/docs/monitoring/metrics) for ge
 
 If you want to reject transactions interacting with certain addresses, save the addresses in json file with an array of strings. Deciding whether to use such a list, as well as maintaining it, is your own responsibility.
 
-- for block building, use `--miner.blocklist`
-- for validation, use `--builder.validation_blacklist`
+- for block building and validation, use `--builder.blacklist`
 
 --
 
@@ -234,7 +233,7 @@ Miner is responsible for block creation. Request from the `builder` is routed to
 * `algo_greedy.go` implements logic of the block building. Bundles and transactions are sorted in the order of effective gas price then
   we try to insert everything into to block until gas limit is reached. Failing bundles are reverted during the insertion but txs are not.
 * Builder can filter transactions touching a particular set of addresses.
-  If a bundle or transaction touches one of the addresses it is skipped. (see `--miner.blocklist` flag)
+  If a bundle or transaction touches one of the addresses it is skipped. (see `--builder.blacklist` flag)
 
 ## Bundle Movement
 

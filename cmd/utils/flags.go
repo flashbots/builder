@@ -732,8 +732,10 @@ var (
 	BuilderBlockValidationBlacklistSourceFilePath = &cli.StringFlag{
 		Name: "builder.blacklist",
 		Usage: "Path to file containing blacklisted addresses, json-encoded list of strings. " +
-			"Builder will ignore transactions that touch mentioned addresses.",
+			"Builder will ignore transactions that touch mentioned addresses. This flag is also used for block validation API.\n" +
+			"NOTE: builder.validation_blacklist is deprecated and will be removed in the future in favor of builder.blacklist",
 		Value:    "",
+		Aliases:  []string{"builder.validation_blacklist"},
 		Category: flags.BuilderCategory,
 	}
 	BuilderEnableLocalRelay = &cli.BoolFlag{
