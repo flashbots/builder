@@ -299,9 +299,13 @@ func BuildMultiTxSnapBlock(
 	chData chainData,
 	algoConf algorithmConfig,
 	orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle, error) {
+
+	const retryLimit = 1
+
 	var (
 		usedBundles      []types.SimulatedBundle
 		usedSbundles     []types.UsedSBundle
+		retryMap         = make(map[*types.TxWithMinerFee]int)
 		orderFailed      bool
 		buildBlockErrors []error
 	)
@@ -320,7 +324,6 @@ func BuildMultiTxSnapBlock(
 			return nil, nil, err
 		}
 
-		// TODO: add support for retry logic
 		if tx := order.Tx(); tx != nil {
 			_, skip, err := changes.commitTx(tx, chData)
 			switch skip {
@@ -338,6 +341,20 @@ func BuildMultiTxSnapBlock(
 			err = changes.commitBundle(bundle, chData)
 			orders.Pop()
 			if err != nil {
+				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
+
+				var e *lowProfitError
+				if errors.As(err, &e) {
+					if e.ActualEffectiveGasPrice != nil {
+						order.SetPrice(e.ActualEffectiveGasPrice)
+					}
+
+					if e.ActualProfit != nil {
+						order.SetProfit(e.ActualProfit)
+					}
+
+					CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
+				}
 				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to commit bundle: %w", err))
 				orderFailed = true
 			} else {
@@ -348,14 +365,36 @@ func BuildMultiTxSnapBlock(
 				Bundle: sbundle.Bundle,
 			}
 			err = changes.CommitSBundle(sbundle, chData, key, algoConf)
+			var (
+				success   = err == nil
+				canAppend = true // only append if we are not retrying the bundle
+			)
 			if err != nil {
+				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
+
+				var e *lowProfitError
+				if errors.As(err, &e) {
+					if e.ActualEffectiveGasPrice != nil {
+						order.SetPrice(e.ActualEffectiveGasPrice)
+					}
+
+					if e.ActualProfit != nil {
+						order.SetProfit(e.ActualProfit)
+					}
+
+					// if the sbundle was not included due to low profit, we can retry the bundle
+					if ok := CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit); ok {
+						// don't append the sbundle to usedSbundles if we are retrying the bundle
+						canAppend = false
+					}
+				}
 				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to commit sbundle: %w", err))
 				orderFailed = true
-				usedEntry.Success = false
-			} else {
-				usedEntry.Success = true
 			}
-			usedSbundles = append(usedSbundles, usedEntry)
+			if canAppend {
+				usedEntry.Success = success
+				usedSbundles = append(usedSbundles, usedEntry)
+			}
 		} else {
 			// note: this should never happen because we should not be inserting invalid transaction types into
 			// the orders heap
@@ -376,4 +415,26 @@ func BuildMultiTxSnapBlock(
 	}
 
 	return usedBundles, usedSbundles, errors.Join(buildBlockErrors...)
+}
+
+// CheckRetryOrderAndReinsert checks if the order has been retried up to the retryLimit and if not, reinserts the order into the orders heap.
+func CheckRetryOrderAndReinsert(
+	order *types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce,
+	retryMap map[*types.TxWithMinerFee]int, retryLimit int) bool {
+	var isRetryable bool = false
+	if retryCount, exists := retryMap[order]; exists {
+		if retryCount != retryLimit {
+			isRetryable = true
+			retryMap[order] = retryCount + 1
+		}
+	} else {
+		retryMap[order] = 0
+		isRetryable = true
+	}
+
+	if isRetryable {
+		orders.Push(order)
+	}
+
+	return isRetryable
 }

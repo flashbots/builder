@@ -82,28 +82,6 @@ func newGreedyBucketsBuilder(
 	return builder, nil
 }
 
-// CheckRetryOrderAndReinsert checks if the order has been retried up to the retryLimit and if not, reinserts the order into the orders heap.
-func CheckRetryOrderAndReinsert(
-	order *types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce,
-	retryMap map[*types.TxWithMinerFee]int, retryLimit int) bool {
-	var isRetryable bool = false
-	if retryCount, exists := retryMap[order]; exists {
-		if retryCount != retryLimit {
-			isRetryable = true
-			retryMap[order] = retryCount + 1
-		}
-	} else {
-		retryMap[order] = 0
-		isRetryable = true
-	}
-
-	if isRetryable {
-		orders.Push(order)
-	}
-
-	return isRetryable
-}
-
 // CutoffPriceFromOrder returns the cutoff price for a given order based on the cutoff percent.
 // For example, if the cutoff percent is 90, the cutoff price will be 90% of the order price, rounded down to the nearest integer.
 func CutoffPriceFromOrder(order *types.TxWithMinerFee, cutoffPercent int) *big.Int {
