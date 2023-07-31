@@ -402,6 +402,7 @@ func (c *envChanges) rollback(
 	c.gasPool = gasPoolBefore
 	c.txs = txsBefore
 	c.receipts = receiptsBefore
+	c.profit.Set(profitBefore)
 }
 
 func (c *envChanges) apply() error {
