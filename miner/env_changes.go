@@ -86,7 +86,9 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 	}
 
 	cfg := *chData.chain.GetVMConfig()
-	touchTracer := logger.NewAccountTouchTracer()
+	// we set precompile to nil, but they are set in the validation code
+	// there will be no difference in the result if precompile is not it the blocklist
+	touchTracer := logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, nil)
 	cfg.Tracer = touchTracer
 	cfg.Debug = true
 
@@ -128,8 +130,8 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 		}
 	}
 
-	for _, address := range touchTracer.TouchedAddresses() {
-		if _, in := chData.blacklist[address]; in {
+	for _, accessTuple := range touchTracer.AccessList() {
+		if _, in := chData.blacklist[accessTuple.Address]; in {
 			c.rollback(usedGasBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
 			return nil, popTx, errors.New("blacklist violation, tx trace")
 		}
