@@ -582,7 +582,6 @@ var (
 	MinerBlocklistFileFlag = &cli.StringFlag{
 		Name:     "miner.blocklist",
 		Usage:    "[NOTE: Deprecated, please use builder.blacklist] flashbots - Path to JSON file with list of blocked addresses. Miner will ignore txs that touch mentioned addresses.",
-		Value:    "",
 		Category: flags.MinerCategory,
 	}
 	MinerNewPayloadTimeout = &cli.DurationFlag{
@@ -713,7 +712,6 @@ var (
 	BuilderAlgoTypeFlag = &cli.StringFlag{
 		Name:     "builder.algotype",
 		Usage:    "Block building algorithm to use [=mev-geth] (mev-geth, greedy, greedy-buckets)",
-		Value:    "mev-geth",
 		Category: flags.BuilderCategory,
 	}
 
@@ -742,7 +740,6 @@ var (
 		Usage: "Path to file containing blacklisted addresses, json-encoded list of strings. " +
 			"Builder will ignore transactions that touch mentioned addresses. This flag is also used for block validation API.\n" +
 			"NOTE: builder.validation_blacklist is deprecated and will be removed in the future in favor of builder.blacklist",
-		Value:    "",
 		Aliases:  []string{"builder.validation_blacklist"},
 		Category: flags.BuilderCategory,
 	}
@@ -1684,7 +1681,9 @@ func SetP2PConfig(ctx *cli.Context, cfg *p2p.Config) {
 
 // SetBuilderConfig applies node-related command line flags to the builder config.
 func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
-	cfg.Enabled = ctx.IsSet(BuilderEnabled.Name)
+	if ctx.IsSet(BuilderEnabled.Name) {
+		cfg.Enabled = ctx.Bool(BuilderEnabled.Name)
+	}
 	cfg.EnableValidatorChecks = ctx.IsSet(BuilderEnableValidatorChecks.Name)
 	cfg.EnableLocalRelay = ctx.IsSet(BuilderEnableLocalRelay.Name)
 	cfg.SlotsInEpoch = ctx.Uint64(BuilderSlotsInEpoch.Name)
@@ -1952,7 +1951,7 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 
 	// NOTE: This flag takes precedence and will overwrite value set by MinerBlocklistFileFlag
 	if ctx.IsSet(BuilderBlockValidationBlacklistSourceFilePath.Name) {
-		bytes, err := os.ReadFile(ctx.String(MinerBlocklistFileFlag.Name))
+		bytes, err := os.ReadFile(ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name))
 		if err != nil {
 			Fatalf("Failed to read blocklist file: %s", err)
 		}
