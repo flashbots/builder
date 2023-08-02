@@ -311,20 +311,25 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 			isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
 			// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
 			if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
-				log.Info("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+				log.Debug("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
 					"tx", txHash, "err", err)
 				continue
 			}
 
 			log.Trace("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
 			return err
-		} else if receipt != nil && receipt.Status == types.ReceiptStatusFailed {
-			isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
-			if !isRevertibleTx {
+		}
+
+		if receipt != nil {
+			if receipt.Status == types.ReceiptStatusFailed && !bundle.OriginalBundle.RevertingHash(txHash) {
 				// if transaction reverted and isn't specified as reverting hash, return error
 				log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
 				return errors.New("bundle tx revert")
 			}
+		} else {
+			// NOTE: The expectation is that a receipt is only nil if an error occurred.
+			//  If there is no error but receipt is nil, there is likely a programming error.
+			return errors.New("invalid receipt when no error occurred")
 		}
 
 		gasUsed += receipt.GasUsed
@@ -591,7 +596,7 @@ func (envDiff *environmentDiff) commitSBundleInner(
 				// if drop enabled, and revertible tx has error on commit,
 				// we skip the transaction and continue with next one
 				if algoConf.DropRevertibleTxOnErr && el.CanRevert {
-					log.Info("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+					log.Debug("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
 						"tx", el.Tx.Hash(), "err", err)
 					continue
 				}
