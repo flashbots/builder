@@ -296,9 +296,9 @@ func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint6
 }
 
 var (
-	dropBetter        int = 70
-	count             int = 26691
-	dropErrOverNoDrop int = 0
+	dropBetter        int = 90
+	count             int = 33327
+	dropErrOverNoDrop int = 70
 )
 
 // BuildMultiTxSnapBlock attempts to build a block with input orders using state.MultiTxSnapshot. If a failure occurs attempting to commit a given order,
@@ -386,8 +386,11 @@ func BuildMultiTxSnapBlock(
 				if (dropErr == nil && noDropErr != nil) || dropProfit.Cmp(noDropProfit) > 0 {
 					dropBetter++
 				}
+
+				var whatErr error
 				if dropErr != nil && noDropErr == nil {
 					dropErrOverNoDrop++
+					whatErr = dropErr
 				}
 
 				log.Info("[efficient-revert] Bundle profit comparison",
@@ -397,9 +400,11 @@ func BuildMultiTxSnapBlock(
 					"dropBetter", dropBetter,
 					"count", count,
 					"dropErrOverNoDrop", dropErrOverNoDrop,
+					"whatErr", whatErr,
 				)
 				visited[bundle.OriginalBundle.Hash] = true
 				dropErr, noDropErr = nil, nil
+				whatErr = nil
 			}
 			err = changes.commitBundle(bundle, chData, algoConf)
 			orders.Pop()
