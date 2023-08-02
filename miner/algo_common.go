@@ -395,12 +395,12 @@ func BuildMultiTxSnapBlock(
 
 				log.Info("[efficient-revert] Bundle profit comparison",
 					"bundle", bundle.OriginalBundle.Hash,
-					"noDropProfit", noDropProfit.String(),
-					"dropProfit", dropProfit.String(),
-					"dropBetter", dropBetter,
-					"count", count,
-					"dropErrOverNoDrop", dropErrOverNoDrop,
-					"whatErr", whatErr,
+					"no-discard", noDropProfit.String(),
+					"discard", dropProfit.String(),
+					"n_better", dropBetter,
+					"n_total", count,
+					"n_drop_err", dropErrOverNoDrop,
+					"err", whatErr,
 				)
 				visited[bundle.OriginalBundle.Hash] = true
 				dropErr, noDropErr = nil, nil
