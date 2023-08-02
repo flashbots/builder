@@ -354,7 +354,7 @@ func BuildMultiTxSnapBlock(
 				}
 				algoConf.DropRevertibleTxOnErr = false
 				if err := changes.commitBundle(bundle, chData, algoConf); err != nil {
-					log.Info("[efficient-revert] Failed to commit bundle, drop disabled", "bundle", bundle.OriginalBundle.Hash, "err", err)
+					//log.Info("[efficient-revert] Failed to commit bundle, drop disabled", "bundle", bundle.OriginalBundle.Hash, "err", err)
 					noDropErr = err
 				}
 				if err = inputEnvironment.state.MultiTxSnapshotRevert(); err != nil {
@@ -368,7 +368,7 @@ func BuildMultiTxSnapBlock(
 				}
 				algoConf.DropRevertibleTxOnErr = true
 				if err := changes.commitBundle(bundle, chData, algoConf); err != nil {
-					log.Info("[efficient-revert] Failed to commit bundle, drop enabled", "bundle", bundle.OriginalBundle.Hash, "err", err)
+					//log.Info("[efficient-revert] Failed to commit bundle, drop enabled", "bundle", bundle.OriginalBundle.Hash, "err", err)
 					dropErr = err
 				}
 				if err = inputEnvironment.state.MultiTxSnapshotRevert(); err != nil {
