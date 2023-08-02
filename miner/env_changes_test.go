@@ -79,7 +79,7 @@ func TestBundleCommitSnaps(t *testing.T) {
 		t.Fatal("Failed to simulate bundle", err)
 	}
 
-	err = changes.commitBundle(&simBundle, chData)
+	err = changes.commitBundle(&simBundle, chData, defaultAlgorithmConfig)
 	if err != nil {
 		t.Fatal("Failed to commit bundle", err)
 	}
@@ -198,7 +198,7 @@ func TestErrorBundleCommitSnaps(t *testing.T) {
 	newProfitBefore := new(big.Int).Set(changes.profit)
 	balanceBefore := changes.env.state.GetBalance(signers.addresses[2])
 
-	err = changes.commitBundle(&simBundle, chData)
+	err = changes.commitBundle(&simBundle, chData, defaultAlgorithmConfig)
 	if err == nil {
 		t.Fatal("Committed failed bundle", err)
 	}

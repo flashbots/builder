@@ -23,6 +23,23 @@ type envChanges struct {
 	receipts []*types.Receipt
 }
 
+type previous struct {
+	gasPool  *core.GasPool
+	usedGas  uint64
+	txs      []*types.Transaction
+	receipts []*types.Receipt
+	profit   *big.Int
+}
+
+func (p *previous) Load(c *envChanges) *previous {
+	p.gasPool = new(core.GasPool).AddGas(c.gasPool.Gas())
+	p.usedGas = c.usedGas
+	p.txs = c.txs[:]
+	p.receipts = c.receipts[:]
+	p.profit = new(big.Int).Set(c.profit)
+	return p
+}
+
 func newEnvChanges(env *environment) (*envChanges, error) {
 	if err := env.state.NewMultiTxSnapshot(); err != nil {
 		return nil, err
@@ -147,7 +164,7 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 	return receipt, shiftTx, nil
 }
 
-func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainData) error {
+func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainData, algoConf algorithmConfig) error {
 	var (
 		profitBefore   = new(big.Int).Set(c.profit)
 		coinbaseBefore = new(big.Int).Set(c.env.state.GetBalance(c.env.coinbase))
@@ -161,6 +178,7 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 	)
 
 	for _, tx := range bundle.OriginalBundle.Txs {
+		txHash := tx.Hash()
 		// TODO: Checks for base fee and dynamic fee txs should be moved to the transaction pool,
 		//   similar to mev-share bundles. See SBundlesPool.validateTx() for reference.
 		if hasBaseFee && tx.Type() == types.DynamicFeeTxType {
@@ -183,12 +201,20 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 		receipt, _, err := c.commitTx(tx, chData)
 
 		if err != nil {
+			isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
+			// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
+			if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
+				log.Info("[efficient-revert] revertible transaction found that failed")
+				log.Debug("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+					"tx", txHash, "err", err)
+				continue
+			}
 			log.Trace("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
 			bundleErr = err
 			break
 		}
 
-		if receipt.Status != types.ReceiptStatusSuccessful && !bundle.OriginalBundle.RevertingHash(tx.Hash()) {
+		if receipt != nil && receipt.Status == types.ReceiptStatusFailed && !bundle.OriginalBundle.RevertingHash(tx.Hash()) {
 			log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
 			bundleErr = errors.New("bundle tx revert")
 			break
@@ -274,7 +300,7 @@ func (c *envChanges) CommitSBundle(sbundle *types.SimSBundle, chData chainData, 
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
-		simulatedProfitMultiple := new(big.Int).Mul(simulatedProfit, algoConf.ProfitThresholdPercent)
+		simulatedProfitMultiple := common.PercentOf(simulatedProfit, algoConf.ProfitThresholdPercent)
 		actualProfitMultiple := new(big.Int).Mul(actualProfit, common.Big100)
 
 		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
@@ -326,6 +352,13 @@ func (c *envChanges) commitSBundle(sbundle *types.SBundle, chData chainData, key
 		if el.Tx != nil {
 			receipt, _, err := c.commitTx(el.Tx, chData)
 			if err != nil {
+				// if drop enabled, and revertible tx has error on commit,
+				// we skip the transaction and continue with next one
+				if algoConf.DropRevertibleTxOnErr && el.CanRevert {
+					log.Debug("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+						"tx", el.Tx.Hash(), "err", err)
+					continue
+				}
 				return err
 			}
 			if receipt.Status != types.ReceiptStatusSuccessful && !el.CanRevert {

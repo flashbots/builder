@@ -1413,7 +1413,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 		algoConf := &algorithmConfig{
 			EnforceProfit:          true,
 			ExpectedProfit:         nil,
-			ProfitThresholdPercent: defaultProfitThreshold,
+			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
 			PriceCutoffPercent:     priceCutoffPercent,
 			EnableMultiTxSnap:      w.config.EnableMultiTransactionSnapshot,
 		}

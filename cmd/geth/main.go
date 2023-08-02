@@ -181,6 +181,7 @@ var (
 		utils.BuilderRateLimitDuration,
 		utils.BuilderRateLimitMaxBurst,
 		utils.BuilderBlockResubmitInterval,
+		utils.BuilderDiscardRevertibleTxOnErr,
 		utils.BuilderSubmissionOffset,
 		utils.BuilderEnableCancellations,
 	}

@@ -23,20 +23,20 @@ const (
 )
 
 const (
-	// defaultProfitPercentMinimum is to ensure committed transactions, bundles, sbundles don't fall below this threshold
+	// defaultProfitThresholdPercent is to ensure committed transactions, bundles, sbundles don't fall below this threshold
 	// when profit is enforced
-	defaultProfitPercentMinimum = 70
+	defaultProfitThresholdPercent = 70
 
 	// defaultPriceCutoffPercent is for bucketing transactions by price, used for greedy buckets algorithm
 	defaultPriceCutoffPercent = 50
 )
 
 var (
-	defaultProfitThreshold = big.NewInt(defaultProfitPercentMinimum)
 	defaultAlgorithmConfig = algorithmConfig{
+		DropRevertibleTxOnErr:  false,
 		EnforceProfit:          false,
 		ExpectedProfit:         common.Big0,
-		ProfitThresholdPercent: defaultProfitThreshold,
+		ProfitThresholdPercent: defaultProfitThresholdPercent,
 		PriceCutoffPercent:     defaultPriceCutoffPercent,
 		EnableMultiTxSnap:      false,
 	}
@@ -68,13 +68,17 @@ func (e *lowProfitError) Error() string {
 
 type (
 	algorithmConfig struct {
+		// DropRevertibleTxOnErr is used when a revertible transaction has error on commit, and we wish to discard
+		// the transaction and continue processing the rest of a bundle or sbundle.
+		// Revertible transactions are specified as hashes that can revert in a bundle or sbundle.
+		DropRevertibleTxOnErr bool
 		// EnforceProfit is true if we want to enforce a minimum profit threshold
 		// for committing a transaction based on ProfitThresholdPercent
 		EnforceProfit bool
 		// ExpectedProfit should be set on a per-transaction basis when profit is enforced
 		ExpectedProfit *big.Int
 		// ProfitThresholdPercent is the minimum profit threshold for committing a transaction
-		ProfitThresholdPercent *big.Int
+		ProfitThresholdPercent int
 		// PriceCutoffPercent is the minimum effective gas price threshold used for bucketing transactions by price.
 		// For example if the top transaction in a list has an effective gas price of 1000 wei and PriceCutoffPercent
 		// is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction
@@ -304,6 +308,7 @@ func BuildMultiTxSnapBlock(
 		usedSbundles     []types.UsedSBundle
 		orderFailed      bool
 		buildBlockErrors []error
+		visited          = make(map[common.Hash]bool, 256)
 	)
 
 	for {
@@ -334,7 +339,49 @@ func BuildMultiTxSnapBlock(
 				orderFailed = true
 			}
 		} else if bundle := order.Bundle(); bundle != nil {
-			err = changes.commitBundle(bundle, chData)
+			if !visited[bundle.OriginalBundle.Hash] && len(bundle.OriginalBundle.RevertingTxHashes) > 0 {
+				log.Info("[efficient-revert] Found bundle with reverting transaction hashes")
+				var (
+					p            = new(previous).Load(changes)
+					noDropProfit *big.Int
+					dropProfit   *big.Int
+				)
+				if err := inputEnvironment.state.NewMultiTxSnapshot(); err != nil {
+					panic(err)
+				}
+				algoConf.DropRevertibleTxOnErr = false
+				if err := changes.commitBundle(bundle, chData, algoConf); err != nil {
+					log.Info("[efficient-revert] Failed to commit bundle, drop disabled", "bundle", bundle.OriginalBundle.Hash, "err", err)
+					visited[bundle.OriginalBundle.Hash] = true
+					_ = inputEnvironment.state.MultiTxSnapshotRevert()
+					continue
+				}
+				if err = inputEnvironment.state.MultiTxSnapshotRevert(); err != nil {
+					panic(err)
+				}
+				noDropProfit = new(big.Int).Sub(changes.profit, p.profit)
+				changes.rollback(p.usedGas, p.gasPool, p.profit, p.txs, p.receipts)
+
+				if err := inputEnvironment.state.NewMultiTxSnapshot(); err != nil {
+					panic(err)
+				}
+				algoConf.DropRevertibleTxOnErr = true
+				if err := changes.commitBundle(bundle, chData, algoConf); err != nil {
+					log.Info("[efficient-revert] Failed to commit bundle, drop enabled", "bundle", bundle.OriginalBundle.Hash, "err", err)
+					visited[bundle.OriginalBundle.Hash] = true
+					_ = inputEnvironment.state.MultiTxSnapshotRevert()
+					continue
+				}
+				if err = inputEnvironment.state.MultiTxSnapshotRevert(); err != nil {
+					panic(err)
+				}
+				dropProfit = new(big.Int).Sub(changes.profit, p.profit)
+				changes.rollback(p.usedGas, p.gasPool, p.profit, p.txs, p.receipts)
+
+				log.Info("[efficient-revert] Bundle profit comparison", "bundle", bundle.OriginalBundle.Hash, "noDropProfit", noDropProfit, "dropProfit", dropProfit)
+				visited[bundle.OriginalBundle.Hash] = true
+			}
+			err = changes.commitBundle(bundle, chData, algoConf)
 			orders.Pop()
 			if err != nil {
 				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
@@ -344,6 +391,48 @@ func BuildMultiTxSnapBlock(
 				usedBundles = append(usedBundles, *bundle)
 			}
 		} else if sbundle := order.SBundle(); sbundle != nil {
+			if !visited[sbundle.Bundle.Hash()] && sbundle.HashRevertibleTransactions() {
+				log.Info("[efficient-revert] Found bundle with reverting transaction hashes")
+				var (
+					p            = new(previous).Load(changes)
+					noDropProfit *big.Int
+					dropProfit   *big.Int
+				)
+				if err := inputEnvironment.state.NewMultiTxSnapshot(); err != nil {
+					panic(err)
+				}
+				algoConf.DropRevertibleTxOnErr = false
+				if err := changes.CommitSBundle(sbundle, chData, key, algoConf); err != nil {
+					log.Info("[efficient-revert] Failed to commit sbundle, drop disabled", "sbundle", sbundle.Bundle.Hash(), "err", err)
+					visited[sbundle.Bundle.Hash()] = true
+					_ = inputEnvironment.state.MultiTxSnapshotRevert()
+					continue
+				}
+				if err = inputEnvironment.state.MultiTxSnapshotRevert(); err != nil {
+					panic(err)
+				}
+				noDropProfit = new(big.Int).Sub(changes.profit, p.profit)
+				changes.rollback(p.usedGas, p.gasPool, p.profit, p.txs, p.receipts)
+
+				if err := inputEnvironment.state.NewMultiTxSnapshot(); err != nil {
+					panic(err)
+				}
+				algoConf.DropRevertibleTxOnErr = true
+				if err := changes.CommitSBundle(sbundle, chData, key, algoConf); err != nil {
+					log.Info("[efficient-revert] Failed to commit sbundle, drop enabled", "sbundle", sbundle.Bundle.Hash(), "err", err)
+					visited[sbundle.Bundle.Hash()] = true
+					_ = inputEnvironment.state.MultiTxSnapshotRevert()
+					continue
+				}
+				if err = inputEnvironment.state.MultiTxSnapshotRevert(); err != nil {
+					panic(err)
+				}
+				dropProfit = new(big.Int).Sub(changes.profit, p.profit)
+				changes.rollback(p.usedGas, p.gasPool, p.profit, p.txs, p.receipts)
+
+				log.Info("[efficient-revert] SBundle profit comparison", "sbundle", sbundle.Bundle.Hash(), "noDropProfit", noDropProfit, "dropProfit", dropProfit)
+				visited[sbundle.Bundle.Hash()] = true
+			}
 			err = changes.CommitSBundle(sbundle, chData, key, algoConf)
 			usedEntry := types.UsedSBundle{
 				Bundle:  sbundle.Bundle,

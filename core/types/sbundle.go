@@ -88,6 +88,15 @@ type SimSBundle struct {
 	Profit      *big.Int
 }
 
+func (s *SimSBundle) HashRevertibleTransactions() bool {
+	for _, body := range s.Bundle.Body {
+		if body.CanRevert {
+			return true
+		}
+	}
+	return false
+}
+
 func GetRefundConfig(body *BundleBody, signer Signer) ([]RefundConfig, error) {
 	if body.Tx != nil {
 		address, err := signer.Sender(body.Tx)
