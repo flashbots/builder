@@ -378,7 +378,7 @@ func BuildMultiTxSnapBlock(
 				dropProfit = new(big.Int).Sub(changes.profit, p.profit)
 				changes.rollback(p.usedGas, p.gasPool, p.profit, p.txs, p.receipts)
 
-				log.Info("[efficient-revert] Bundle profit comparison", "bundle", bundle.OriginalBundle.Hash, "noDropProfit", noDropProfit, "dropProfit", dropProfit)
+				log.Info("[efficient-revert] Bundle profit comparison", "bundle", bundle.OriginalBundle.Hash, "noDropProfit", noDropProfit.Uint64(), "dropProfit", dropProfit.Uint64())
 				visited[bundle.OriginalBundle.Hash] = true
 			}
 			err = changes.commitBundle(bundle, chData, algoConf)
@@ -430,7 +430,7 @@ func BuildMultiTxSnapBlock(
 				dropProfit = new(big.Int).Sub(changes.profit, p.profit)
 				changes.rollback(p.usedGas, p.gasPool, p.profit, p.txs, p.receipts)
 
-				log.Info("[efficient-revert] SBundle profit comparison", "sbundle", sbundle.Bundle.Hash(), "noDropProfit", noDropProfit, "dropProfit", dropProfit)
+				log.Info("[efficient-revert] SBundle profit comparison", "sbundle", sbundle.Bundle.Hash(), "noDropProfit", noDropProfit.Uint64(), "dropProfit", dropProfit.Uint64())
 				visited[sbundle.Bundle.Hash()] = true
 			}
 			err = changes.CommitSBundle(sbundle, chData, key, algoConf)

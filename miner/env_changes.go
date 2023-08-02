@@ -230,9 +230,14 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 		bundleProfit = new(big.Int).Sub(c.env.state.GetBalance(c.env.coinbase), coinbaseBefore)
 		gasUsed      = c.usedGas - gasUsedBefore
 
-		effGP    = new(big.Int).Div(bundleProfit, new(big.Int).SetUint64(gasUsed))
+		effGP    = new(big.Int)
 		simEffGP = new(big.Int).Set(bundle.MevGasPrice)
 	)
+	if gasUsed == 0 {
+		effGP.SetInt64(0)
+	} else {
+		effGP = new(big.Int).Div(bundleProfit, new(big.Int).SetUint64(gasUsed))
+	}
 
 	// allow >-1% divergence
 	effGP.Mul(effGP, common.Big100)
