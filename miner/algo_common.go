@@ -295,6 +295,11 @@ func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint6
 	return nil, err
 }
 
+var (
+	dropBetter int
+	count      int
+)
+
 // BuildMultiTxSnapBlock attempts to build a block with input orders using state.MultiTxSnapshot. If a failure occurs attempting to commit a given order,
 // it reverts to previous state and the next order is attempted.
 func BuildMultiTxSnapBlock(
@@ -309,7 +314,6 @@ func BuildMultiTxSnapBlock(
 		orderFailed      bool
 		buildBlockErrors []error
 		visited          = make(map[common.Hash]bool, 256)
-		dropBetter       int
 	)
 
 	for {
@@ -377,6 +381,7 @@ func BuildMultiTxSnapBlock(
 				dropProfit = new(big.Int).Sub(changes.profit, p.profit)
 				changes.rollback(p.usedGas, p.gasPool, p.profit, p.txs, p.receipts)
 
+				count++
 				if (dropErr == nil && noDropErr != nil) || dropProfit.Cmp(noDropProfit) > 0 {
 					dropBetter++
 				}
@@ -386,6 +391,7 @@ func BuildMultiTxSnapBlock(
 					"noDropProfit", noDropProfit.String(),
 					"dropProfit", dropProfit.String(),
 					"dropBetter", dropBetter,
+					"count", count,
 				)
 				visited[bundle.OriginalBundle.Hash] = true
 				dropErr, noDropErr = nil, nil

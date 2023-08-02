@@ -204,7 +204,6 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 			isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
 			// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
 			if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
-				log.Info("[efficient-revert] revertible transaction found that failed")
 				log.Debug("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
 					"tx", txHash, "err", err)
 				continue
