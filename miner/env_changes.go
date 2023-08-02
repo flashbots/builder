@@ -24,9 +24,12 @@ type envChanges struct {
 }
 
 func newEnvChanges(env *environment) (*envChanges, error) {
-	if err := env.state.MultiTxSnapshot(); err != nil {
+	if err := env.state.NewMultiTxSnapshot(); err != nil {
 		return nil, err
 	}
+	//if err := env.state.MultiTxSnapshot(); err != nil {
+	//	return nil, err
+	//}
 
 	return &envChanges{
 		env:      env,
@@ -158,6 +161,8 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 	)
 
 	for _, tx := range bundle.OriginalBundle.Txs {
+		// TODO: Checks for base fee and dynamic fee txs should be moved to the transaction pool,
+		//   similar to mev-share bundles. See SBundlesPool.validateTx() for reference.
 		if hasBaseFee && tx.Type() == types.DynamicFeeTxType {
 			// Sanity check for extremely large numbers
 			if tx.GasFeeCap().BitLen() > 256 {

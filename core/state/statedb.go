@@ -110,7 +110,9 @@ type StateDB struct {
 	nextRevisionId int
 
 	// Multi-Transaction Snapshot
-	multiTxSnapshot *MultiTxSnapshot
+	//multiTxSnapshot *MultiTxSnapshot
+	// Multi-Transaction Snapshot Stack
+	multiTxSnapshotStack *MultiTxSnapshotStack
 
 	// Measurements gathered during execution for debugging purposes
 	AccountReads         time.Duration
@@ -154,6 +156,8 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 		transientStorage:     newTransientStorage(),
 		hasher:               crypto.NewKeccakState(),
 	}
+
+	sdb.multiTxSnapshotStack = NewMultiTxSnapshotStack(sdb)
 	if sdb.snaps != nil {
 		if sdb.snap = sdb.snaps.Snapshot(root); sdb.snap != nil {
 			sdb.snapAccounts = make(map[common.Hash][]byte)
@@ -715,6 +719,7 @@ func (s *StateDB) Copy() *StateDB {
 		journal:              newJournal(),
 		hasher:               crypto.NewKeccakState(),
 	}
+	state.multiTxSnapshotStack = NewMultiTxSnapshotStack(state)
 	// Copy the dirty states, logs, and preimages
 	for addr := range s.journal.dirties {
 		// As documented [here](https://github.com/ethereum/go-ethereum/pull/16485#issuecomment-380438527),
@@ -845,9 +850,10 @@ func (s *StateDB) GetRefund() uint64 {
 // the journal as well as the refunds. Finalise, however, will not push any updates
 // into the tries just yet. Only IntermediateRoot or Commit will do that.
 func (s *StateDB) Finalise(deleteEmptyObjects bool) {
-	if multiSnap := s.multiTxSnapshot; multiSnap != nil {
-		multiSnap.updateFromJournal(s.journal)
-	}
+	s.multiTxSnapshotStack.UpdateFromJournal(s.journal)
+	//if multiSnap := s.multiTxSnapshot; multiSnap != nil {
+	//	multiSnap.updateFromJournal(s.journal)
+	//}
 	addressesToPrefetch := make([][]byte, 0, len(s.journal.dirties))
 	for addr := range s.journal.dirties {
 		obj, exist := s.stateObjects[addr]
@@ -861,9 +867,10 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			continue
 		}
 		if obj.suicided || (deleteEmptyObjects && obj.empty()) {
-			if multiSnap := s.multiTxSnapshot; multiSnap != nil {
-				multiSnap.updateObjectDeleted(obj.address, obj.deleted)
-			}
+			s.multiTxSnapshotStack.UpdateObjectDeleted(obj.address, obj.deleted)
+			//if multiSnap := s.multiTxSnapshot; multiSnap != nil {
+			//	multiSnap.updateObjectDeleted(obj.address, obj.deleted)
+			//}
 
 			obj.deleted = true
 
@@ -882,11 +889,17 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 		} else {
 			obj.finalise(true) // Prefetch slots in the background
 		}
-		if multiSnap := s.multiTxSnapshot; multiSnap != nil {
+
+		if s.multiTxSnapshotStack.Size() > 0 {
 			_, wasPending := s.stateObjectsPending[addr]
 			_, wasDirty := s.stateObjectsDirty[addr]
-			multiSnap.updatePendingStatus(addr, wasPending, wasDirty)
+			s.multiTxSnapshotStack.UpdatePendingStatus(addr, wasPending, wasDirty)
 		}
+		//if multiSnap := s.multiTxSnapshot; multiSnap != nil {
+		//	_, wasPending := s.stateObjectsPending[addr]
+		//	_, wasDirty := s.stateObjectsDirty[addr]
+		//multiSnap.updatePendingStatus(addr, wasPending, wasDirty)
+		//}
 		s.stateObjectsPending[addr] = struct{}{}
 		s.stateObjectsDirty[addr] = struct{}{}
 
@@ -909,9 +922,10 @@ func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
 
-	if s.multiTxSnapshot != nil {
-		s.multiTxSnapshot.invalid = true
-	}
+	s.multiTxSnapshotStack.Invalidate()
+	//if s.multiTxSnapshot != nil {
+	//	s.multiTxSnapshot.invalid = true
+	//}
 
 	// If there was a trie prefetcher operating, it gets aborted and irrevocably
 	// modified after we start retrieving tries. Remove it from the statedb after
@@ -1201,31 +1215,49 @@ func (s *StateDB) convertAccountSet(set map[common.Address]struct{}) map[common.
 	return ret
 }
 
-// MultiTxSnapshot creates new checkpoint for multi txs reverts
-func (s *StateDB) MultiTxSnapshot() error {
-	if s.multiTxSnapshot != nil {
-		return errors.New("multi tx snapshot already exists")
+func (s *StateDB) NewMultiTxSnapshot() error {
+	_, err := s.multiTxSnapshotStack.NewSnapshot()
+	if err != nil {
+		return err
 	}
-	s.multiTxSnapshot = NewMultiTxSnapshot()
 	return nil
 }
+
+// MultiTxSnapshot creates new checkpoint for multi txs reverts
+//func (s *StateDB) MultiTxSnapshot() error {
+//	if s.multiTxSnapshot != nil {
+//		return errors.New("multi tx snapshot already exists")
+//	}
+//	s.multiTxSnapshot = NewMultiTxSnapshot()
+//	return nil
+//}
 
 func (s *StateDB) MultiTxSnapshotRevert() error {
-	if s.multiTxSnapshot == nil {
-		return errors.New("multi tx snapshot does not exist")
-	}
-	if s.multiTxSnapshot.invalid {
-		return errors.New("multi tx snapshot is invalid")
-	}
-	s.multiTxSnapshot.revertState(s)
-	s.multiTxSnapshot = nil
-	return nil
+	_, err := s.multiTxSnapshotStack.Revert()
+	return err
 }
 
+//func (s *StateDB) MultiTxSnapshotRevert() error {
+//	if s.multiTxSnapshot == nil {
+//		return errors.New("multi tx snapshot does not exist")
+//	}
+//	if s.multiTxSnapshot.invalid {
+//		return errors.New("multi tx snapshot is invalid")
+//	}
+//	s.multiTxSnapshot.revertState(s)
+//	s.multiTxSnapshot = nil
+//	return nil
+//}
+
 func (s *StateDB) MultiTxSnapshotDiscard() error {
-	if s.multiTxSnapshot == nil {
-		return errors.New("multi tx snapshot does not exist")
-	}
-	s.multiTxSnapshot = nil
-	return nil
+	_, err := s.multiTxSnapshotStack.Commit()
+	return err
 }
+
+//func (s *StateDB) MultiTxSnapshotDiscard() error {
+//	if s.multiTxSnapshot == nil {
+//		return errors.New("multi tx snapshot does not exist")
+//	}
+//	s.multiTxSnapshot = nil
+//	return nil
+//}

@@ -18,8 +18,6 @@ var (
 )
 
 func init() {
-	rng = rand.New(rand.NewSource(0))
-
 	for i := 0; i < 20; i++ {
 		addrs = append(addrs, common.HexToAddress(fmt.Sprintf("0x%02x", i)))
 	}
@@ -141,6 +139,8 @@ func prepareInitialState(s *StateDB) {
 	// for this we apply some changes
 	// 1. Before calling intermediateRoot
 	// 2. After calling intermediateRoot but before calling Finalise
+	rng = rand.New(rand.NewSource(0))
+
 	var beforeCommitHooks, afterCommitHooks []func(addr common.Address, s *StateDB)
 	addAccount := func(beforeCommit, afterCommit func(addr common.Address, s *StateDB)) {
 		beforeCommitHooks = append(beforeCommitHooks, beforeCommit)
@@ -241,7 +241,7 @@ func prepareInitialState(s *StateDB) {
 	s.Finalise(true)
 }
 
-func testMutliTxSnapshot(t *testing.T, actions func(s *StateDB)) {
+func testMultiTxSnapshot(t *testing.T, actions func(s *StateDB)) {
 	s := newStateTest()
 	prepareInitialState(s.state)
 
@@ -259,7 +259,8 @@ func testMutliTxSnapshot(t *testing.T, actions func(s *StateDB)) {
 		dirtyAddressesBefore[k] = v
 	}
 
-	err := s.state.MultiTxSnapshot()
+	//err := s.state.MultiTxSnapshot()
+	err := s.state.NewMultiTxSnapshot()
 	if err != nil {
 		t.Fatal("MultiTxSnapshot failed", err)
 	}
@@ -309,7 +310,7 @@ func testMutliTxSnapshot(t *testing.T, actions func(s *StateDB)) {
 }
 
 func TestMultiTxSnapshotAccountChangesSimple(t *testing.T) {
-	testMutliTxSnapshot(t, func(s *StateDB) {
+	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
 			s.SetBalance(addr, big.NewInt(79))
@@ -320,7 +321,7 @@ func TestMultiTxSnapshotAccountChangesSimple(t *testing.T) {
 }
 
 func TestMultiTxSnapshotAccountChangesMultiTx(t *testing.T) {
-	testMutliTxSnapshot(t, func(s *StateDB) {
+	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
 			s.SetBalance(addr, big.NewInt(79))
@@ -338,7 +339,7 @@ func TestMultiTxSnapshotAccountChangesMultiTx(t *testing.T) {
 }
 
 func TestMultiTxSnapshotAccountChangesSelfDestruct(t *testing.T) {
-	testMutliTxSnapshot(t, func(s *StateDB) {
+	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
 			s.SetBalance(addr, big.NewInt(79))
@@ -361,7 +362,7 @@ func TestMultiTxSnapshotAccountChangesSelfDestruct(t *testing.T) {
 }
 
 func TestMultiTxSnapshotAccountChangesEmptyAccount(t *testing.T) {
-	testMutliTxSnapshot(t, func(s *StateDB) {
+	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
 			s.SetBalance(addr, big.NewInt(79))
@@ -386,7 +387,7 @@ func TestMultiTxSnapshotAccountChangesEmptyAccount(t *testing.T) {
 }
 
 func TestMultiTxSnapshotStateChanges(t *testing.T) {
-	testMutliTxSnapshot(t, func(s *StateDB) {
+	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			randFillAccountState(addr, s)
 		}
