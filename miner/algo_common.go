@@ -309,6 +309,7 @@ func BuildMultiTxSnapBlock(
 		orderFailed      bool
 		buildBlockErrors []error
 		visited          = make(map[common.Hash]bool, 256)
+		dropBetter       int
 	)
 
 	for {
@@ -345,6 +346,8 @@ func BuildMultiTxSnapBlock(
 					p            = new(previous).Load(changes)
 					noDropProfit *big.Int
 					dropProfit   *big.Int
+					noDropErr    error
+					dropErr      error
 				)
 				if err := inputEnvironment.state.NewMultiTxSnapshot(); err != nil {
 					panic(err)
@@ -352,9 +355,7 @@ func BuildMultiTxSnapBlock(
 				algoConf.DropRevertibleTxOnErr = false
 				if err := changes.commitBundle(bundle, chData, algoConf); err != nil {
 					log.Info("[efficient-revert] Failed to commit bundle, drop disabled", "bundle", bundle.OriginalBundle.Hash, "err", err)
-					visited[bundle.OriginalBundle.Hash] = true
-					_ = inputEnvironment.state.MultiTxSnapshotRevert()
-					continue
+					noDropErr = err
 				}
 				if err = inputEnvironment.state.MultiTxSnapshotRevert(); err != nil {
 					panic(err)
@@ -368,9 +369,7 @@ func BuildMultiTxSnapBlock(
 				algoConf.DropRevertibleTxOnErr = true
 				if err := changes.commitBundle(bundle, chData, algoConf); err != nil {
 					log.Info("[efficient-revert] Failed to commit bundle, drop enabled", "bundle", bundle.OriginalBundle.Hash, "err", err)
-					visited[bundle.OriginalBundle.Hash] = true
-					_ = inputEnvironment.state.MultiTxSnapshotRevert()
-					continue
+					dropErr = err
 				}
 				if err = inputEnvironment.state.MultiTxSnapshotRevert(); err != nil {
 					panic(err)
@@ -378,8 +377,18 @@ func BuildMultiTxSnapBlock(
 				dropProfit = new(big.Int).Sub(changes.profit, p.profit)
 				changes.rollback(p.usedGas, p.gasPool, p.profit, p.txs, p.receipts)
 
-				log.Info("[efficient-revert] Bundle profit comparison", "bundle", bundle.OriginalBundle.Hash, "noDropProfit", noDropProfit.Uint64(), "dropProfit", dropProfit.Uint64())
+				if (dropErr == nil && noDropErr != nil) || dropProfit.Cmp(noDropProfit) > 0 {
+					dropBetter++
+				}
+
+				log.Info("[efficient-revert] Bundle profit comparison",
+					"bundle", bundle.OriginalBundle.Hash,
+					"noDropProfit", noDropProfit.String(),
+					"dropProfit", dropProfit.String(),
+					"dropBetter", dropBetter,
+				)
 				visited[bundle.OriginalBundle.Hash] = true
+				dropErr, noDropErr = nil, nil
 			}
 			err = changes.commitBundle(bundle, chData, algoConf)
 			orders.Pop()
@@ -430,7 +439,7 @@ func BuildMultiTxSnapBlock(
 				dropProfit = new(big.Int).Sub(changes.profit, p.profit)
 				changes.rollback(p.usedGas, p.gasPool, p.profit, p.txs, p.receipts)
 
-				log.Info("[efficient-revert] SBundle profit comparison", "sbundle", sbundle.Bundle.Hash(), "noDropProfit", noDropProfit.Uint64(), "dropProfit", dropProfit.Uint64())
+				log.Info("[efficient-revert] SBundle profit comparison", "sbundle", sbundle.Bundle.Hash(), "noDropProfit", noDropProfit.String(), "dropProfit", dropProfit.String())
 				visited[sbundle.Bundle.Hash()] = true
 			}
 			err = changes.CommitSBundle(sbundle, chData, key, algoConf)
