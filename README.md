@@ -38,6 +38,9 @@ $ geth --help
     --builder                      (default: false)
           Enable the builder
 
+    --builder.algotype value       (default: "mev-geth")
+          Block building algorithm to use [=mev-geth] (mev-geth, greedy, greedy-buckets)
+   
     --builder.beacon_endpoints value (default: "http://127.0.0.1:5052")
           Comma separated list of beacon endpoints to connect to for beacon chain data
           [$BUILDER_BEACON_ENDPOINTS]
@@ -45,6 +48,10 @@ $ geth --help
     --builder.bellatrix_fork_version value (default: "0x02000000")
           Bellatrix fork version. [$BUILDER_BELLATRIX_FORK_VERSION]
 
+    --builder.blacklist value     
+          Path to file containing blacklisted addresses, json-encoded list of strings.
+          Builder will ignore transactions that touch mentioned addresses.
+   
     --builder.block_resubmit_interval value (default: "500ms")
           Determines the interval at which builder will resubmit block submissions
           [$FLASHBOTS_BUILDER_RATE_LIMIT_RESUBMIT_INTERVAL]
@@ -83,6 +90,15 @@ $ geth --help
     --builder.no_bundle_fetcher    (default: false)
           Disable the bundle fetcher
 
+    --builder.price_cutoff_percent value (default: 50)
+          flashbots - The minimum effective gas price threshold used for bucketing
+          transactions by price. For example if the top transaction in a list has an
+          effective gas price of 1000 wei and price_cutoff_percent is 10 (i.e. 10%), then
+          the minimum effective gas price included in the same bucket as the top
+          transaction is (1000 * 10%) = 100 wei.
+          NOTE: This flag is only used when
+          builder.algotype=greedy-buckets [$FLASHBOTS_BUILDER_PRICE_CUTOFF_PERCENT]
+
     --builder.rate_limit_duration value (default: "500ms")
           Determines rate limit of events processed by builder. For example, a value of
           "500ms" denotes that the builder processes events every 500ms. A duration string
@@ -120,21 +136,19 @@ $ geth --help
           blocks. For example, if a slot is 12 seconds long, and the offset is 2 seconds,
           the builder will submit blocks at 10 seconds into the slot.
           [$FLASHBOTS_BUILDER_SUBMISSION_OFFSET]
-
-    --builder.validation_blacklist value
-          Path to file containing blacklisted addresses, json-encoded list of strings
-
+   
     --builder.validator_checks     (default: false)
           Enable the validator checks
 
     MINER
 
     --miner.algotype value         (default: "mev-geth")
-          Block building algorithm to use [=mev-geth] (mev-geth, greedy)
+          [NOTE: Deprecated, please use builder.algotype instead] Block building algorithm
+          to use [=mev-geth] (mev-geth, greedy, greedy-buckets)
 
-    --miner.blocklist value
-          flashbots - Path to JSON file with list of blocked addresses. Miner will ignore
-          txs that touch mentioned addresses.
+    --miner.blocklist value       
+          [NOTE: Deprecated, please use builder.blacklist] flashbots - Path to JSON file with
+          list of blocked addresses. Miner will ignore txs that touch mentioned addresses.
 
     --miner.extradata value
           Block extra data set by the miner (default = client version)
@@ -178,8 +192,7 @@ See the [metrics docs](https://geth.ethereum.org/docs/monitoring/metrics) for ge
 
 If you want to reject transactions interacting with certain addresses, save the addresses in json file with an array of strings. Deciding whether to use such a list, as well as maintaining it, is your own responsibility.
 
-- for block building, use `--miner.blocklist`
-- for validation, use `--builder.validation_blacklist`
+- for block building and validation, use `--builder.blacklist`
 
 --
 
@@ -229,7 +242,7 @@ Miner is responsible for block creation. Request from the `builder` is routed to
 * `algo_greedy.go` implements logic of the block building. Bundles and transactions are sorted in the order of effective gas price then
   we try to insert everything into to block until gas limit is reached. Failing bundles are reverted during the insertion but txs are not.
 * Builder can filter transactions touching a particular set of addresses.
-  If a bundle or transaction touches one of the addresses it is skipped. (see `--miner.blocklist` flag)
+  If a bundle or transaction touches one of the addresses it is skipped. (see `--builder.blacklist` flag)
 
 ## Bundle Movement
 
