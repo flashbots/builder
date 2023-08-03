@@ -877,6 +877,7 @@ var (
 			"and its hash is specified as one that can revert in the request body, the builder will discard the hash of the failed transaction from the submitted bundle." +
 			"For additional details on the structure of the request body, see https://docs.flashbots.net/flashbots-mev-share/searchers/understanding-bundles#bundle-definition",
 		EnvVars:  []string{"FLASHBOTS_BUILDER_DISCARD_REVERTIBLE_TX_ON_ERROR"},
+		Value:    builder.DefaultConfig.DiscardRevertibleTxOnErr,
 		Category: flags.BuilderCategory,
 	}
 
