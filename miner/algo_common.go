@@ -311,7 +311,7 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 			isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
 			// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
 			if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
-				log.Debug("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+				log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
 					"tx", txHash, "err", err)
 				continue
 			}
@@ -596,7 +596,7 @@ func (envDiff *environmentDiff) commitSBundleInner(
 				// if drop enabled, and revertible tx has error on commit,
 				// we skip the transaction and continue with next one
 				if algoConf.DropRevertibleTxOnErr && el.CanRevert {
-					log.Debug("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+					log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
 						"tx", el.Tx.Hash(), "err", err)
 					continue
 				}
