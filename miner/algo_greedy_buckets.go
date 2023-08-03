@@ -34,8 +34,7 @@ func newGreedyBucketsBuilder(
 	if algoConf == nil {
 		algoConf = &algorithmConfig{
 			EnforceProfit:          true,
-			ExpectedProfit:         nil,
-			ProfitThresholdPercent: defaultProfitThreshold,
+			ProfitThresholdPercent: defaultProfitThresholdPercent,
 		}
 	}
 	return &greedyBucketsBuilder{
@@ -65,9 +64,10 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 	gasUsedMap map[*types.TxWithMinerFee]uint64, retryMap map[*types.TxWithMinerFee]int, retryLimit int,
 ) ([]types.SimulatedBundle, []types.UsedSBundle) {
 	var (
+		algoConf = b.algoConf
+
 		usedBundles  []types.SimulatedBundle
 		usedSbundles []types.UsedSBundle
-		algoConf     = b.algoConf
 
 		CheckRetryOrderAndReinsert = func(
 			order *types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce,

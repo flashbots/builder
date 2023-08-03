@@ -201,9 +201,10 @@ func newMultiWorkerMevGeth(config *Config, chainConfig *params.ChainConfig, engi
 }
 
 type flashbotsData struct {
-	isFlashbots      bool
-	queue            chan *task
-	maxMergedBundles int
-	algoType         AlgoType
-	bundleCache      *BundleCache
+	isFlashbots           bool
+	queue                 chan *task
+	maxMergedBundles      int
+	algoType              AlgoType
+	bundleCache           *BundleCache
+	discardRevertedHashes bool
 }

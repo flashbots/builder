@@ -1399,10 +1399,8 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 		newEnv       *environment
 		blockBundles []types.SimulatedBundle
 		usedSbundle  []types.UsedSBundle
+		start        = time.Now()
 	)
-
-	start := time.Now()
-
 	switch w.flashbots.algoType {
 	case ALGO_GREEDY_BUCKETS:
 		priceCutoffPercent := w.config.PriceCutoffPercent
@@ -1411,9 +1409,9 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 		}
 
 		algoConf := &algorithmConfig{
+			DropRevertibleTxOnErr:  w.flashbots.discardRevertedHashes,
 			EnforceProfit:          true,
-			ExpectedProfit:         nil,
-			ProfitThresholdPercent: defaultProfitThreshold,
+			ProfitThresholdPercent: defaultProfitThresholdPercent,
 			PriceCutoffPercent:     priceCutoffPercent,
 		}
 		builder := newGreedyBucketsBuilder(
@@ -1425,8 +1423,15 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 	case ALGO_GREEDY:
 		fallthrough
 	default:
+		// For default greedy builder, set algorithm configuration to default values,
+		// except DropRevertibleTxOnErr which is passed in from worker config
+		algoConf := &algorithmConfig{
+			DropRevertibleTxOnErr:  w.flashbots.discardRevertedHashes,
+			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
+			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
+		}
 		builder := newGreedyBuilder(
-			w.chain, w.chainConfig, w.blockList, env,
+			w.chain, w.chainConfig, algoConf, w.blockList, env,
 			w.config.BuilderTxSigningKey, interrupt,
 		)
 
@@ -1950,7 +1955,10 @@ func containsHash(arr []common.Hash, match common.Hash) bool {
 
 // Compute the adjusted gas price for a whole bundle
 // Done by calculating all gas spent, adding transfers to the coinbase, and then dividing by gas used
-func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, state *state.StateDB, gasPool *core.GasPool, pendingTxs map[common.Address]types.Transactions, currentTxCount int) (simulatedBundle, error) {
+func (w *worker) computeBundleGas(
+	env *environment, bundle types.MevBundle, state *state.StateDB, gasPool *core.GasPool,
+	pendingTxs map[common.Address]types.Transactions, currentTxCount int,
+) (simulatedBundle, error) {
 	var totalGasUsed uint64 = 0
 	var tempGasUsed uint64
 	gasFees := new(big.Int)
