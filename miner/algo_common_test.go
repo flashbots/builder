@@ -280,6 +280,7 @@ func TestTxCommit(t *testing.T) {
 }
 
 func TestBundleCommit(t *testing.T) {
+	algoConf := defaultAlgorithmConfig
 	statedb, chData, signers := genTestSetup()
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], GasLimit, big.NewInt(1))
@@ -298,7 +299,7 @@ func TestBundleCommit(t *testing.T) {
 		t.Fatal("Failed to simulate bundle", err)
 	}
 
-	err = envDiff.commitBundle(&simBundle, chData, nil, defaultAlgorithmConfig)
+	err = envDiff.commitBundle(&simBundle, chData, nil, algoConf)
 	if err != nil {
 		t.Fatal("Failed to commit bundle", err)
 	}

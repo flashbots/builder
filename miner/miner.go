@@ -99,6 +99,7 @@ type Config struct {
 	Blocklist                      []common.Address `toml:",omitempty"`
 	NewPayloadTimeout              time.Duration    // The maximum time allowance for creating a new payload
 	PriceCutoffPercent             int              // Effective gas price cutoff % used for bucketing transactions by price (only useful in greedy-buckets AlgoType)
+	DiscardRevertibleTxOnErr       bool             // When enabled, if bundle revertible transaction has error on commit, builder will discard the transaction
 	EnableMultiTransactionSnapshot bool             // Enable block building with multi-transaction snapshots to reduce state copying (note: experimental)
 }
 

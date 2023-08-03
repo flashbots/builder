@@ -23,20 +23,20 @@ const (
 )
 
 const (
-	// defaultProfitPercentMinimum is to ensure committed transactions, bundles, sbundles don't fall below this threshold
+	// defaultProfitThresholdPercent is to ensure committed transactions, bundles, sbundles don't fall below this threshold
 	// when profit is enforced
-	defaultProfitPercentMinimum = 70
+	defaultProfitThresholdPercent = 70
 
 	// defaultPriceCutoffPercent is for bucketing transactions by price, used for greedy buckets algorithm
 	defaultPriceCutoffPercent = 50
 )
 
 var (
-	defaultProfitThreshold = big.NewInt(defaultProfitPercentMinimum)
 	defaultAlgorithmConfig = algorithmConfig{
+		DropRevertibleTxOnErr:  false,
 		EnforceProfit:          false,
 		ExpectedProfit:         common.Big0,
-		ProfitThresholdPercent: defaultProfitThreshold,
+		ProfitThresholdPercent: defaultProfitThresholdPercent,
 		PriceCutoffPercent:     defaultPriceCutoffPercent,
 		EnableMultiTxSnap:      false,
 	}
@@ -68,13 +68,17 @@ func (e *lowProfitError) Error() string {
 
 type (
 	algorithmConfig struct {
+		// DropRevertibleTxOnErr is used when a revertible transaction has error on commit, and we wish to discard
+		// the transaction and continue processing the rest of a bundle or sbundle.
+		// Revertible transactions are specified as hashes that can revert in a bundle or sbundle.
+		DropRevertibleTxOnErr bool
 		// EnforceProfit is true if we want to enforce a minimum profit threshold
 		// for committing a transaction based on ProfitThresholdPercent
 		EnforceProfit bool
 		// ExpectedProfit should be set on a per-transaction basis when profit is enforced
 		ExpectedProfit *big.Int
 		// ProfitThresholdPercent is the minimum profit threshold for committing a transaction
-		ProfitThresholdPercent *big.Int
+		ProfitThresholdPercent int // 0-100, e.g. 70 means 70%
 		// PriceCutoffPercent is the minimum effective gas price threshold used for bucketing transactions by price.
 		// For example if the top transaction in a list has an effective gas price of 1000 wei and PriceCutoffPercent
 		// is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction
@@ -122,7 +126,11 @@ func checkInterrupt(i *int32) bool {
 
 // Simulate bundle on top of current state without modifying it
 // pending txs used to track if bundle tx is part of the mempool
-func applyTransactionWithBlacklist(signer types.Signer, config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool, statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64, cfg vm.Config, blacklist map[common.Address]struct{}) (*types.Receipt, *state.StateDB, error) {
+func applyTransactionWithBlacklist(
+	signer types.Signer, config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool,
+	statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64,
+	cfg vm.Config, blacklist map[common.Address]struct{},
+) (*types.Receipt, *state.StateDB, error) {
 	// short circuit if blacklist is empty
 	if len(blacklist) == 0 {
 		snap := statedb.Snapshot()

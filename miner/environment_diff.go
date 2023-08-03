@@ -204,7 +204,7 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
-		simulatedProfitMultiple := new(big.Int).Mul(simulatedBundleProfit, algoConf.ProfitThresholdPercent)
+		simulatedProfitMultiple := common.PercentOf(simulatedBundleProfit, algoConf.ProfitThresholdPercent)
 		actualProfitMultiple := new(big.Int).Mul(actualBundleProfit, common.Big100)
 
 		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
@@ -281,7 +281,7 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
-		simulatedProfitMultiple := new(big.Int).Mul(simulatedSbundleProfit, algoConf.ProfitThresholdPercent)
+		simulatedProfitMultiple := common.PercentOf(simulatedSbundleProfit, algoConf.ProfitThresholdPercent)
 		actualProfitMultiple := new(big.Int).Mul(actualSbundleProfit, common.Big100)
 
 		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {

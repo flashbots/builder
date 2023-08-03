@@ -274,7 +274,7 @@ func (c *envChanges) CommitSBundle(sbundle *types.SimSBundle, chData chainData, 
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
-		simulatedProfitMultiple := new(big.Int).Mul(simulatedProfit, algoConf.ProfitThresholdPercent)
+		simulatedProfitMultiple := common.PercentOf(simulatedProfit, algoConf.ProfitThresholdPercent)
 		actualProfitMultiple := new(big.Int).Mul(actualProfit, common.Big100)
 
 		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {

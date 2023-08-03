@@ -99,9 +99,10 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 	gasUsedMap map[*types.TxWithMinerFee]uint64, retryMap map[*types.TxWithMinerFee]int, retryLimit int,
 ) ([]types.SimulatedBundle, []types.UsedSBundle) {
 	var (
+		algoConf = b.algoConf
+
 		usedBundles  []types.SimulatedBundle
 		usedSbundles []types.UsedSBundle
-		algoConf     = b.algoConf
 	)
 
 	for _, order := range transactions {
