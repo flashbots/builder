@@ -147,6 +147,8 @@ var (
 
 	builderApiFlags = []cli.Flag{
 		utils.BuilderEnabled,
+		utils.BuilderAlgoTypeFlag,
+		utils.BuilderPriceCutoffPercentFlag,
 		utils.BuilderEnableValidatorChecks,
 		utils.BuilderBlockValidationBlacklistSourceFilePath,
 		utils.BuilderEnableLocalRelay,
