@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strconv"
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -296,9 +297,12 @@ func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint6
 }
 
 var (
-	dropBetter        int = 90
-	count             int = 33327
-	dropErrOverNoDrop int = 70
+	dropBetter        int = 568
+	count             int = 162253
+	dropErrOverNoDrop int = 98
+	dropAvg           int64
+	noDropAvg         int64
+	dropDelta         *big.Int
 )
 
 // BuildMultiTxSnapBlock attempts to build a block with input orders using state.MultiTxSnapshot. If a failure occurs attempting to commit a given order,
@@ -359,7 +363,6 @@ func BuildMultiTxSnapBlock(
 				}
 				algoConf.DropRevertibleTxOnErr = false
 				if err := changes.commitBundle(bundle, chData, algoConf); err != nil {
-					//log.Info("[efficient-revert] Failed to commit bundle, drop disabled", "bundle", bundle.OriginalBundle.Hash, "err", err)
 					noDropErr = err
 				}
 				if err = inputEnvironment.state.MultiTxSnapshotRevert(); err != nil {
@@ -373,7 +376,6 @@ func BuildMultiTxSnapBlock(
 				}
 				algoConf.DropRevertibleTxOnErr = true
 				if err := changes.commitBundle(bundle, chData, algoConf); err != nil {
-					//log.Info("[efficient-revert] Failed to commit bundle, drop enabled", "bundle", bundle.OriginalBundle.Hash, "err", err)
 					dropErr = err
 				}
 				if err = inputEnvironment.state.MultiTxSnapshotRevert(); err != nil {
@@ -385,6 +387,7 @@ func BuildMultiTxSnapBlock(
 				count++
 				if (dropErr == nil && noDropErr != nil) || dropProfit.Cmp(noDropProfit) > 0 {
 					dropBetter++
+					dropDelta = new(big.Int).Sub(dropProfit, noDropProfit)
 				}
 
 				var whatErr error
@@ -392,16 +395,21 @@ func BuildMultiTxSnapBlock(
 					dropErrOverNoDrop++
 					whatErr = dropErr
 				}
-
+				dropAvg += dropProfit.Int64()
+				noDropAvg += noDropProfit.Int64()
 				log.Info("[efficient-revert] Bundle profit comparison",
 					"bundle", bundle.OriginalBundle.Hash,
 					"no-discard", noDropProfit.String(),
 					"discard", dropProfit.String(),
-					"n_better", dropBetter,
-					"n_total", count,
-					"n_drop_err", dropErrOverNoDrop,
+					"n_better", strconv.Itoa(dropBetter),
+					"n_total", strconv.Itoa(count),
+					"n_drop_err", strconv.Itoa(dropErrOverNoDrop),
 					"err", whatErr,
+					"delta", dropDelta.String(),
+					"drop-avg", float64(dropAvg)/float64(count),
+					"no-drop-avg", float64(noDropAvg)/float64(count),
 				)
+
 				visited[bundle.OriginalBundle.Hash] = true
 				dropErr, noDropErr = nil, nil
 				whatErr = nil

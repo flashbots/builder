@@ -213,9 +213,9 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 			break
 		}
 
-		if receipt != nil && receipt.Status == types.ReceiptStatusFailed && !bundle.OriginalBundle.RevertingHash(tx.Hash()) {
-			log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
-			bundleErr = errors.New("bundle tx revert")
+		if receipt != nil && receipt.Status == types.ReceiptStatusFailed && !bundle.OriginalBundle.RevertingHash(txHash) {
+			log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
+			bundleErr = errors.New(fmt.Sprintf("bundle tx revert for hash %s", txHash.String()))
 			break
 		}
 	}
