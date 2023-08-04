@@ -249,10 +249,7 @@ func (s *stateObject) finalise(prefetch bool) {
 	for key, value := range s.dirtyStorage {
 		prev, ok := s.pendingStorage[key]
 		s.db.multiTxSnapshotStack.UpdatePendingStorage(s.address, key, prev, ok)
-		//if multiSnap := s.db.multiTxSnapshot; multiSnap != nil {
-		//	prev, ok := s.pendingStorage[key]
-		//	multiSnap.updatePendingStorage(s.address, key, prev, ok)
-		//}
+
 		s.pendingStorage[key] = value
 		if value != s.originStorage[key] {
 			slotsToPrefetch = append(slotsToPrefetch, common.CopyBytes(key[:])) // Copy needed for closure

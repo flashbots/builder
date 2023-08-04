@@ -27,9 +27,6 @@ func newEnvChanges(env *environment) (*envChanges, error) {
 	if err := env.state.NewMultiTxSnapshot(); err != nil {
 		return nil, err
 	}
-	//if err := env.state.MultiTxSnapshot(); err != nil {
-	//	return nil, err
-	//}
 
 	return &envChanges{
 		env:      env,
@@ -411,7 +408,7 @@ func (c *envChanges) rollback(
 }
 
 func (c *envChanges) apply() error {
-	if err := c.env.state.MultiTxSnapshotDiscard(); err != nil {
+	if err := c.env.state.MultiTxSnapshotCommit(); err != nil {
 		return err
 	}
 

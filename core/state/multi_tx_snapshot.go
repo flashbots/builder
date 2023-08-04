@@ -2,9 +2,9 @@ package state
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
-
-	"github.com/ethereum/go-ethereum/core/types"
+	"reflect"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -51,6 +51,63 @@ func newMultiTxSnapshot() MultiTxSnapshot {
 		accountNotPending: make(map[common.Address]struct{}),
 		accountNotDirty:   make(map[common.Address]struct{}),
 	}
+}
+
+// Equal returns true if the two MultiTxSnapshot are equal
+func (s *MultiTxSnapshot) Equal(other *MultiTxSnapshot) bool {
+	if other == nil {
+		return false
+	}
+	if s.invalid != other.invalid {
+		return false
+	}
+
+	visited := make(map[common.Address]bool)
+	for address, obj := range other.prevObjects {
+		current, exist := s.prevObjects[address]
+		if !exist {
+			return false
+		}
+		if current == nil && obj != nil {
+			return false
+		}
+
+		if current != nil && obj == nil {
+			return false
+		}
+
+		visited[address] = true
+	}
+
+	for address, obj := range s.prevObjects {
+		if visited[address] {
+			continue
+		}
+	
+		otherObject, exist := other.prevObjects[address]
+		if !exist {
+			return false
+		}
+
+		if otherObject == nil && obj != nil {
+			return false
+		}
+
+		if otherObject != nil && obj == nil {
+			return false
+		}
+	}
+
+	return reflect.DeepEqual(s.numLogsAdded, other.numLogsAdded) &&
+		reflect.DeepEqual(s.accountStorage, other.accountStorage) &&
+		reflect.DeepEqual(s.accountBalance, other.accountBalance) &&
+		reflect.DeepEqual(s.accountNonce, other.accountNonce) &&
+		reflect.DeepEqual(s.accountCode, other.accountCode) &&
+		reflect.DeepEqual(s.accountCodeHash, other.accountCodeHash) &&
+		reflect.DeepEqual(s.accountSuicided, other.accountSuicided) &&
+		reflect.DeepEqual(s.accountDeleted, other.accountDeleted) &&
+		reflect.DeepEqual(s.accountNotPending, other.accountNotPending) &&
+		reflect.DeepEqual(s.accountNotDirty, other.accountNotDirty)
 }
 
 // updateFromJournal updates the snapshot with the changes from the journal.
@@ -208,17 +265,29 @@ func (s *MultiTxSnapshot) Merge(other *MultiTxSnapshot) error {
 	//   update storage keys if they do not exist for a given account's storage,
 	//   and update pending storage for accounts that don't already exist in current snapshot
 	for address, storage := range other.accountStorage {
+		if s.objectChanged(address) {
+			continue
+		}
+
+		if _, exist := s.accountStorage[address]; !exist {
+			s.accountStorage[address] = make(map[common.Hash]*common.Hash)
+			s.accountStorage[address] = storage
+			continue
+		}
+
 		for key, value := range storage {
-			if value == nil {
-				s.updatePendingStorage(address, key, types.EmptyCodeHash, false)
-			} else {
-				s.updatePendingStorage(address, key, common.BytesToHash(value.Bytes()), true)
+			if _, exists := s.accountStorage[address][key]; !exists {
+				s.accountStorage[address][key] = value
 			}
 		}
 	}
 
 	// add previous balance(s) for any addresses that don't exist in current snapshot
 	for address, balance := range other.accountBalance {
+		if s.objectChanged(address) {
+			continue
+		}
+
 		if _, exist := s.accountBalance[address]; !exist {
 			s.accountBalance[address] = balance
 		}
@@ -226,6 +295,9 @@ func (s *MultiTxSnapshot) Merge(other *MultiTxSnapshot) error {
 
 	// add previous nonce for accounts that don't exist in current snapshot
 	for address, nonce := range other.accountNonce {
+		if s.objectChanged(address) {
+			continue
+		}
 		if _, exist := s.accountNonce[address]; !exist {
 			s.accountNonce[address] = nonce
 		}
@@ -233,6 +305,9 @@ func (s *MultiTxSnapshot) Merge(other *MultiTxSnapshot) error {
 
 	// add previous code for accounts not found in current snapshot
 	for address, code := range other.accountCode {
+		if s.objectChanged(address) {
+			continue
+		}
 		if _, exist := s.accountCode[address]; !exist {
 			if _, found := other.accountCodeHash[address]; !found {
 				// every codeChange has code and code hash set -
@@ -247,6 +322,10 @@ func (s *MultiTxSnapshot) Merge(other *MultiTxSnapshot) error {
 
 	// add previous suicide for addresses not in current snapshot
 	for address, suicided := range other.accountSuicided {
+		if s.objectChanged(address) {
+			continue
+		}
+
 		if _, exist := s.accountSuicided[address]; !exist {
 			s.accountSuicided[address] = suicided
 		} else {
@@ -256,6 +335,9 @@ func (s *MultiTxSnapshot) Merge(other *MultiTxSnapshot) error {
 
 	// add previous account deletions if they don't exist
 	for address, deleted := range other.accountDeleted {
+		if s.objectChanged(address) {
+			continue
+		}
 		if _, exist := s.accountDeleted[address]; !exist {
 			s.accountDeleted[address] = deleted
 		}
@@ -303,8 +385,14 @@ func (s *MultiTxSnapshot) revertState(st *StateDB) {
 	for address, storage := range s.accountStorage {
 		for key, value := range storage {
 			if value == nil {
+				if _, ok := st.stateObjects[address].pendingStorage[key]; !ok {
+					panic(fmt.Sprintf("storage key %x not found in pending storage", key))
+				}
 				delete(st.stateObjects[address].pendingStorage, key)
 			} else {
+				if _, ok := st.stateObjects[address].pendingStorage[key]; !ok {
+					panic(fmt.Sprintf("storage key %x not found in pending storage", key))
+				}
 				st.stateObjects[address].pendingStorage[key] = *value
 			}
 		}
@@ -407,6 +495,16 @@ func (stack *MultiTxSnapshotStack) Revert() (*MultiTxSnapshot, error) {
 	head.revertState(stack.state)
 	stack.snapshots = stack.snapshots[:size-1]
 	return head, nil
+}
+
+// RevertAll reverts all snapshots in the stack.
+func (stack *MultiTxSnapshotStack) RevertAll() (snapshot *MultiTxSnapshot, err error) {
+	for len(stack.snapshots) > 0 {
+		if snapshot, err = stack.Revert(); err != nil {
+			break
+		}
+	}
+	return
 }
 
 // Commit merges the changes from the head snapshot with the previous snapshot and removes it from the stack.
