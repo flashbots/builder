@@ -83,7 +83,7 @@ func (s *MultiTxSnapshot) Equal(other *MultiTxSnapshot) bool {
 		if visited[address] {
 			continue
 		}
-	
+
 		otherObject, exist := other.prevObjects[address]
 		if !exist {
 			return false
