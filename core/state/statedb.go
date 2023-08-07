@@ -718,6 +718,11 @@ func (s *StateDB) Copy() *StateDB {
 		hasher:               crypto.NewKeccakState(),
 	}
 	// Initialize new multi-transaction snapshot stack for the copied state
+	// NOTE(wazzymandias): We avoid copying the snapshot stack from the original state
+	//   because it may contain snapshots that are not valid for the copied state.
+	if s.multiTxSnapshotStack.Size() > 0 {
+		panic("cannot copy state with active multi-transaction snapshot stack")
+	}
 	state.multiTxSnapshotStack = NewMultiTxSnapshotStack(state)
 	// Copy the dirty states, logs, and preimages
 	for addr := range s.journal.dirties {
@@ -865,7 +870,6 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 		}
 		if obj.suicided || (deleteEmptyObjects && obj.empty()) {
 			s.multiTxSnapshotStack.UpdateObjectDeleted(obj.address, obj.deleted)
-			//s.multiTxSnapshotStack.UpdateObjectDeleted(obj.address, obj.deleted)
 
 			obj.deleted = true
 
@@ -1204,20 +1208,17 @@ func (s *StateDB) convertAccountSet(set map[common.Address]struct{}) map[common.
 	return ret
 }
 
-func (s *StateDB) NewMultiTxSnapshot() error {
-	_, err := s.multiTxSnapshotStack.NewSnapshot()
-	if err != nil {
-		return err
-	}
-	return nil
+func (s *StateDB) NewMultiTxSnapshot() (err error) {
+	_, err = s.multiTxSnapshotStack.NewSnapshot()
+	return
 }
 
-func (s *StateDB) MultiTxSnapshotRevert() error {
-	_, err := s.multiTxSnapshotStack.Revert()
-	return err
+func (s *StateDB) MultiTxSnapshotRevert() (err error) {
+	_, err = s.multiTxSnapshotStack.Revert()
+	return
 }
 
-func (s *StateDB) MultiTxSnapshotCommit() error {
-	_, err := s.multiTxSnapshotStack.Commit()
-	return err
+func (s *StateDB) MultiTxSnapshotCommit() (err error) {
+	_, err = s.multiTxSnapshotStack.Commit()
+	return
 }

@@ -60,11 +60,9 @@ func TestTxCommitSnaps(t *testing.T) {
 func TestBundleCommitSnaps(t *testing.T) {
 	statedb, chData, signers := genTestSetup()
 
+	algoConf := defaultAlgorithmConfig
+	algoConf.EnableMultiTxSnap = true
 	env := newEnvironment(chData, statedb, signers.addresses[0], GasLimit, big.NewInt(1))
-	changes, err := newEnvChanges(env)
-	if err != nil {
-		t.Fatal("can't create env changes", err)
-	}
 
 	tx1 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
 	tx2 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
@@ -79,7 +77,12 @@ func TestBundleCommitSnaps(t *testing.T) {
 		t.Fatal("Failed to simulate bundle", err)
 	}
 
-	err = changes.commitBundle(&simBundle, chData)
+	changes, err := newEnvChanges(env)
+	if err != nil {
+		t.Fatal("can't create env changes", err)
+	}
+
+	err = changes.commitBundle(&simBundle, chData, algoConf)
 	if err != nil {
 		t.Fatal("Failed to commit bundle", err)
 	}
@@ -166,11 +169,9 @@ func TestCommitTxOverGasLimitSnaps(t *testing.T) {
 func TestErrorBundleCommitSnaps(t *testing.T) {
 	statedb, chData, signers := genTestSetup()
 
+	algoConf := defaultAlgorithmConfig
+	algoConf.EnableMultiTxSnap = true
 	env := newEnvironment(chData, statedb, signers.addresses[0], 21000*2, big.NewInt(1))
-	changes, err := newEnvChanges(env)
-	if err != nil {
-		t.Fatal("can't create env changes", err)
-	}
 
 	// This tx will be included before bundle so bundle will fail because of gas limit
 	tx0 := signers.signTx(4, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
@@ -188,6 +189,11 @@ func TestErrorBundleCommitSnaps(t *testing.T) {
 		t.Fatal("Failed to simulate bundle", err)
 	}
 
+	changes, err := newEnvChanges(env)
+	if err != nil {
+		t.Fatal("can't create env changes", err)
+	}
+
 	_, _, err = changes.commitTx(tx0, chData)
 	if err != nil {
 		t.Fatal("Failed to commit tx0", err)
@@ -198,7 +204,7 @@ func TestErrorBundleCommitSnaps(t *testing.T) {
 	newProfitBefore := new(big.Int).Set(changes.profit)
 	balanceBefore := changes.env.state.GetBalance(signers.addresses[2])
 
-	err = changes.commitBundle(&simBundle, chData)
+	err = changes.commitBundle(&simBundle, chData, algoConf)
 	if err == nil {
 		t.Fatal("Committed failed bundle", err)
 	}
@@ -348,7 +354,7 @@ func TestBlacklistSnaps(t *testing.T) {
 		t.Fatal("committed blacklisted transaction: trace")
 	}
 
-	err = changes.revert()
+	err = changes.discard()
 	if err != nil {
 		t.Fatal("failed reverting changes", err)
 	}

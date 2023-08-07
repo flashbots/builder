@@ -13,7 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 )
 
-// envChanges is a helper struct to apply and revert changes to the environment
+// envChanges is a helper struct to apply and discard changes to the environment
 type envChanges struct {
 	env      *environment
 	gasPool  *core.GasPool
@@ -65,7 +65,7 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 		profitBefore   = new(big.Int).Set(c.profit)
 	)
 	signer := c.env.signer
-	sender, err := types.Sender(signer, tx)
+	from, err := types.Sender(signer, tx)
 	if err != nil {
 		return nil, popTx, err
 	}
@@ -75,7 +75,7 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 		return nil, shiftTx, err
 	}
 
-	if _, in := chData.blacklist[sender]; in {
+	if _, in := chData.blacklist[from]; in {
 		return nil, popTx, errors.New("blacklist violation, tx.sender")
 	}
 
@@ -100,25 +100,21 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):
 			// Pop the current out-of-gas transaction without shifting in the next from the account
-			from, _ := types.Sender(signer, tx)
 			log.Trace("Gas limit exceeded for current block", "sender", from)
 			return receipt, popTx, err
 
 		case errors.Is(err, core.ErrNonceTooLow):
 			// New head notification data race between the transaction pool and miner, shift
-			from, _ := types.Sender(signer, tx)
 			log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
 			return receipt, shiftTx, err
 
 		case errors.Is(err, core.ErrNonceTooHigh):
 			// Reorg notification data race between the transaction pool and miner, skip account =
-			from, _ := types.Sender(signer, tx)
 			log.Trace("Skipping account with hight nonce", "sender", from, "nonce", tx.Nonce())
 			return receipt, popTx, err
 
 		case errors.Is(err, core.ErrTxTypeNotSupported):
 			// Pop the unsupported transaction without shifting in the next from the account
-			from, _ := types.Sender(signer, tx)
 			log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
 			return receipt, popTx, err
 
@@ -144,7 +140,7 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 	return receipt, shiftTx, nil
 }
 
-func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainData) error {
+func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainData, algoConf algorithmConfig) error {
 	var (
 		profitBefore   = new(big.Int).Set(c.profit)
 		coinbaseBefore = new(big.Int).Set(c.env.state.GetBalance(c.env.coinbase))
@@ -158,6 +154,7 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 	)
 
 	for _, tx := range bundle.OriginalBundle.Txs {
+		txHash := tx.Hash()
 		// TODO: Checks for base fee and dynamic fee txs should be moved to the transaction pool,
 		//   similar to mev-share bundles. See SBundlesPool.validateTx() for reference.
 		if hasBaseFee && tx.Type() == types.DynamicFeeTxType {
@@ -180,14 +177,31 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 		receipt, _, err := c.commitTx(tx, chData)
 
 		if err != nil {
-			log.Trace("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
+			isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
+			// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
+			if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
+				log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+					"tx", txHash, "err", err)
+				continue
+			}
+			log.Trace("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
 			bundleErr = err
 			break
 		}
 
-		if receipt.Status != types.ReceiptStatusSuccessful && !bundle.OriginalBundle.RevertingHash(tx.Hash()) {
-			log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
-			bundleErr = errors.New("bundle tx revert")
+		if receipt != nil {
+			if receipt.Status == types.ReceiptStatusFailed && !bundle.OriginalBundle.RevertingHash(txHash) {
+				// if transaction reverted and isn't specified as reverting hash, return error
+				log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
+				bundleErr = errors.New("bundle tx revert")
+			}
+		} else {
+			// NOTE: The expectation is that a receipt is only nil if an error occurred.
+			//  If there is no error but receipt is nil, there is likely a programming error.
+			bundleErr = errors.New("invalid receipt when no error occurred")
+		}
+
+		if bundleErr != nil {
 			break
 		}
 	}
@@ -201,9 +215,14 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 		bundleProfit = new(big.Int).Sub(c.env.state.GetBalance(c.env.coinbase), coinbaseBefore)
 		gasUsed      = c.usedGas - gasUsedBefore
 
-		effGP    = new(big.Int).Div(bundleProfit, new(big.Int).SetUint64(gasUsed))
 		simEffGP = new(big.Int).Set(bundle.MevGasPrice)
+		effGP    *big.Int
 	)
+	if gasUsed == 0 {
+		effGP = new(big.Int).SetUint64(0)
+	} else {
+		effGP = new(big.Int).Div(bundleProfit, new(big.Int).SetUint64(gasUsed))
+	}
 
 	// allow >-1% divergence
 	effGP.Mul(effGP, common.Big100)
@@ -219,6 +238,8 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 }
 
 func (c *envChanges) CommitSBundle(sbundle *types.SimSBundle, chData chainData, key *ecdsa.PrivateKey, algoConf algorithmConfig) error {
+	// TODO: Suggestion for future improvement: instead of checking if key is nil, panic.
+	//   Discussed with @Ruteri, see PR#90 for details: https://github.com/flashbots/builder/pull/90#discussion_r1285567550
 	if key == nil {
 		return errNoPrivateKey
 	}
@@ -323,6 +344,13 @@ func (c *envChanges) commitSBundle(sbundle *types.SBundle, chData chainData, key
 		if el.Tx != nil {
 			receipt, _, err := c.commitTx(el.Tx, chData)
 			if err != nil {
+				// if drop enabled, and revertible tx has error on commit,
+				// we skip the transaction and continue with next one
+				if algoConf.DropRevertibleTxOnErr && el.CanRevert {
+					log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+						"tx", el.Tx.Hash(), "err", err)
+					continue
+				}
 				return err
 			}
 			if receipt.Status != types.ReceiptStatusSuccessful && !el.CanRevert {
@@ -392,11 +420,13 @@ func (c *envChanges) commitSBundle(sbundle *types.SBundle, chData chainData, key
 	return nil
 }
 
-// revert reverts all changes to the environment - every commit operation must be followed by a revert or apply operation
-func (c *envChanges) revert() error {
+// discard reverts all changes to the environment - every commit operation must be followed by a discard or apply operation
+func (c *envChanges) discard() error {
 	return c.env.state.MultiTxSnapshotRevert()
 }
 
+// rollback reverts all changes to the environment - whereas apply and discard update the state, rollback only updates the environment
+// the intended use is to call rollback after a commit operation has failed
 func (c *envChanges) rollback(
 	gasUsedBefore uint64, gasPoolBefore *core.GasPool, profitBefore *big.Int,
 	txsBefore []*types.Transaction, receiptsBefore []*types.Receipt) {

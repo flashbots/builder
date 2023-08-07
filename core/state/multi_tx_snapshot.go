@@ -29,17 +29,16 @@ type MultiTxSnapshot struct {
 	accountNotPending map[common.Address]struct{}
 	accountNotDirty   map[common.Address]struct{}
 
-	previousRefund uint64
 	// TODO: snapdestructs, snapaccount storage
 }
 
 // NewMultiTxSnapshot creates a new MultiTxSnapshot
-func NewMultiTxSnapshot(previousRefund uint64) *MultiTxSnapshot {
-	multiTxSnapshot := newMultiTxSnapshot(previousRefund)
+func NewMultiTxSnapshot() *MultiTxSnapshot {
+	multiTxSnapshot := newMultiTxSnapshot()
 	return &multiTxSnapshot
 }
 
-func newMultiTxSnapshot(previousRefund uint64) MultiTxSnapshot {
+func newMultiTxSnapshot() MultiTxSnapshot {
 	return MultiTxSnapshot{
 		numLogsAdded:      make(map[common.Hash]int),
 		prevObjects:       make(map[common.Address]*stateObject),
@@ -52,7 +51,6 @@ func newMultiTxSnapshot(previousRefund uint64) MultiTxSnapshot {
 		accountDeleted:    make(map[common.Address]bool),
 		accountNotPending: make(map[common.Address]struct{}),
 		accountNotDirty:   make(map[common.Address]struct{}),
-		previousRefund:    previousRefund,
 	}
 }
 
@@ -135,7 +133,8 @@ func (s *MultiTxSnapshot) updateFromJournal(journal *journal) {
 	}
 }
 
-// objectChanged returns whether the object was changed (in the set of prevObjects).
+// objectChanged returns whether the object was changed (in the set of prevObjects), which can happen
+// because of self-destructs and deployments.
 func (s *MultiTxSnapshot) objectChanged(address common.Address) bool {
 	_, ok := s.prevObjects[address]
 	return ok
@@ -364,11 +363,6 @@ func (s *MultiTxSnapshot) Merge(other *MultiTxSnapshot) error {
 
 // revertState reverts the state to the snapshot.
 func (s *MultiTxSnapshot) revertState(st *StateDB) {
-	// restore previous refund
-	if st.refund != s.previousRefund {
-		st.refund = s.previousRefund
-	}
-
 	// remove all the logs added
 	for txhash, numLogs := range s.numLogsAdded {
 		lens := len(st.logs[txhash])
@@ -463,7 +457,7 @@ func (stack *MultiTxSnapshotStack) NewSnapshot() (*MultiTxSnapshot, error) {
 		return nil, errors.New("failed to create new multi-transaction snapshot - invalid snapshot found at head")
 	}
 
-	snap := newMultiTxSnapshot(stack.state.refund)
+	snap := newMultiTxSnapshot()
 	stack.snapshots = append(stack.snapshots, snap)
 	return &snap, nil
 }
@@ -549,8 +543,6 @@ func (stack *MultiTxSnapshotStack) Size() int {
 
 // Invalidate invalidates the latest snapshot. This is used when state changes are committed to trie.
 func (stack *MultiTxSnapshotStack) Invalidate() {
-	// TODO: if latest snapshot is invalid, then all previous snapshots
-	//   would also be invalidated, need to update logic to reflect that
 	size := len(stack.snapshots)
 	if size == 0 {
 		return
@@ -560,7 +552,6 @@ func (stack *MultiTxSnapshotStack) Invalidate() {
 	head.invalid = true
 	stack.snapshots = stack.snapshots[:0]
 	stack.snapshots = append(stack.snapshots, head)
-	//stack.snapshots[size-1].invalid = true
 }
 
 // UpdatePendingStatus updates the pending status for an address.

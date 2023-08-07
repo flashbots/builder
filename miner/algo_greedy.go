@@ -40,37 +40,15 @@ func newGreedyBuilder(
 		algoConf:         *algoConf,
 	}
 	// Initialize block builder function
-	var buildBlockFunc BuildBlockFunc
-	if algoConf.EnableMultiTxSnap {
-		buildBlockFunc = func(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
-			orders := types.NewTransactionsByPriceAndNonce(builder.inputEnvironment.signer, transactions,
-				simBundles, simSBundles, builder.inputEnvironment.header.BaseFee)
+	builder.buildBlockFunc = NewBuildBlockFunc(
+		builder.inputEnvironment,
+		builder.builderKey,
+		builder.chainData,
+		builder.algoConf,
+		nil,
+		builder,
+	)
 
-			usedBundles, usedSbundles, err := BuildMultiTxSnapBlock(
-				builder.inputEnvironment,
-				builder.builderKey,
-				builder.chainData,
-				builder.algoConf,
-				orders,
-			)
-			if err != nil {
-				log.Debug("Error(s) building multi-tx snapshot block", "err", err)
-			}
-			return builder.inputEnvironment, usedBundles, usedSbundles
-		}
-	} else {
-		buildBlockFunc = func(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
-			orders := types.NewTransactionsByPriceAndNonce(builder.inputEnvironment.signer, transactions,
-				simBundles, simSBundles, builder.inputEnvironment.header.BaseFee)
-
-			envDiff := newEnvironmentDiff(builder.inputEnvironment.copy())
-			usedBundles, usedSbundles := builder.mergeOrdersIntoEnvDiff(envDiff, orders)
-			envDiff.applyToBaseEnv()
-			return envDiff.baseEnvironment, usedBundles, usedSbundles
-		}
-	}
-
-	builder.buildBlockFunc = buildBlockFunc
 	return builder, nil
 }
 
@@ -137,9 +115,5 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
 }
 
 func (b *greedyBuilder) buildBlock(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
-	orders := types.NewTransactionsByPriceAndNonce(b.inputEnvironment.signer, transactions, simBundles, simSBundles, b.inputEnvironment.header.BaseFee)
-	envDiff := newEnvironmentDiff(b.inputEnvironment.copy())
-	usedBundles, usedSbundles := b.mergeOrdersIntoEnvDiff(envDiff, orders)
-	envDiff.applyToBaseEnv()
-	return envDiff.baseEnvironment, usedBundles, usedSbundles
+	return b.buildBlockFunc(simBundles, simSBundles, transactions)
 }

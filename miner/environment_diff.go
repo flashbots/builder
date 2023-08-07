@@ -130,6 +130,7 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	var gasUsed uint64
 
 	for _, tx := range bundle.OriginalBundle.Txs {
+		txHash := tx.Hash()
 		if tmpEnvDiff.header.BaseFee != nil && tx.Type() == types.DynamicFeeTxType {
 			// Sanity check for extremely large numbers
 			if tx.GasFeeCap().BitLen() > 256 {
@@ -165,13 +166,27 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 		receipt, _, err := tmpEnvDiff.commitTx(tx, chData)
 
 		if err != nil {
-			log.Trace("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
+			isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
+			// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
+			if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
+				log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+					"tx", txHash, "err", err)
+				continue
+			}
+			log.Trace("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
 			return err
 		}
 
-		if receipt.Status != types.ReceiptStatusSuccessful && !bundle.OriginalBundle.RevertingHash(tx.Hash()) {
-			log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", tx.Hash(), "err", err)
-			return errors.New("bundle tx revert")
+		if receipt != nil {
+			if receipt.Status == types.ReceiptStatusFailed && !bundle.OriginalBundle.RevertingHash(txHash) {
+				// if transaction reverted and isn't specified as reverting hash, return error
+				log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
+				return errors.New("bundle tx revert")
+			}
+		} else {
+			// NOTE: The expectation is that a receipt is only nil if an error occurred.
+			//  If there is no error but receipt is nil, there is likely a programming error.
+			return errors.New("invalid receipt when no error occurred")
 		}
 
 		gasUsed += receipt.GasUsed
@@ -182,7 +197,12 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 
 	bundleProfit := coinbaseBalanceDelta
 
-	bundleActualEffGP := bundleProfit.Div(bundleProfit, big.NewInt(int64(gasUsed)))
+	var bundleActualEffGP *big.Int
+	if gasUsed == 0 {
+		bundleActualEffGP = big.NewInt(0)
+	} else {
+		bundleActualEffGP = bundleProfit.Div(bundleProfit, big.NewInt(int64(gasUsed)))
+	}
 	bundleSimEffGP := new(big.Int).Set(bundle.MevGasPrice)
 
 	// allow >-1% divergence
@@ -237,6 +257,8 @@ func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver
 }
 
 func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey, algoConf algorithmConfig) error {
+	// TODO: Suggestion for future improvement: instead of checking if key is nil, panic.
+	//   Discussed with @Ruteri, see PR#90 for details: https://github.com/flashbots/builder/pull/90#discussion_r1285567550
 	if key == nil {
 		return errNoPrivateKey
 	}
@@ -246,7 +268,7 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 	coinbaseBefore := tmpEnvDiff.state.GetBalance(tmpEnvDiff.header.Coinbase)
 	gasBefore := tmpEnvDiff.gasPool.Gas()
 
-	if err := tmpEnvDiff.commitSBundleInner(b.Bundle, chData, interrupt, key); err != nil {
+	if err := tmpEnvDiff.commitSBundleInner(b.Bundle, chData, interrupt, key, algoConf); err != nil {
 		return err
 	}
 
@@ -297,7 +319,7 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 	return nil
 }
 
-func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey) error {
+func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chainData, interrupt *int32, key *ecdsa.PrivateKey, algoConf algorithmConfig) error {
 	// check inclusion
 	minBlock := b.Inclusion.BlockNumber
 	maxBlock := b.Inclusion.MaxBlockNumber
@@ -330,13 +352,20 @@ func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chai
 		if el.Tx != nil {
 			receipt, _, err := envDiff.commitTx(el.Tx, chData)
 			if err != nil {
+				// if drop enabled, and revertible tx has error on commit,
+				// we skip the transaction and continue with next one
+				if algoConf.DropRevertibleTxOnErr && el.CanRevert {
+					log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+						"tx", el.Tx.Hash(), "err", err)
+					continue
+				}
 				return err
 			}
 			if receipt.Status != types.ReceiptStatusSuccessful && !el.CanRevert {
 				return errors.New("tx failed")
 			}
 		} else if el.Bundle != nil {
-			err := envDiff.commitSBundleInner(el.Bundle, chData, interrupt, key)
+			err := envDiff.commitSBundleInner(el.Bundle, chData, interrupt, key, algoConf)
 			if err != nil {
 				return err
 			}

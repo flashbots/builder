@@ -260,11 +260,6 @@ func prepareInitialState(s *StateDB) {
 	}
 
 	s.Finalise(true)
-
-	// NOTE(wazzymandias):
-	//   We want to test refund is properly reverted for snapshots - state.StateDB clears refund on Finalise
-	//   so refund is set here to emulate state with non-zero value.
-	s.AddRefund(rng.Uint64())
 }
 
 func testMultiTxSnapshot(t *testing.T, actions func(s *StateDB)) {
@@ -359,7 +354,6 @@ func TestMultiTxSnapshotRefund(t *testing.T) {
 			s.SetCode(addr, []byte{0x80})
 		}
 		s.Finalise(true)
-		s.AddRefund(1000)
 	})
 }
 
@@ -499,40 +493,6 @@ func TestStackBasic(t *testing.T) {
 	}
 }
 
-func TestStackRefund(t *testing.T) {
-	testMultiTxSnapshot(t, func(s *StateDB) {
-		const counter = 10
-
-		s.AddRefund(500)
-		previousRefunds := make([]uint64, 0, counter)
-		previousRefunds = append(previousRefunds, s.GetRefund())
-
-		for i := 0; i < counter; i++ {
-			previousRefunds = append(previousRefunds, s.GetRefund())
-			if err := s.NewMultiTxSnapshot(); err != nil {
-				t.Errorf("NewMultiTxSnapshot failed: %v", err)
-				t.FailNow()
-			}
-			s.Finalise(true)
-			s.AddRefund(1000)
-		}
-
-		for i := 0; i < counter; i++ {
-			if err := s.MultiTxSnapshotRevert(); err != nil {
-				t.Errorf("MultiTxSnapshotRevert failed: %v", err)
-				t.FailNow()
-			}
-			actualRefund := s.GetRefund()
-			expectedRefund := previousRefunds[len(previousRefunds)-1]
-			if actualRefund != expectedRefund {
-				t.Errorf("expected refund to be %d, got %d", expectedRefund, actualRefund)
-				t.FailNow()
-			}
-			previousRefunds = previousRefunds[:len(previousRefunds)-1]
-		}
-	})
-}
-
 func TestStackSelfDestruct(t *testing.T) {
 	testMultiTxSnapshot(t, func(s *StateDB) {
 		if err := s.NewMultiTxSnapshot(); err != nil {
@@ -577,6 +537,10 @@ func TestStackAgainstSingleSnap(t *testing.T) {
 	// we generate a random seed ten times to fuzz test multiple stack snapshots against single layer snapshot
 	for i := 0; i < 10; i++ {
 		testMultiTxSnapshot(t, func(s *StateDB) {
+			// Need to drop initial snapshot since copy requires empty snapshot stack
+			if err := s.MultiTxSnapshotRevert(); err != nil {
+				t.Fatalf("error reverting snapshot: %v", err)
+			}
 			original := s.Copy()
 			baselineStateDB := s.Copy()
 

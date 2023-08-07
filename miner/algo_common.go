@@ -35,7 +35,7 @@ var (
 	defaultAlgorithmConfig = algorithmConfig{
 		DropRevertibleTxOnErr:  false,
 		EnforceProfit:          false,
-		ExpectedProfit:         common.Big0,
+		ExpectedProfit:         nil,
 		ProfitThresholdPercent: defaultProfitThresholdPercent,
 		PriceCutoffPercent:     defaultPriceCutoffPercent,
 		EnableMultiTxSnap:      false,
@@ -66,35 +66,50 @@ func (e *lowProfitError) Error() string {
 	)
 }
 
+type algorithmConfig struct {
+	// DropRevertibleTxOnErr is used when a revertible transaction has error on commit, and we wish to discard
+	// the transaction and continue processing the rest of a bundle or sbundle.
+	// Revertible transactions are specified as hashes that can revert in a bundle or sbundle.
+	DropRevertibleTxOnErr bool
+	// EnforceProfit is true if we want to enforce a minimum profit threshold
+	// for committing a transaction based on ProfitThresholdPercent
+	EnforceProfit bool
+	// ExpectedProfit should be set on a per-transaction basis when profit is enforced
+	ExpectedProfit *big.Int
+	// ProfitThresholdPercent is the minimum profit threshold for committing a transaction
+	ProfitThresholdPercent int // 0-100, e.g. 70 means 70%
+	// PriceCutoffPercent is the minimum effective gas price threshold used for bucketing transactions by price.
+	// For example if the top transaction in a list has an effective gas price of 1000 wei and PriceCutoffPercent
+	// is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction
+	// is (1000 * 10%) = 100 wei.
+	PriceCutoffPercent int
+	// EnableMultiTxSnap is true if we want to use multi-transaction snapshot for committing transactions,
+	// which reduce state copies when reverting failed bundles (note: experimental)
+	EnableMultiTxSnap bool
+}
+
+type chainData struct {
+	chainConfig *params.ChainConfig
+	chain       *core.BlockChain
+	blacklist   map[common.Address]struct{}
+}
+
+// PayoutTransactionParams holds parameters for committing a payout transaction, used in commitPayoutTx
+type PayoutTransactionParams struct {
+	Amount        *big.Int
+	BaseFee       *big.Int
+	ChainData     chainData
+	Gas           uint64
+	CommitFn      CommitTxFunc
+	Receiver      common.Address
+	Sender        common.Address
+	SenderBalance *big.Int
+	SenderNonce   uint64
+	Signer        types.Signer
+	PrivateKey    *ecdsa.PrivateKey
+}
+
 type (
-	algorithmConfig struct {
-		// DropRevertibleTxOnErr is used when a revertible transaction has error on commit, and we wish to discard
-		// the transaction and continue processing the rest of a bundle or sbundle.
-		// Revertible transactions are specified as hashes that can revert in a bundle or sbundle.
-		DropRevertibleTxOnErr bool
-		// EnforceProfit is true if we want to enforce a minimum profit threshold
-		// for committing a transaction based on ProfitThresholdPercent
-		EnforceProfit bool
-		// ExpectedProfit should be set on a per-transaction basis when profit is enforced
-		ExpectedProfit *big.Int
-		// ProfitThresholdPercent is the minimum profit threshold for committing a transaction
-		ProfitThresholdPercent int // 0-100, e.g. 70 means 70%
-		// PriceCutoffPercent is the minimum effective gas price threshold used for bucketing transactions by price.
-		// For example if the top transaction in a list has an effective gas price of 1000 wei and PriceCutoffPercent
-		// is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction
-		// is (1000 * 10%) = 100 wei.
-		PriceCutoffPercent int
-		// EnableMultiTxSnap is true if we want to use multi-transaction snapshot for committing transactions,
-		// which reduce state copies when reverting failed bundles (note: experimental)
-		EnableMultiTxSnap bool
-	}
-
-	chainData struct {
-		chainConfig *params.ChainConfig
-		chain       *core.BlockChain
-		blacklist   map[common.Address]struct{}
-	}
-
 	// BuildBlockFunc is the function signature for building a block
 	BuildBlockFunc func(
 		simBundles []types.SimulatedBundle,
@@ -103,22 +118,57 @@ type (
 
 	// CommitTxFunc is the function signature for committing a transaction
 	CommitTxFunc func(*types.Transaction, chainData) (*types.Receipt, int, error)
-
-	// PayoutTransactionParams holds parameters for committing a payout transaction, used in commitPayoutTx
-	PayoutTransactionParams struct {
-		Amount        *big.Int
-		BaseFee       *big.Int
-		ChainData     chainData
-		Gas           uint64
-		CommitFn      CommitTxFunc
-		Receiver      common.Address
-		Sender        common.Address
-		SenderBalance *big.Int
-		SenderNonce   uint64
-		Signer        types.Signer
-		PrivateKey    *ecdsa.PrivateKey
-	}
 )
+
+func NewBuildBlockFunc(
+	inputEnvironment *environment,
+	builderKey *ecdsa.PrivateKey,
+	chData chainData,
+	algoConf algorithmConfig,
+	greedyBuckets *greedyBucketsBuilder,
+	greedy *greedyBuilder,
+) BuildBlockFunc {
+	if algoConf.EnableMultiTxSnap {
+		return func(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
+			orders := types.NewTransactionsByPriceAndNonce(inputEnvironment.signer, transactions,
+				simBundles, simSBundles, inputEnvironment.header.BaseFee)
+
+			usedBundles, usedSbundles, err := BuildMultiTxSnapBlock(
+				inputEnvironment,
+				builderKey,
+				chData,
+				algoConf,
+				orders,
+			)
+			if err != nil {
+				log.Trace("Error(s) building multi-tx snapshot block", "err", err)
+			}
+			return inputEnvironment, usedBundles, usedSbundles
+		}
+	} else if builder := greedyBuckets; builder != nil {
+		return func(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
+			orders := types.NewTransactionsByPriceAndNonce(inputEnvironment.signer, transactions,
+				simBundles, simSBundles, inputEnvironment.header.BaseFee)
+
+			envDiff := newEnvironmentDiff(inputEnvironment.copy())
+			usedBundles, usedSbundles := builder.mergeOrdersIntoEnvDiff(envDiff, orders)
+			envDiff.applyToBaseEnv()
+			return envDiff.baseEnvironment, usedBundles, usedSbundles
+		}
+	} else if builder := greedy; builder != nil {
+		return func(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
+			orders := types.NewTransactionsByPriceAndNonce(inputEnvironment.signer, transactions,
+				simBundles, simSBundles, inputEnvironment.header.BaseFee)
+
+			envDiff := newEnvironmentDiff(inputEnvironment.copy())
+			usedBundles, usedSbundles := builder.mergeOrdersIntoEnvDiff(envDiff, orders)
+			envDiff.applyToBaseEnv()
+			return envDiff.baseEnvironment, usedBundles, usedSbundles
+		}
+	} else {
+		panic("invalid call to build block function")
+	}
+}
 
 func checkInterrupt(i *int32) bool {
 	return i != nil && atomic.LoadInt32(i) != commitInterruptNone
@@ -307,6 +357,9 @@ func BuildMultiTxSnapBlock(
 	chData chainData,
 	algoConf algorithmConfig,
 	orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle, error) {
+	// NOTE(wazzymandias): BuildMultiTxSnapBlock uses envChanges which is different from envDiff struct.
+	//   Eventually the structs should be consolidated but for now they represent the difference between using state
+	//   copies for building blocks (envDiff) versus using MultiTxSnapshot (envChanges).
 	var (
 		usedBundles      []types.SimulatedBundle
 		usedSbundles     []types.UsedSBundle
@@ -342,7 +395,7 @@ func BuildMultiTxSnapBlock(
 				orderFailed = true
 			}
 		} else if bundle := order.Bundle(); bundle != nil {
-			err = changes.commitBundle(bundle, chData)
+			err = changes.commitBundle(bundle, chData, algoConf)
 			orders.Pop()
 			if err != nil {
 				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
@@ -371,9 +424,9 @@ func BuildMultiTxSnapBlock(
 		}
 
 		if orderFailed {
-			if err = changes.revert(); err != nil {
-				log.Error("Failed to revert changes with multi-transaction snapshot", "err", err)
-				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to revert changes: %w", err))
+			if err = changes.discard(); err != nil {
+				log.Error("Failed to discard changes with multi-transaction snapshot", "err", err)
+				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to discard changes: %w", err))
 			}
 		} else {
 			if err = changes.apply(); err != nil {
