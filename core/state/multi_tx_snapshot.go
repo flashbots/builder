@@ -28,16 +28,18 @@ type MultiTxSnapshot struct {
 
 	accountNotPending map[common.Address]struct{}
 	accountNotDirty   map[common.Address]struct{}
+
+	previousRefund uint64
 	// TODO: snapdestructs, snapaccount storage
 }
 
 // NewMultiTxSnapshot creates a new MultiTxSnapshot
-func NewMultiTxSnapshot() *MultiTxSnapshot {
-	multiTxSnapshot := newMultiTxSnapshot()
+func NewMultiTxSnapshot(previousRefund uint64) *MultiTxSnapshot {
+	multiTxSnapshot := newMultiTxSnapshot(previousRefund)
 	return &multiTxSnapshot
 }
 
-func newMultiTxSnapshot() MultiTxSnapshot {
+func newMultiTxSnapshot(previousRefund uint64) MultiTxSnapshot {
 	return MultiTxSnapshot{
 		numLogsAdded:      make(map[common.Hash]int),
 		prevObjects:       make(map[common.Address]*stateObject),
@@ -50,6 +52,7 @@ func newMultiTxSnapshot() MultiTxSnapshot {
 		accountDeleted:    make(map[common.Address]bool),
 		accountNotPending: make(map[common.Address]struct{}),
 		accountNotDirty:   make(map[common.Address]struct{}),
+		previousRefund:    previousRefund,
 	}
 }
 
@@ -361,6 +364,11 @@ func (s *MultiTxSnapshot) Merge(other *MultiTxSnapshot) error {
 
 // revertState reverts the state to the snapshot.
 func (s *MultiTxSnapshot) revertState(st *StateDB) {
+	// restore previous refund
+	if st.refund != s.previousRefund {
+		st.refund = s.previousRefund
+	}
+
 	// remove all the logs added
 	for txhash, numLogs := range s.numLogsAdded {
 		lens := len(st.logs[txhash])
@@ -455,7 +463,7 @@ func (stack *MultiTxSnapshotStack) NewSnapshot() (*MultiTxSnapshot, error) {
 		return nil, errors.New("failed to create new multi-transaction snapshot - invalid snapshot found at head")
 	}
 
-	snap := newMultiTxSnapshot()
+	snap := newMultiTxSnapshot(stack.state.refund)
 	stack.snapshots = append(stack.snapshots, snap)
 	return &snap, nil
 }

@@ -258,12 +258,20 @@ func prepareInitialState(s *StateDB) {
 			afterHook(addrs[i], s)
 		}
 	}
+
 	s.Finalise(true)
+
+	// NOTE(wazzymandias):
+	//   We want to test refund is properly reverted for snapshots - state.StateDB clears refund on Finalise
+	//   so refund is set here to emulate state with non-zero value.
+	s.AddRefund(rng.Uint64())
 }
 
 func testMultiTxSnapshot(t *testing.T, actions func(s *StateDB)) {
 	s := newStateTest()
 	prepareInitialState(s.state)
+
+	previousRefund := s.state.GetRefund()
 
 	var obsStates []*observableAccountState
 	for _, account := range addrs {
@@ -298,6 +306,10 @@ func testMultiTxSnapshot(t *testing.T, actions func(s *StateDB)) {
 		if err != nil {
 			t.Error("state mismatch", "account", obsState.address, err)
 		}
+	}
+
+	if s.state.GetRefund() != previousRefund {
+		t.Error("refund mismatch", "got", s.state.GetRefund(), "expected", previousRefund)
 	}
 
 	if len(s.state.stateObjectsPending) != len(pendingAddressesBefore) {
@@ -336,6 +348,18 @@ func TestMultiTxSnapshotAccountChangesSimple(t *testing.T) {
 			s.SetCode(addr, []byte{0x80})
 		}
 		s.Finalise(true)
+	})
+}
+
+func TestMultiTxSnapshotRefund(t *testing.T) {
+	testMultiTxSnapshot(t, func(s *StateDB) {
+		for _, addr := range addrs {
+			s.SetNonce(addr, 78)
+			s.SetBalance(addr, big.NewInt(79))
+			s.SetCode(addr, []byte{0x80})
+		}
+		s.Finalise(true)
+		s.AddRefund(1000)
 	})
 }
 
@@ -419,7 +443,7 @@ func TestMultiTxSnapshotStateChanges(t *testing.T) {
 	})
 }
 
-func testStackBasic(t *testing.T) {
+func TestStackBasic(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		testMultiTxSnapshot(t, func(s *StateDB) {
 			// when test starts, actions are performed after new snapshot is created
@@ -475,7 +499,41 @@ func testStackBasic(t *testing.T) {
 	}
 }
 
-func testStackSelfDestruct(t *testing.T) {
+func TestStackRefund(t *testing.T) {
+	testMultiTxSnapshot(t, func(s *StateDB) {
+		const counter = 10
+
+		s.AddRefund(500)
+		previousRefunds := make([]uint64, 0, counter)
+		previousRefunds = append(previousRefunds, s.GetRefund())
+
+		for i := 0; i < counter; i++ {
+			previousRefunds = append(previousRefunds, s.GetRefund())
+			if err := s.NewMultiTxSnapshot(); err != nil {
+				t.Errorf("NewMultiTxSnapshot failed: %v", err)
+				t.FailNow()
+			}
+			s.Finalise(true)
+			s.AddRefund(1000)
+		}
+
+		for i := 0; i < counter; i++ {
+			if err := s.MultiTxSnapshotRevert(); err != nil {
+				t.Errorf("MultiTxSnapshotRevert failed: %v", err)
+				t.FailNow()
+			}
+			actualRefund := s.GetRefund()
+			expectedRefund := previousRefunds[len(previousRefunds)-1]
+			if actualRefund != expectedRefund {
+				t.Errorf("expected refund to be %d, got %d", expectedRefund, actualRefund)
+				t.FailNow()
+			}
+			previousRefunds = previousRefunds[:len(previousRefunds)-1]
+		}
+	})
+}
+
+func TestStackSelfDestruct(t *testing.T) {
 	testMultiTxSnapshot(t, func(s *StateDB) {
 		if err := s.NewMultiTxSnapshot(); err != nil {
 			t.Errorf("NewMultiTxSnapshot failed: %v", err)
@@ -515,7 +573,7 @@ func testStackSelfDestruct(t *testing.T) {
 	})
 }
 
-func testStackAgainstSingleSnap(t *testing.T) {
+func TestStackAgainstSingleSnap(t *testing.T) {
 	// we generate a random seed ten times to fuzz test multiple stack snapshots against single layer snapshot
 	for i := 0; i < 10; i++ {
 		testMultiTxSnapshot(t, func(s *StateDB) {
@@ -612,17 +670,6 @@ func testStackAgainstSingleSnap(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestMultiTxSnapshotStack(t *testing.T) {
-	// test state changes are valid after merging snapshots
-	testStackBasic(t)
-
-	// test self-destruct
-	testStackSelfDestruct(t)
-
-	// test against baseline single snapshot
-	testStackAgainstSingleSnap(t)
 }
 
 func CompareAndPrintSnapshotMismatches(t *testing.T, target, other *MultiTxSnapshot) {
