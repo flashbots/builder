@@ -120,6 +120,8 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 	)
 
 	for _, tx := range bundle.OriginalBundle.Txs {
+		gasUsed := c.usedGas
+		gasPool := new(core.GasPool).AddGas(c.gasPool.Gas())
 		txHash := tx.Hash()
 		// TODO: Checks for base fee and dynamic fee txs should be moved to the transaction pool,
 		//   similar to mev-share bundles. See SBundlesPool.validateTx() for reference.
@@ -140,36 +142,94 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 				break
 			}
 		}
+		if err := c.env.state.NewMultiTxSnapshot(); err != nil {
+			bundleErr = err
+			break
+		}
 		receipt, _, err := c.commitTx(tx, chData)
-
-		if err != nil {
+		switch err {
+		case nil:
+			switch {
+			case receipt == nil:
+				panic("receipt is nil")
+			case receipt.Status == types.ReceiptStatusFailed:
+				isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
+				// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
+				if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
+					log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+						"tx", txHash, "err", err)
+					c.usedGas = gasUsed
+					c.gasPool = gasPool
+					if err := c.env.state.MultiTxSnapshotRevert(); err != nil {
+						panic(err)
+					}
+				} else {
+					bundleErr = errors.New("bundle tx revert")
+				}
+			case receipt.Status == types.ReceiptStatusSuccessful:
+				fallthrough
+			default:
+				if err := c.env.state.MultiTxSnapshotCommit(); err != nil {
+					panic(err)
+				}
+			}
+		default:
 			isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
 			// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
 			if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
 				log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
 					"tx", txHash, "err", err)
-				continue
+				c.usedGas = gasUsed
+				c.gasPool = gasPool
+				if err := c.env.state.MultiTxSnapshotRevert(); err != nil {
+					panic(err)
+				}
+			} else {
+				bundleErr = err
 			}
-			log.Trace("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
-			bundleErr = err
-			break
-		}
-
-		if receipt != nil {
-			if receipt.Status == types.ReceiptStatusFailed && !bundle.OriginalBundle.RevertingHash(txHash) {
-				// if transaction reverted and isn't specified as reverting hash, return error
-				log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
-				bundleErr = errors.New("bundle tx revert")
-			}
-		} else {
-			// NOTE: The expectation is that a receipt is only nil if an error occurred.
-			//  If there is no error but receipt is nil, there is likely a programming error.
-			bundleErr = errors.New("invalid receipt when no error occurred")
 		}
 
 		if bundleErr != nil {
+			if err := c.env.state.MultiTxSnapshotRevert(); err != nil {
+				panic(err)
+			}
 			break
 		}
+
+		//if err != nil {
+		//	isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
+		//	// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
+		//	if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
+		//		log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+		//			"tx", txHash, "err", err)
+		//		if err := c.env.state.MultiTxSnapshotRevert(); err != nil {
+		//			panic(err)
+		//		}
+		//		continue
+		//	}
+		//	log.Trace("Bundle tx error", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
+		//	bundleErr = err
+		//	break
+		//}
+		//
+		//if receipt != nil {
+		//	if receipt.Status == types.ReceiptStatusFailed && !bundle.OriginalBundle.RevertingHash(txHash) {
+		//		// if transaction reverted and isn't specified as reverting hash, return error
+		//		log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
+		//		bundleErr = errors.New("bundle tx revert")
+		//	}
+		//} else {
+		//	// NOTE: The expectation is that a receipt is only nil if an error occurred.
+		//	//  If there is no error but receipt is nil, there is likely a programming error.
+		//	bundleErr = errors.New("invalid receipt when no error occurred")
+		//}
+		//
+		//if bundleErr != nil {
+		//	if err := c.env.state.MultiTxSnapshotRevert(); err != nil {
+		//		panic(err)
+		//	}
+		//	break
+		//}
 	}
 
 	if bundleErr != nil {

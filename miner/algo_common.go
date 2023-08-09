@@ -367,19 +367,31 @@ func BuildMultiTxSnapBlock(
 		buildBlockErrors []error
 	)
 
+	changes, err := newEnvChanges(inputEnvironment)
+	if err != nil {
+		return nil, nil, err
+	}
+	opMap := map[bool]func() error{
+		true:  changes.env.state.MultiTxSnapshotRevert,
+		false: changes.env.state.MultiTxSnapshotCommit,
+	}
+
 	for {
 		order := orders.Peek()
 		if order == nil {
 			break
 		}
 
-		orderFailed = false
-		changes, err := newEnvChanges(inputEnvironment)
-		// if changes cannot be instantiated, return early
-		if err != nil {
-			log.Error("Failed to create changes", "err", err)
+		if err = changes.env.state.NewMultiTxSnapshot(); err != nil {
 			return nil, nil, err
 		}
+		orderFailed = false
+		//changes, err := newEnvChanges(inputEnvironment)
+		// if changes cannot be instantiated, return early
+		//if err != nil {
+		//	log.Error("Failed to create changes", "err", err)
+		//	return nil, nil, err
+		//}
 
 		if tx := order.Tx(); tx != nil {
 			_, skip, err := changes.commitTx(tx, chData)
@@ -423,17 +435,26 @@ func BuildMultiTxSnapBlock(
 			panic("unsupported order type found")
 		}
 
-		if orderFailed {
-			if err = changes.discard(); err != nil {
-				log.Error("Failed to discard changes with multi-transaction snapshot", "err", err)
-				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to discard changes: %w", err))
-			}
-		} else {
-			if err = changes.apply(); err != nil {
-				log.Error("Failed to apply changes with multi-transaction snapshot", "err", err)
-				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to apply changes: %w", err))
-			}
+		if err = opMap[orderFailed](); err != nil {
+			log.Error("Failed to apply changes with multi-transaction snapshot", "err", err)
+			buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to apply changes: %w", err))
 		}
+		//if orderFailed {
+		//	if err = changes.discard(); err != nil {
+		//		log.Error("Failed to discard changes with multi-transaction snapshot", "err", err)
+		//		buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to discard changes: %w", err))
+		//	}
+		//} else {
+		//	if err = changes.apply(); err != nil {
+		//		log.Error("Failed to apply changes with multi-transaction snapshot", "err", err)
+		//		buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to apply changes: %w", err))
+		//	}
+		//}
+	}
+
+	if err = changes.apply(); err != nil {
+		log.Error("Failed to apply changes with multi-transaction snapshot", "err", err)
+		buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to apply changes: %w", err))
 	}
 
 	return usedBundles, usedSbundles, errors.Join(buildBlockErrors...)
