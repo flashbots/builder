@@ -1409,7 +1409,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 		}
 
 		algoConf := &algorithmConfig{
-			DropRevertibleTxOnErr:  w.flashbots.discardRevertedHashes,
+			DropRevertibleTxOnErr:  w.config.DiscardRevertibleTxOnErr,
 			EnforceProfit:          true,
 			ProfitThresholdPercent: defaultProfitThresholdPercent,
 			PriceCutoffPercent:     priceCutoffPercent,
@@ -1426,7 +1426,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 		// For default greedy builder, set algorithm configuration to default values,
 		// except DropRevertibleTxOnErr which is passed in from worker config
 		algoConf := &algorithmConfig{
-			DropRevertibleTxOnErr:  w.flashbots.discardRevertedHashes,
+			DropRevertibleTxOnErr:  w.config.DiscardRevertibleTxOnErr,
 			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
 			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
 		}
