@@ -120,9 +120,9 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 	)
 
 	for _, tx := range bundle.OriginalBundle.Txs {
-		gasUsed := c.usedGas
-		gasPool := new(core.GasPool).AddGas(c.gasPool.Gas())
-		txHash := tx.Hash()
+		//gasUsed := c.usedGas
+		//gasPool := new(core.GasPool).AddGas(c.gasPool.Gas())
+		//txHash := tx.Hash()
 		// TODO: Checks for base fee and dynamic fee txs should be moved to the transaction pool,
 		//   similar to mev-share bundles. See SBundlesPool.validateTx() for reference.
 		if hasBaseFee && tx.Type() == types.DynamicFeeTxType {
@@ -143,58 +143,69 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 			}
 		}
 		if err := c.env.state.NewMultiTxSnapshot(); err != nil {
-			bundleErr = err
-			break
+			panic(err)
 		}
 		receipt, _, err := c.commitTx(tx, chData)
-		switch err {
-		case nil:
-			switch {
-			case receipt == nil:
-				panic("receipt is nil")
-			case receipt.Status == types.ReceiptStatusFailed:
-				isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
-				// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
-				if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
-					log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
-						"tx", txHash, "err", err)
-					c.usedGas = gasUsed
-					c.gasPool = gasPool
-					if err := c.env.state.MultiTxSnapshotRevert(); err != nil {
-						panic(err)
-					}
-				} else {
-					bundleErr = errors.New("bundle tx revert")
-				}
-			case receipt.Status == types.ReceiptStatusSuccessful:
-				fallthrough
-			default:
-				if err := c.env.state.MultiTxSnapshotCommit(); err != nil {
-					panic(err)
-				}
-			}
-		default:
-			isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
-			// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
-			if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
-				log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
-					"tx", txHash, "err", err)
-				c.usedGas = gasUsed
-				c.gasPool = gasPool
-				if err := c.env.state.MultiTxSnapshotRevert(); err != nil {
-					panic(err)
-				}
-			} else {
-				bundleErr = err
-			}
-		}
-
-		if bundleErr != nil {
+		if err != nil {
+			bundleErr = err
 			if err := c.env.state.MultiTxSnapshotRevert(); err != nil {
 				panic(err)
 			}
 			break
+		} else {
+			if err := c.env.state.MultiTxSnapshotCommit(); err != nil {
+				panic(fmt.Sprintf("err: %v, receipt: %v", err, receipt))
+			}
+
 		}
+		//switch err {
+		//case nil:
+		//	switch {
+		//	case receipt == nil:
+		//		panic("receipt is nil")
+		//	case receipt.Status == types.ReceiptStatusFailed:
+		//		isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
+		//		// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
+		//		if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
+		//			log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+		//				"tx", txHash, "err", err)
+		//			c.usedGas = gasUsed
+		//			c.gasPool = gasPool
+		//			if err := c.env.state.MultiTxSnapshotRevert(); err != nil {
+		//				panic(err)
+		//			}
+		//		} else {
+		//			bundleErr = errors.New("bundle tx revert")
+		//		}
+		//	case receipt.Status == types.ReceiptStatusSuccessful:
+		//		fallthrough
+		//	default:
+		//		if err := c.env.state.MultiTxSnapshotCommit(); err != nil {
+		//			panic(err)
+		//		}
+		//	}
+		//default:
+		//	isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
+		//	// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
+		//	if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
+		//		log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+		//			"tx", txHash, "err", err)
+		//		c.usedGas = gasUsed
+		//		c.gasPool = gasPool
+		//		if err := c.env.state.MultiTxSnapshotRevert(); err != nil {
+		//			panic(err)
+		//		}
+		//	} else {
+		//		bundleErr = err
+		//	}
+		//}
+
+		//if bundleErr != nil {
+		//	if err := c.env.state.MultiTxSnapshotRevert(); err != nil {
+		//		panic(err)
+		//	}
+		//	break
+		//}
 
 		//if err != nil {
 		//	isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
