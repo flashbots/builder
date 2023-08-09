@@ -1973,6 +1973,7 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 	}
 
 	cfg.EnableMultiTransactionSnapshot = ctx.Bool(BuilderEnableMultiTxSnapshot.Name)
+	cfg.DiscardRevertibleTxOnErr = ctx.Bool(BuilderDiscardRevertibleTxOnErr.Name)
 	cfg.PriceCutoffPercent = ctx.Int(BuilderPriceCutoffPercentFlag.Name)
 }
 
