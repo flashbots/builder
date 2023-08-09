@@ -1222,3 +1222,7 @@ func (s *StateDB) MultiTxSnapshotCommit() (err error) {
 	_, err = s.multiTxSnapshotStack.Commit()
 	return
 }
+
+func (s *StateDB) MultiTxSnapshotStackSize() int {
+	return s.multiTxSnapshotStack.Size()
+}

@@ -1,9 +1,11 @@
 package miner
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/rlp"
 	"math/big"
 	"testing"
 
@@ -618,4 +620,333 @@ func TestPayoutTxUtils(t *testing.T) {
 	require.ErrorContains(t, err, "not enough gas")
 
 	require.Equal(t, env.state.GetNonce(signers.addresses[1]), uint64(3))
+}
+
+const (
+	Baseline       = 0
+	SingleSnapshot = 1
+	MultiSnapshot  = 2
+)
+
+type stateComparisonTestContext struct {
+	Name string
+
+	statedb   *state.StateDB
+	chainData chainData
+	signers   signerList
+
+	env *environment
+
+	envDiff *environmentDiff
+	changes *envChanges
+
+	transactions []*types.Transaction
+	bundles      []types.SimulatedBundle
+
+	rootHash common.Hash
+}
+
+type stateComparisonTestContexts []stateComparisonTestContext
+
+func (sc stateComparisonTestContexts) ValidateRootHashes(t *testing.T, expected common.Hash) {
+	for _, tc := range sc {
+		require.Equal(t, expected.Bytes(), tc.rootHash.Bytes(),
+			"root hash mismatch for test context %s [expected: %s] [found: %s]",
+			tc.Name, expected.TerminalString(), tc.rootHash.TerminalString())
+	}
+}
+
+func (sc stateComparisonTestContexts) GenerateTransactions(t *testing.T, txCount int, failEveryN int) {
+	for tcIndex, tc := range sc {
+		signers := tc.signers
+		tc.transactions = sc.generateTransactions(txCount, failEveryN, signers)
+		tc.signers = signers
+		require.Len(t, tc.transactions, txCount)
+
+		sc[tcIndex] = tc
+	}
+}
+
+func (sc stateComparisonTestContexts) generateTransactions(txCount int, failEveryN int, signers signerList) []*types.Transaction {
+	transactions := make([]*types.Transaction, 0, txCount)
+	for i := 0; i < txCount; i++ {
+		var data []byte
+		if failEveryN != 0 && i%failEveryN == 0 {
+			data = []byte{0x01}
+		} else {
+			data = []byte{}
+		}
+
+		from := i % len(signers.addresses)
+		tx := signers.signTx(from, params.TxGas, big.NewInt(0), big.NewInt(1),
+			signers.addresses[(i+1)%len(signers.addresses)], big.NewInt(0), data)
+		transactions = append(transactions, tx)
+	}
+
+	return transactions
+}
+
+func (sc stateComparisonTestContexts) UpdateRootHashes(t *testing.T) {
+	for tcIndex, tc := range sc {
+		if tc.envDiff != nil {
+			tc.rootHash = tc.envDiff.baseEnvironment.state.IntermediateRoot(true)
+		} else {
+			tc.rootHash = tc.env.state.IntermediateRoot(true)
+		}
+		sc[tcIndex] = tc
+
+		require.NotEmpty(t, tc.rootHash.Bytes(), "root hash is empty for test context %s", tc.Name)
+	}
+}
+
+func (sc stateComparisonTestContexts) ValidateTestCases(t *testing.T, reference int) {
+	expected := sc[reference]
+	var (
+		expectedGasPool      *core.GasPool        = expected.envDiff.baseEnvironment.gasPool
+		expectedHeader       *types.Header        = expected.envDiff.baseEnvironment.header
+		expectedProfit       *big.Int             = expected.envDiff.baseEnvironment.profit
+		expectedTxCount      int                  = expected.envDiff.baseEnvironment.tcount
+		expectedTransactions []*types.Transaction = expected.envDiff.baseEnvironment.txs
+		expectedReceipts     types.Receipts       = expected.envDiff.baseEnvironment.receipts
+	)
+	for tcIndex, tc := range sc {
+		if tcIndex == reference {
+			continue
+		}
+
+		var (
+			actualGasPool      *core.GasPool        = tc.env.gasPool
+			actualHeader       *types.Header        = tc.env.header
+			actualProfit       *big.Int             = tc.env.profit
+			actualTxCount      int                  = tc.env.tcount
+			actualTransactions []*types.Transaction = tc.env.txs
+			actualReceipts     types.Receipts       = tc.env.receipts
+		)
+		if actualGasPool.Gas() != expectedGasPool.Gas() {
+			t.Errorf("gas pool mismatch for test context %s [expected: %d] [found: %d]",
+				tc.Name, expectedGasPool.Gas(), actualGasPool.Gas())
+		}
+
+		if actualHeader.Hash() != expectedHeader.Hash() {
+			t.Errorf("header hash mismatch for test context %s [expected: %s] [found: %s]",
+				tc.Name, expectedHeader.Hash().TerminalString(), actualHeader.Hash().TerminalString())
+		}
+
+		if actualProfit.Cmp(expectedProfit) != 0 {
+			t.Errorf("profit mismatch for test context %s [expected: %d] [found: %d]",
+				tc.Name, expectedProfit, actualProfit)
+		}
+
+		if actualTxCount != expectedTxCount {
+			t.Errorf("transaction count mismatch for test context %s [expected: %d] [found: %d]",
+				tc.Name, expectedTxCount, actualTxCount)
+			break
+		}
+
+		if len(actualTransactions) != len(expectedTransactions) {
+			t.Errorf("transaction count mismatch for test context %s [expected: %d] [found: %d]",
+				tc.Name, len(expectedTransactions), len(actualTransactions))
+		}
+
+		for txIdx := 0; txIdx < len(actualTransactions); txIdx++ {
+			expectedTx := expectedTransactions[txIdx]
+			actualTx := actualTransactions[txIdx]
+
+			expectedBytes, err := rlp.EncodeToBytes(expectedTx)
+			if err != nil {
+				t.Fatalf("failed to encode expected transaction #%d: %v", txIdx, err)
+			}
+
+			actualBytes, err := rlp.EncodeToBytes(actualTx)
+			if err != nil {
+				t.Fatalf("failed to encode actual transaction #%d: %v", txIdx, err)
+			}
+
+			if !bytes.Equal(expectedBytes, actualBytes) {
+				t.Errorf("transaction #%d mismatch for test context %s [expected: %v] [found: %v]",
+					txIdx, tc.Name, expectedTx, actualTx)
+			}
+		}
+
+		if len(actualReceipts) != len(expectedReceipts) {
+			t.Errorf("receipt count mismatch for test context %s [expected: %d] [found: %d]",
+				tc.Name, len(expectedReceipts), len(actualReceipts))
+		}
+	}
+}
+
+func (sc stateComparisonTestContexts) Init(t *testing.T) stateComparisonTestContexts {
+	for i, tc := range sc {
+		tc = stateComparisonTestContext{}
+		tc.statedb, tc.chainData, tc.signers = genTestSetup()
+		tc.env = newEnvironment(tc.chainData, tc.statedb, tc.signers.addresses[0], GasLimit, big.NewInt(1))
+		var err error
+		switch i {
+		case Baseline:
+			tc.Name = "baseline"
+			tc.envDiff = newEnvironmentDiff(tc.env)
+		case SingleSnapshot:
+			tc.Name = "single-snapshot"
+			tc.changes, err = newEnvChanges(tc.env)
+		case MultiSnapshot:
+			tc.Name = "multi-snapshot"
+			tc.changes, err = newEnvChanges(tc.env)
+		}
+
+		require.NoError(t, err, "failed to initialize test contexts: %v", err)
+		sc[i] = tc
+	}
+	return sc
+}
+
+func TestStateComparisons(t *testing.T) {
+	var testContexts = make(stateComparisonTestContexts, 3)
+	testContexts = testContexts.Init(t)
+
+	// test commit tx
+	for i := 0; i < 3; i++ {
+		tx1 := testContexts[i].signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1),
+			testContexts[i].signers.addresses[2], big.NewInt(0), []byte{})
+		var (
+			receipt *types.Receipt
+			status  int
+			err     error
+		)
+		switch i {
+		case Baseline:
+			receipt, status, err = testContexts[i].envDiff.commitTx(tx1, testContexts[i].chainData)
+			testContexts[i].envDiff.applyToBaseEnv()
+
+		case SingleSnapshot:
+			receipt, status, err = testContexts[i].changes.commitTx(tx1, testContexts[i].chainData)
+			require.NoError(t, err, "can't commit single snapshot tx")
+
+			err = testContexts[i].changes.apply()
+		case MultiSnapshot:
+			receipt, status, err = testContexts[i].changes.commitTx(tx1, testContexts[i].chainData)
+			require.NoError(t, err, "can't commit multi snapshot tx")
+
+			err = testContexts[i].changes.apply()
+		}
+		require.NoError(t, err, "can't commit tx")
+		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+		require.Equal(t, 21000, int(receipt.GasUsed))
+		require.Equal(t, shiftTx, status)
+	}
+
+	testContexts.UpdateRootHashes(t)
+	testContexts.ValidateTestCases(t, Baseline)
+	testContexts.ValidateRootHashes(t, testContexts[Baseline].rootHash)
+
+	// test bundle
+	for i, tc := range testContexts {
+		var (
+			signers = tc.signers
+			header  = tc.env.header
+			env     = tc.env
+			chData  = tc.chainData
+		)
+
+		tx1 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
+		tx2 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
+
+		mevBundle := types.MevBundle{
+			Txs:         types.Transactions{tx1, tx2},
+			BlockNumber: header.Number,
+		}
+
+		simBundle, err := simulateBundle(env, mevBundle, chData, nil)
+		require.NoError(t, err, "can't simulate bundle: %v", err)
+
+		switch i {
+		case Baseline:
+			err = tc.envDiff.commitBundle(&simBundle, chData, nil, defaultAlgorithmConfig)
+			tc.envDiff.applyToBaseEnv()
+
+		case SingleSnapshot:
+			err = tc.changes.env.state.NewMultiTxSnapshot()
+			require.NoError(t, err, "can't create multi tx snapshot: %v", err)
+
+			err = tc.changes.commitBundle(&simBundle, chData, defaultAlgorithmConfig)
+			if err != nil {
+				break
+			}
+
+			err = tc.changes.apply()
+
+		case MultiSnapshot:
+			err = tc.changes.env.state.NewMultiTxSnapshot()
+			require.NoError(t, err, "can't create multi tx snapshot: %v", err)
+
+			err = tc.changes.commitBundle(&simBundle, chData, defaultAlgorithmConfig)
+			if err != nil {
+				break
+			}
+
+			err = tc.changes.apply()
+		}
+
+		require.NoError(t, err, "can't commit bundle: %v", err)
+	}
+
+	testContexts.UpdateRootHashes(t)
+	testContexts.ValidateTestCases(t, 0)
+	testContexts.ValidateRootHashes(t, testContexts[Baseline].rootHash)
+
+	// generate 100 transactions, with 50% of them failing
+	var (
+		txCount    = 100
+		failEveryN = 2
+	)
+	testContexts = testContexts.Init(t)
+	testContexts.GenerateTransactions(t, txCount, failEveryN)
+	require.Len(t, testContexts[Baseline].transactions, txCount)
+
+	for txIdx := 0; txIdx < txCount; txIdx++ {
+		for ctxIdx, tc := range testContexts {
+			tx := tc.transactions[txIdx]
+
+			var commitErr error
+			switch ctxIdx {
+			case Baseline:
+				_, _, commitErr = tc.envDiff.commitTx(tx, tc.chainData)
+				tc.envDiff.applyToBaseEnv()
+
+			case SingleSnapshot:
+				err := tc.changes.env.state.NewMultiTxSnapshot()
+				require.NoError(t, err, "can't create multi tx snapshot for tx %d: %v", txIdx, err)
+
+				_, _, commitErr = tc.changes.commitTx(tx, tc.chainData)
+				require.NoError(t, tc.changes.apply())
+			case MultiSnapshot:
+				err := tc.changes.env.state.NewMultiTxSnapshot()
+				require.NoError(t, err,
+					"can't create multi tx snapshot: %v", err)
+
+				err = tc.changes.env.state.NewMultiTxSnapshot()
+				require.NoError(t, err,
+					"can't create multi tx snapshot: %v", err)
+
+				_, _, commitErr = tc.changes.commitTx(tx, tc.chainData)
+				require.NoError(t, tc.changes.apply())
+
+				// NOTE(wazzymandias): At the time of writing this, the changes struct does not reset after performing
+				// an apply - because the intended use of the changes struct is to create it and discard it
+				// after every commit->(discard||apply) loop.
+				// So for now to test multiple snapshots we apply the changes for the top of the stack and
+				// then pop the underlying state snapshot from the base of the stack.
+				// Otherwise, if changes are applied twice, then there can be double counting of transactions.
+				require.NoError(t, tc.changes.env.state.MultiTxSnapshotCommit())
+			}
+
+			if txIdx%failEveryN == 0 {
+				require.Errorf(t, commitErr, "tx %d should fail", txIdx)
+			} else {
+				require.NoError(t, commitErr, "tx %d should succeed, found: %v", txIdx, commitErr)
+			}
+		}
+	}
+	testContexts.UpdateRootHashes(t)
+	testContexts.ValidateTestCases(t, 0)
+	testContexts.ValidateRootHashes(t, testContexts[Baseline].rootHash)
 }
