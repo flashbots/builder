@@ -1964,6 +1964,7 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 		}
 	}
 
+	cfg.DiscardRevertibleTxOnErr = ctx.Bool(BuilderDiscardRevertibleTxOnErr.Name)
 	cfg.PriceCutoffPercent = ctx.Int(BuilderPriceCutoffPercentFlag.Name)
 }
 

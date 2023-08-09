@@ -341,7 +341,13 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	bundleProfit := coinbaseBalanceDelta
 
 	gasUsedBigInt := new(big.Int).SetUint64(gasUsed)
-	bundleActualEffGP := bundleProfit.Div(bundleProfit, gasUsedBigInt)
+
+	var bundleActualEffGP *big.Int
+	if gasUsed == 0 {
+		bundleActualEffGP = big.NewInt(0)
+	} else {
+		bundleActualEffGP = bundleProfit.Div(bundleProfit, gasUsedBigInt)
+	}
 	bundleSimEffGP := new(big.Int).Set(bundle.MevGasPrice)
 
 	// allow >-1% divergence
