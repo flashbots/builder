@@ -5,9 +5,10 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/rlp"
 	"math/big"
 	"testing"
+
+	"github.com/ethereum/go-ethereum/rlp"
 
 	"github.com/stretchr/testify/require"
 
@@ -641,7 +642,6 @@ type stateComparisonTestContext struct {
 	changes *envChanges
 
 	transactions []*types.Transaction
-	bundles      []types.SimulatedBundle
 
 	rootHash common.Hash
 }
@@ -776,8 +776,8 @@ func (sc stateComparisonTestContexts) ValidateTestCases(t *testing.T, reference 
 }
 
 func (sc stateComparisonTestContexts) Init(t *testing.T) stateComparisonTestContexts {
-	for i, tc := range sc {
-		tc = stateComparisonTestContext{}
+	for i := range sc {
+		tc := stateComparisonTestContext{}
 		tc.statedb, tc.chainData, tc.signers = genTestSetup()
 		tc.env = newEnvironment(tc.chainData, tc.statedb, tc.signers.addresses[0], GasLimit, big.NewInt(1))
 		var err error
