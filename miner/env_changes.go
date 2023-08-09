@@ -9,7 +9,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -57,13 +56,6 @@ func (c *envChanges) commitPayoutTx(
 }
 
 func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
-	var (
-		gasPoolBefore  = new(core.GasPool).AddGas(c.gasPool.Gas())
-		usedGasBefore  = c.usedGas
-		txsBefore      = c.txs[:]
-		receiptsBefore = c.receipts[:]
-		profitBefore   = new(big.Int).Set(c.profit)
-	)
 	signer := c.env.signer
 	from, err := types.Sender(signer, tx)
 	if err != nil {
@@ -85,18 +77,9 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 		}
 	}
 
-	cfg := *chData.chain.GetVMConfig()
-	// we set precompile to nil, but they are set in the validation code
-	// there will be no difference in the result if precompile is not it the blocklist
-	touchTracer := logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, nil)
-	cfg.Tracer = touchTracer
-	cfg.Debug = true
-
 	c.env.state.SetTxContext(tx.Hash(), c.env.tcount+len(c.txs))
-	receipt, err := core.ApplyTransaction(chData.chainConfig, chData.chain, &c.env.coinbase, c.gasPool, c.env.state, c.env.header, tx, &c.usedGas, cfg, nil)
+	receipt, _, err := applyTransactionWithBlacklist(signer, chData.chainConfig, chData.chain, &c.env.coinbase, c.gasPool, c.env.state, c.env.header, tx, &c.usedGas, *chData.chain.GetVMConfig(), chData.blacklist)
 	if err != nil {
-		c.rollback(usedGasBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
-
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):
 			// Pop the current out-of-gas transaction without shifting in the next from the account
@@ -123,13 +106,6 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 			// nonce-too-high clause will prevent us from executing in vain).
 			log.Trace("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
 			return receipt, shiftTx, err
-		}
-	}
-
-	for _, accessTuple := range touchTracer.AccessList() {
-		if _, in := chData.blacklist[accessTuple.Address]; in {
-			c.rollback(usedGasBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
-			return nil, popTx, errors.New("blacklist violation, tx trace")
 		}
 	}
 
