@@ -546,7 +546,7 @@ func BenchmarkVerifyBundlesAtomicity(b *testing.B) {
 	)
 
 	// generate committed bundles
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 1000; i++ {
 		data := crypto.Keccak256([]byte(fmt.Sprintf("ok-bundles-%x", i)))
 		tx := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), data)
 		_ = tx.Hash()
@@ -570,7 +570,7 @@ func BenchmarkVerifyBundlesAtomicity(b *testing.B) {
 	}
 
 	// generate failed bundles
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 1000; i++ {
 		data := crypto.Keccak256([]byte(fmt.Sprintf("failed-bundles-%x", i)))
 		tx := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), data)
 		_ = tx.Hash()
@@ -585,7 +585,7 @@ func BenchmarkVerifyBundlesAtomicity(b *testing.B) {
 	}
 
 	// generate committed mempool txs
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 1000; i++ {
 		data := crypto.Keccak256([]byte(fmt.Sprintf("ok-mempool-tx-%x", i)))
 		tx := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), data)
 		hash := tx.Hash()
@@ -595,7 +595,7 @@ func BenchmarkVerifyBundlesAtomicity(b *testing.B) {
 	}
 
 	// generate failed mempool tx hashes
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 1000; i++ {
 		data := crypto.Keccak256([]byte(fmt.Sprintf("failed-mempool-tx-%x", i)))
 		mempoolTxHashes[common.BytesToHash(data)] = struct{}{}
 	}
