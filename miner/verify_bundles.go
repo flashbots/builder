@@ -72,18 +72,43 @@ func (e *ErrBundleTxWrongPlace) Error() string {
 	return fmt.Sprintf("tx from included bundle is in wrong place tx_hash=%s, bundle_hash=%s, tx_bundle_index=%d, tx_block_index=%d, expected_block_index=%d", e.TxHash.Hex(), e.BundleHash.Hex(), e.TxIndex, e.BlockIndex, e.ExpectedBlockIndex)
 }
 
+// ErrPrivateTxFromFailedBundle is returned when a private tx is included in the block, but the bundle it belongs to was not included
+type ErrPrivateTxFromFailedBundle struct {
+	BundleHash common.Hash
+	TxHash     common.Hash
+	// Index of the tx in the bundle
+	TxIndex int
+}
+
+func NewErrPrivateTxFromFailedBundle(bundleHash, txHash common.Hash, txIndex int) *ErrPrivateTxFromFailedBundle {
+	return &ErrPrivateTxFromFailedBundle{
+		BundleHash: bundleHash,
+		TxHash:     txHash,
+		TxIndex:    txIndex,
+	}
+}
+
+func (e *ErrPrivateTxFromFailedBundle) Error() string {
+	return fmt.Sprintf("private tx from failed bundle included in the block tx_hash=%s, bundle_hash=%s, tx_bundle_index=%d", e.TxHash.Hex(), e.BundleHash.Hex(), e.TxIndex)
+}
+
 // VerifyBundlesAtomicity checks that all txs from the included bundles are included in the block correctly
 // 1. We check that all non-reverted txs from the bundle are included in the block in correct order (with possible gaps) and are not reverted
 // 2. Reverted txs are allowed to be not included in the block
 // NOTE: we only verify bundles that were committed in the block but not all bundles that we tried to include
-func VerifyBundlesAtomicity(env *environment, commitedBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle) error {
+func VerifyBundlesAtomicity(env *environment, committedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, mempoolTxHashes map[common.Hash]struct{}) error {
 	// bundleHash -> tx
 	includedBundles := make(map[common.Hash][]bundleTxData)
-	extractBundleTxDataFromBundles(commitedBundles, includedBundles)
-	extractBundleTxDataFromSbundles(usedSbundles, includedBundles)
+	extractBundleTxDataFromBundles(committedBundles, includedBundles)
+	extractBundleTxDataFromSbundles(usedSbundles, includedBundles, true)
 	includedTxDataByHash := extractIncludedTxDataFromEnv(env)
 
-	return checkBundlesAtomicity(includedBundles, includedTxDataByHash)
+	allUsedBundles := make(map[common.Hash][]bundleTxData)
+	extractBundleTxDataFromBundles(allBundles, allUsedBundles)
+	extractBundleTxDataFromSbundles(usedSbundles, allUsedBundles, false)
+	privateTxDataFromFailedBundles := extractPrivateTxsFromFailedBundles(includedBundles, allUsedBundles, mempoolTxHashes)
+
+	return checkBundlesAtomicity(includedBundles, includedTxDataByHash, privateTxDataFromFailedBundles)
 }
 
 type bundleTxData struct {
@@ -97,11 +122,22 @@ type includedTxData struct {
 	reverted bool
 }
 
+type privateTxData struct {
+	bundleHash common.Hash
+	index      int
+}
+
 // checkBundlesAtomicity checks that all txs from the included bundles are included in the block correctly
 // 1. We check that all non-reverted txs from the bundle are included in the block and are not reverted
 // 2. Reverted txs are allowed to be not included in the block
 // 3. All txs from the bundle must be in the right order, gaps between txs are allowed
-func checkBundlesAtomicity(includedBundles map[common.Hash][]bundleTxData, includedTxDataByHash map[common.Hash]includedTxData) error {
+func checkBundlesAtomicity(
+	includedBundles map[common.Hash][]bundleTxData,
+	includedTxDataByHash map[common.Hash]includedTxData,
+	privateTxsFromFailedBundles map[common.Hash]privateTxData,
+) error {
+	txsFromSuccessfulBundles := make(map[common.Hash]struct{})
+
 	for bundleHash, b := range includedBundles {
 		var (
 			firstTxBlockIdx  int
@@ -109,6 +145,8 @@ func checkBundlesAtomicity(includedBundles map[common.Hash][]bundleTxData, inclu
 		)
 		// 1. locate the first included tx of the bundle
 		for bundleIdx, tx := range b {
+			txsFromSuccessfulBundles[tx.hash] = struct{}{}
+
 			txInclusion, ok := includedTxDataByHash[tx.hash]
 			if !ok {
 				// tx not found, maybe it was reverting
@@ -131,6 +169,8 @@ func checkBundlesAtomicity(includedBundles map[common.Hash][]bundleTxData, inclu
 		currentBlockTx := firstTxBlockIdx + 1
 		// locate other txs in the bundle
 		for idx, tx := range b[firstTxBundleIdx+1:] {
+			txsFromSuccessfulBundles[tx.hash] = struct{}{}
+
 			bundleIdx := firstTxBundleIdx + 1 + idx
 			// see if tx is on its place
 			txInclusion, ok := includedTxDataByHash[tx.hash]
@@ -156,6 +196,16 @@ func checkBundlesAtomicity(includedBundles map[common.Hash][]bundleTxData, inclu
 			currentBlockTx = txInclusion.index + 1
 		}
 	}
+
+	for hash, priv := range privateTxsFromFailedBundles {
+		if _, ok := txsFromSuccessfulBundles[hash]; ok {
+			continue
+		}
+		if _, ok := includedTxDataByHash[hash]; ok {
+			return NewErrPrivateTxFromFailedBundle(priv.bundleHash, hash, priv.index)
+		}
+	}
+
 	return nil
 }
 
@@ -187,9 +237,9 @@ func getShareBundleTxData(bundle *types.SBundle) []bundleTxData {
 	return res
 }
 
-func extractBundleTxDataFromSbundles(bundles []types.UsedSBundle, result map[common.Hash][]bundleTxData) {
+func extractBundleTxDataFromSbundles(bundles []types.UsedSBundle, result map[common.Hash][]bundleTxData, onlyIncluded bool) {
 	for _, b := range bundles {
-		if !b.Success {
+		if onlyIncluded && !b.Success {
 			continue
 		}
 		result[b.Bundle.Hash()] = getShareBundleTxData(b.Bundle)
@@ -204,6 +254,30 @@ func extractIncludedTxDataFromEnv(env *environment) map[common.Hash]includedTxDa
 				hash:     tx.Hash(),
 				index:    i,
 				reverted: env.receipts[i].Status == types.ReceiptStatusFailed,
+			}
+		}
+	}
+	return res
+}
+
+func extractPrivateTxsFromFailedBundles(
+	includedBundles, allBundles map[common.Hash][]bundleTxData, mempoolTxHashes map[common.Hash]struct{},
+) map[common.Hash]privateTxData {
+	// we don't handle overlapping bundles here, they are handled in checkBundlesAtomicity
+	res := make(map[common.Hash]privateTxData)
+
+	for bundleHash, b := range allBundles {
+		if _, bundleIncluded := includedBundles[bundleHash]; bundleIncluded {
+			continue
+		}
+
+		for i, tx := range b {
+			if _, mempool := mempoolTxHashes[tx.hash]; mempool {
+				continue
+			}
+			res[tx.hash] = privateTxData{
+				bundleHash: bundleHash,
+				index:      i,
 			}
 		}
 	}

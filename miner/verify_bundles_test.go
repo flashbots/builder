@@ -16,6 +16,8 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 		includedBundles map[common.Hash][]bundleTxData
 		// includedTxDataByHash is a map of tx hash to tx data that were included in the block
 		includedTxDataByHash map[common.Hash]includedTxData
+		// privateTxData is a map of tx hash to private tx data of private txs from failed bundles
+		privateTxData map[common.Hash]privateTxData
 		// expectedErr is the expected error returned by verifyBundles
 		expectedErr error
 	}{
@@ -35,7 +37,8 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				common.HexToHash("0xb12"): {hash: common.HexToHash("0xb12"), index: 3, reverted: false},
 				common.HexToHash("0xc3"):  {hash: common.HexToHash("0xc3"), index: 4, reverted: false},
 			},
-			expectedErr: nil,
+			privateTxData: nil,
+			expectedErr:   nil,
 		},
 		{
 			name: "Simple bundle included with gaps between txs",
@@ -56,7 +59,8 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				common.HexToHash("0xc5"):  {hash: common.HexToHash("0xc5"), index: 6, reverted: false},
 				common.HexToHash("0xb13"): {hash: common.HexToHash("0xb13"), index: 7, reverted: false},
 			},
-			expectedErr: nil,
+			privateTxData: nil,
+			expectedErr:   nil,
 		},
 		{
 			name: "Simple bundle included with revertible tx, tx included and reverted",
@@ -74,7 +78,8 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				common.HexToHash("0xb12"): {hash: common.HexToHash("0xb12"), index: 3, reverted: true},
 				common.HexToHash("0xb13"): {hash: common.HexToHash("0xb13"), index: 4, reverted: false},
 			},
-			expectedErr: nil,
+			privateTxData: nil,
+			expectedErr:   nil,
 		},
 		{
 			name: "Simple bundle included with revertible tx, tx not included",
@@ -89,7 +94,8 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				common.HexToHash("0xb11"): {hash: common.HexToHash("0xb11"), index: 0, reverted: false},
 				common.HexToHash("0xb13"): {hash: common.HexToHash("0xb13"), index: 1, reverted: false},
 			},
-			expectedErr: nil,
+			privateTxData: nil,
+			expectedErr:   nil,
 		},
 		{
 			name: "Simple bundle included with all revertible tx, last of them is included as success",
@@ -105,7 +111,8 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				common.HexToHash("0xb13"): {hash: common.HexToHash("0xb13"), index: 1, reverted: false},
 				common.HexToHash("0xc2"):  {hash: common.HexToHash("0xc2"), index: 2, reverted: true},
 			},
-			expectedErr: nil,
+			privateTxData: nil,
+			expectedErr:   nil,
 		},
 		{
 			name: "Simple bundle included with all revertible tx, none of the txs are included",
@@ -120,7 +127,8 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				common.HexToHash("0xc1"): {hash: common.HexToHash("0xc1"), index: 0, reverted: true},
 				common.HexToHash("0xc2"): {hash: common.HexToHash("0xc2"), index: 1, reverted: true},
 			},
-			expectedErr: nil,
+			privateTxData: nil,
+			expectedErr:   nil,
 		},
 		{
 			name: "Two bundles included, both backrun one tx that is allowed to revert",
@@ -140,6 +148,27 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				common.HexToHash("0xc1"):  {hash: common.HexToHash("0xc1"), index: 2, reverted: true},
 				common.HexToHash("0xb22"): {hash: common.HexToHash("0xb22"), index: 3, reverted: false},
 			},
+			privateTxData: nil,
+			expectedErr:   nil,
+		},
+		{
+			name: "Private tx from overlapping included bundle included",
+			includedBundles: map[common.Hash][]bundleTxData{
+				common.HexToHash("0xb1"): {
+					{hash: common.HexToHash("0xb11"), canRevert: true},
+					{hash: common.HexToHash("0xb12"), canRevert: false},
+				},
+			},
+			includedTxDataByHash: map[common.Hash]includedTxData{
+				common.HexToHash("0xc1"):  {hash: common.HexToHash("0xc1"), index: 0, reverted: false},
+				common.HexToHash("0xc2"):  {hash: common.HexToHash("0xc2"), index: 1, reverted: true},
+				common.HexToHash("0xb11"): {hash: common.HexToHash("0xb11"), index: 2, reverted: false},
+				common.HexToHash("0xb12"): {hash: common.HexToHash("0xb12"), index: 3, reverted: false},
+				common.HexToHash("0xc3"):  {hash: common.HexToHash("0xc3"), index: 4, reverted: false},
+			},
+			privateTxData: map[common.Hash]privateTxData{
+				common.HexToHash("0xb11"): {bundleHash: common.HexToHash("0xb2"), index: 2},
+			},
 			expectedErr: nil,
 		},
 		// Error cases
@@ -158,7 +187,8 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				common.HexToHash("0xb12"): {hash: common.HexToHash("0xb12"), index: 3, reverted: false},
 				common.HexToHash("0xc3"):  {hash: common.HexToHash("0xc3"), index: 4, reverted: false},
 			},
-			expectedErr: NewErrBundleTxReverted(common.HexToHash("0xb1"), common.HexToHash("0xb11"), 0),
+			privateTxData: nil,
+			expectedErr:   NewErrBundleTxReverted(common.HexToHash("0xb1"), common.HexToHash("0xb11"), 0),
 		},
 		{
 			name: "Simple bundle included but with reverted txs (second tx reverted)",
@@ -175,7 +205,8 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				common.HexToHash("0xb12"): {hash: common.HexToHash("0xb12"), index: 3, reverted: true},
 				common.HexToHash("0xc3"):  {hash: common.HexToHash("0xc3"), index: 4, reverted: false},
 			},
-			expectedErr: NewErrBundleTxReverted(common.HexToHash("0xb1"), common.HexToHash("0xb12"), 1),
+			privateTxData: nil,
+			expectedErr:   NewErrBundleTxReverted(common.HexToHash("0xb1"), common.HexToHash("0xb12"), 1),
 		},
 		{
 			name: "Simple bundle included with gaps between txs (second tx reverted)",
@@ -192,7 +223,8 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				common.HexToHash("0xc3"):  {hash: common.HexToHash("0xc3"), index: 3, reverted: false},
 				common.HexToHash("0xb12"): {hash: common.HexToHash("0xb12"), index: 4, reverted: true},
 			},
-			expectedErr: NewErrBundleTxReverted(common.HexToHash("0xb1"), common.HexToHash("0xb12"), 1),
+			privateTxData: nil,
+			expectedErr:   NewErrBundleTxReverted(common.HexToHash("0xb1"), common.HexToHash("0xb12"), 1),
 		},
 		{
 			name: "Simple bundle included but with incorrect order",
@@ -209,7 +241,8 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				common.HexToHash("0xb11"): {hash: common.HexToHash("0xb11"), index: 3, reverted: false},
 				common.HexToHash("0xc3"):  {hash: common.HexToHash("0xc3"), index: 4, reverted: false},
 			},
-			expectedErr: NewErrBundleTxWrongPlace(common.HexToHash("0xb1"), common.HexToHash("0xb12"), 1, 2, 4),
+			privateTxData: nil,
+			expectedErr:   NewErrBundleTxWrongPlace(common.HexToHash("0xb1"), common.HexToHash("0xb12"), 1, 2, 4),
 		},
 		{
 			name: "Simple bundle included but first tx missing",
@@ -225,7 +258,8 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				common.HexToHash("0xb12"): {hash: common.HexToHash("0xb12"), index: 2, reverted: false},
 				common.HexToHash("0xc3"):  {hash: common.HexToHash("0xc3"), index: 3, reverted: false},
 			},
-			expectedErr: NewErrBundleTxNotFound(common.HexToHash("0xb1"), common.HexToHash("0xb11"), 0),
+			privateTxData: nil,
+			expectedErr:   NewErrBundleTxNotFound(common.HexToHash("0xb1"), common.HexToHash("0xb11"), 0),
 		},
 		{
 			name: "Simple bundle included but second tx missing",
@@ -241,7 +275,8 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				common.HexToHash("0xb11"): {hash: common.HexToHash("0xb11"), index: 2, reverted: false},
 				common.HexToHash("0xc3"):  {hash: common.HexToHash("0xc3"), index: 3, reverted: false},
 			},
-			expectedErr: NewErrBundleTxNotFound(common.HexToHash("0xb1"), common.HexToHash("0xb12"), 1),
+			privateTxData: nil,
+			expectedErr:   NewErrBundleTxNotFound(common.HexToHash("0xb1"), common.HexToHash("0xb12"), 1),
 		},
 		{
 			name: "Bundle with multiple reverting txs in the front has failing tx",
@@ -259,13 +294,28 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				common.HexToHash("0xb14"): {hash: common.HexToHash("0xb11"), index: 2, reverted: true},
 				common.HexToHash("0xc3"):  {hash: common.HexToHash("0xc3"), index: 3, reverted: false},
 			},
-			expectedErr: NewErrBundleTxReverted(common.HexToHash("0xb1"), common.HexToHash("0xb14"), 3),
+			privateTxData: nil,
+			expectedErr:   NewErrBundleTxReverted(common.HexToHash("0xb1"), common.HexToHash("0xb14"), 3),
+		},
+		{
+			name:            "Private tx from failed bundles was included in a block",
+			includedBundles: nil,
+			includedTxDataByHash: map[common.Hash]includedTxData{
+				common.HexToHash("0xc1"):  {hash: common.HexToHash("0xc1"), index: 0, reverted: false},
+				common.HexToHash("0xc2"):  {hash: common.HexToHash("0xc2"), index: 1, reverted: true},
+				common.HexToHash("0xb11"): {hash: common.HexToHash("0xb11"), index: 2, reverted: false},
+				common.HexToHash("0xc3"):  {hash: common.HexToHash("0xc3"), index: 2, reverted: false},
+			},
+			privateTxData: map[common.Hash]privateTxData{
+				common.HexToHash("0xb11"): {bundleHash: common.HexToHash("0xb1"), index: 2},
+			},
+			expectedErr: NewErrPrivateTxFromFailedBundle(common.HexToHash("0xb1"), common.HexToHash("0xb11"), 2),
 		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := checkBundlesAtomicity(test.includedBundles, test.includedTxDataByHash)
+			err := checkBundlesAtomicity(test.includedBundles, test.includedTxDataByHash, test.privateTxData)
 			if test.expectedErr == nil {
 				require.NoError(t, err)
 			} else {
@@ -319,7 +369,7 @@ func TestExtractBundleDataFromUsedBundles(t *testing.T) {
 
 	result := make(map[common.Hash][]bundleTxData)
 	extractBundleTxDataFromBundles([]types.SimulatedBundle{bundle}, result)
-	extractBundleTxDataFromSbundles([]types.UsedSBundle{{Bundle: sbundle, Success: true}}, result)
+	extractBundleTxDataFromSbundles([]types.UsedSBundle{{Bundle: sbundle, Success: true}}, result, true)
 
 	require.Equal(t, expectedResult, result)
 }
@@ -344,5 +394,40 @@ func TestExtractIncludedTxDataFromEnv(t *testing.T) {
 	}
 
 	result := extractIncludedTxDataFromEnv(env)
+	require.Equal(t, expectedResult, result)
+}
+
+func TestExtractPrivateTxData(t *testing.T) {
+	includedBundles := map[common.Hash][]bundleTxData{
+		common.HexToHash("0xb1"): {
+			{hash: common.HexToHash("0xb11"), canRevert: true},
+		},
+		common.HexToHash("0xb2"): {
+			{hash: common.HexToHash("0xb21"), canRevert: true},
+		},
+	}
+	allUsedBundles := map[common.Hash][]bundleTxData{
+		common.HexToHash("0xb1"): {
+			{hash: common.HexToHash("0xb11"), canRevert: true},
+		},
+		common.HexToHash("0xb2"): {
+			{hash: common.HexToHash("0xb21"), canRevert: true},
+		},
+		common.HexToHash("0xb3"): {
+			{hash: common.HexToHash("0xb31"), canRevert: true},
+			{hash: common.HexToHash("0xb32"), canRevert: true},
+		},
+	}
+	mempoolTxHashes := map[common.Hash]struct{}{
+		common.HexToHash("0xb11"): {},
+		common.HexToHash("0xb31"): {},
+	}
+
+	expectedResult := map[common.Hash]privateTxData{
+		common.HexToHash("0xb32"): {bundleHash: common.HexToHash("0xb3"), index: 1},
+	}
+
+	result := extractPrivateTxsFromFailedBundles(includedBundles, allUsedBundles, mempoolTxHashes)
+
 	require.Equal(t, expectedResult, result)
 }
