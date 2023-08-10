@@ -1539,6 +1539,11 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 		return nil, nil, err
 	}
 
+	err = VerifyBundlesAtomicity(work, blockBundles, usedSbundles)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	// no bundles or tx from mempool
 	if len(work.txs) == 0 {
 		return finalizeFn(work, orderCloseTime, blockBundles, allBundles, usedSbundles, true)
