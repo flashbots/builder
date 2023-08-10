@@ -92,10 +92,26 @@ func (e *ErrPrivateTxFromFailedBundle) Error() string {
 	return fmt.Sprintf("private tx from failed bundle included in the block tx_hash=%s, bundle_hash=%s, tx_bundle_index=%d", e.TxHash.Hex(), e.BundleHash.Hex(), e.TxIndex)
 }
 
+// ErrUnexpectedTx is returned when a tx is included in the block, but it is not from the mempool or from the included bundles
+type ErrUnexpectedTx struct {
+	TxHash common.Hash
+}
+
+func NewErrUnexpectedTx(txHash common.Hash) *ErrUnexpectedTx {
+	return &ErrUnexpectedTx{
+		TxHash: txHash,
+	}
+}
+
+func (e *ErrUnexpectedTx) Error() string {
+	return fmt.Sprintf("unexpected tx included in the block tx_hash=%s", e.TxHash.Hex())
+}
+
 // VerifyBundlesAtomicity checks that all txs from the included bundles are included in the block correctly
-// 1. We check that all non-reverted txs from the bundle are included in the block in correct order (with possible gaps) and are not reverted
+// 1. We check that all non-reverted txs from the bundle are included in the block and are not reverted
 // 2. Reverted txs are allowed to be not included in the block
-// NOTE: we only verify bundles that were committed in the block but not all bundles that we tried to include
+// 3. All txs from the bundle must be in the right order, gaps between txs are allowed
+// 4. All txs in the block are either from mempool or from the included bundles
 func VerifyBundlesAtomicity(env *environment, committedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, mempoolTxHashes map[common.Hash]struct{}) error {
 	// bundleHash -> tx
 	includedBundles := make(map[common.Hash][]bundleTxData)
@@ -108,7 +124,7 @@ func VerifyBundlesAtomicity(env *environment, committedBundles, allBundles []typ
 	extractBundleTxDataFromSbundles(usedSbundles, allUsedBundles, false)
 	privateTxDataFromFailedBundles := extractPrivateTxsFromFailedBundles(includedBundles, allUsedBundles, mempoolTxHashes)
 
-	return checkBundlesAtomicity(includedBundles, includedTxDataByHash, privateTxDataFromFailedBundles)
+	return checkBundlesAtomicity(includedBundles, includedTxDataByHash, privateTxDataFromFailedBundles, mempoolTxHashes)
 }
 
 type bundleTxData struct {
@@ -128,13 +144,11 @@ type privateTxData struct {
 }
 
 // checkBundlesAtomicity checks that all txs from the included bundles are included in the block correctly
-// 1. We check that all non-reverted txs from the bundle are included in the block and are not reverted
-// 2. Reverted txs are allowed to be not included in the block
-// 3. All txs from the bundle must be in the right order, gaps between txs are allowed
 func checkBundlesAtomicity(
 	includedBundles map[common.Hash][]bundleTxData,
 	includedTxDataByHash map[common.Hash]includedTxData,
 	privateTxsFromFailedBundles map[common.Hash]privateTxData,
+	mempoolTxHashes map[common.Hash]struct{},
 ) error {
 	txsFromSuccessfulBundles := make(map[common.Hash]struct{})
 
@@ -204,6 +218,16 @@ func checkBundlesAtomicity(
 		if _, ok := includedTxDataByHash[hash]; ok {
 			return NewErrPrivateTxFromFailedBundle(priv.bundleHash, hash, priv.index)
 		}
+	}
+
+	for hash := range includedTxDataByHash {
+		if _, ok := txsFromSuccessfulBundles[hash]; ok {
+			continue
+		}
+		if _, ok := mempoolTxHashes[hash]; ok {
+			continue
+		}
+		return NewErrUnexpectedTx(hash)
 	}
 
 	return nil
