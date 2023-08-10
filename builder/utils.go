@@ -7,19 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/log"
 	"io"
 	"net/http"
 )
 
 var errHTTPErrorResponse = errors.New("HTTP error response")
-
-type JSONRPCResponse struct {
-	ID      interface{}     `json:"id"`
-	Result  json.RawMessage `json:"result,omitempty"`
-	Error   json.RawMessage `json:"error,omitempty"`
-	Version string          `json:"jsonrpc"`
-}
 
 // SendSSZRequest is a request to send SSZ data to a remote relay.
 func SendSSZRequest(ctx context.Context, client http.Client, method, url string, payload []byte, useGzip bool) (code int, err error) {
@@ -63,21 +55,11 @@ func SendSSZRequest(ctx context.Context, client http.Client, method, url string,
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return resp.StatusCode, fmt.Errorf("could not read error response body for status code %d: %w", resp.StatusCode, err)
-	}
-
-	res := new(JSONRPCResponse)
-	if err := json.Unmarshal(bodyBytes, &res); err != nil {
-		return resp.StatusCode, fmt.Errorf("could not unmarshal error response body for status code %d: %w", resp.StatusCode, err)
-	}
-
-	if res.Error != nil {
-		log.Info("Error response", "code", resp.StatusCode, "message", string(res.Error))
-	}
-
 	if resp.StatusCode > 299 {
+		bodyBytes, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return resp.StatusCode, fmt.Errorf("could not read error response body for status code %d: %w", resp.StatusCode, err)
+		}
 		return resp.StatusCode, fmt.Errorf("HTTP error response: %d / %s", resp.StatusCode, string(bodyBytes))
 	}
 	return resp.StatusCode, nil

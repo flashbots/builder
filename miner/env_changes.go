@@ -156,7 +156,6 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 			if err := c.env.state.MultiTxSnapshotCommit(); err != nil {
 				panic(fmt.Sprintf("err: %v, receipt: %v", err, receipt))
 			}
-
 		}
 		//switch err {
 		//case nil:
@@ -252,22 +251,28 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 		bundleProfit = new(big.Int).Sub(c.env.state.GetBalance(c.env.coinbase), coinbaseBefore)
 		gasUsed      = c.usedGas - gasUsedBefore
 
-		simEffGP = new(big.Int).Set(bundle.MevGasPrice)
-		effGP    *big.Int
+		// EGP = Effective Gas Price (Profit / GasUsed)
+		simulatedEGP                    = new(big.Int).Set(bundle.MevGasPrice)
+		actualEGP                       *big.Int
+		tolerablePriceDifferencePercent = 1
+
+		simulatedBundleProfit = new(big.Int).Set(bundle.TotalEth)
+		actualBundleProfit    = new(big.Int).Set(bundleProfit)
 	)
+
 	if gasUsed == 0 {
-		effGP = new(big.Int).SetUint64(0)
+		actualEGP = big.NewInt(0)
 	} else {
-		effGP = new(big.Int).Div(bundleProfit, new(big.Int).SetUint64(gasUsed))
+		actualEGP = new(big.Int).Div(bundleProfit, big.NewInt(int64(gasUsed)))
 	}
 
-	// allow >-1% divergence
-	effGP.Mul(effGP, common.Big100)
-	simEffGP.Mul(simEffGP, big.NewInt(99))
-	if simEffGP.Cmp(effGP) > 0 {
-		log.Trace("Bundle underpays after inclusion", "bundle", bundle.OriginalBundle.Hash)
+	err := ValidateGasPriceAndProfit(algoConf,
+		actualEGP, simulatedEGP, tolerablePriceDifferencePercent,
+		actualBundleProfit, simulatedBundleProfit,
+	)
+	if err != nil {
 		c.rollback(gasUsedBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
-		return errors.New("bundle underpays")
+		return err
 	}
 
 	c.profit.Add(profitBefore, bundleProfit)

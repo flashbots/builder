@@ -170,6 +170,41 @@ func NewBuildBlockFunc(
 	}
 }
 
+func ValidateGasPriceAndProfit(algoConf algorithmConfig, actualPrice, expectedPrice *big.Int, tolerablePriceDifferencePercent int,
+	actualProfit, expectedProfit *big.Int) error {
+	// allow tolerablePriceDifferencePercent % divergence
+	expectedPriceMultiple := new(big.Int).Mul(expectedPrice, big.NewInt(100-int64(tolerablePriceDifferencePercent)))
+	actualPriceMultiple := new(big.Int).Mul(actualPrice, common.Big100)
+
+	var errLowProfit *lowProfitError = nil
+	if expectedPriceMultiple.Cmp(actualPriceMultiple) > 0 {
+		errLowProfit = &lowProfitError{
+			ExpectedEffectiveGasPrice: expectedPrice,
+			ActualEffectiveGasPrice:   actualPrice,
+		}
+	}
+
+	if algoConf.EnforceProfit {
+		// We want to make expected profit smaller to allow for some leeway in cases where the actual profit is
+		// lower due to transaction ordering
+		expectedProfitMultiple := common.PercentOf(expectedProfit, algoConf.ProfitThresholdPercent)
+		actualProfitMultiple := new(big.Int).Mul(actualProfit, common.Big100)
+
+		if expectedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
+			if errLowProfit == nil {
+				errLowProfit = new(lowProfitError)
+			}
+			errLowProfit.ExpectedProfit = expectedProfit
+			errLowProfit.ActualProfit = actualProfit
+		}
+	}
+
+	if errLowProfit != nil { // staticcheck linter complains if we don't check for nil here
+		return errLowProfit
+	}
+	return nil
+}
+
 func checkInterrupt(i *int32) bool {
 	return i != nil && atomic.LoadInt32(i) != commitInterruptNone
 }

@@ -206,7 +206,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 	}
 
 	var validator *blockvalidation.BlockValidationAPI
-	if cfg.DryRun || !cfg.DryRun {
+	if cfg.DryRun {
 		var accessVerifier *blockvalidation.AccessVerifier
 		if cfg.ValidationBlocklist != "" {
 			accessVerifier, err = blockvalidation.NewAccessVerifierFromFile(cfg.ValidationBlocklist)

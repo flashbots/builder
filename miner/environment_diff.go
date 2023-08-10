@@ -195,45 +195,29 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	coinbaseBalanceDelta := new(big.Int).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
 	tmpEnvDiff.newProfit.Add(profitBefore, coinbaseBalanceDelta)
 
-	bundleProfit := coinbaseBalanceDelta
+	var (
+		bundleProfit = coinbaseBalanceDelta
+		// EGP = Effective Gas Price (Profit / GasUsed)
+		simulatedEGP                    = new(big.Int).Set(bundle.MevGasPrice)
+		actualEGP                       *big.Int
+		tolerablePriceDifferencePercent = 1
 
-	var bundleActualEffGP *big.Int
+		simulatedBundleProfit = new(big.Int).Set(bundle.TotalEth)
+		actualBundleProfit    = new(big.Int).Set(bundleProfit)
+	)
+
 	if gasUsed == 0 {
-		bundleActualEffGP = big.NewInt(0)
+		actualEGP = big.NewInt(0)
 	} else {
-		bundleActualEffGP = bundleProfit.Div(bundleProfit, big.NewInt(int64(gasUsed)))
-	}
-	bundleSimEffGP := new(big.Int).Set(bundle.MevGasPrice)
-
-	// allow >-1% divergence
-	actualEGP := new(big.Int).Mul(bundleActualEffGP, common.Big100)  // bundle actual effective gas price * 100
-	simulatedEGP := new(big.Int).Mul(bundleSimEffGP, big.NewInt(99)) // bundle simulated effective gas price * 99
-
-	if simulatedEGP.Cmp(actualEGP) > 0 {
-		log.Trace("Bundle underpays after inclusion", "bundle", bundle.OriginalBundle.Hash)
-		return &lowProfitError{
-			ExpectedEffectiveGasPrice: bundleSimEffGP,
-			ActualEffectiveGasPrice:   bundleActualEffGP,
-		}
+		actualEGP = new(big.Int).Div(bundleProfit, big.NewInt(int64(gasUsed)))
 	}
 
-	if algoConf.EnforceProfit {
-		// if profit is enforced between simulation and actual commit, only allow ProfitThresholdPercent divergence
-		simulatedBundleProfit := new(big.Int).Set(bundle.TotalEth)
-		actualBundleProfit := new(big.Int).Mul(bundleActualEffGP, big.NewInt(int64(gasUsed)))
-
-		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
-		// lower due to transaction ordering
-		simulatedProfitMultiple := common.PercentOf(simulatedBundleProfit, algoConf.ProfitThresholdPercent)
-		actualProfitMultiple := new(big.Int).Mul(actualBundleProfit, common.Big100)
-
-		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
-			log.Trace("Lower bundle profit found after inclusion", "bundle", bundle.OriginalBundle.Hash)
-			return &lowProfitError{
-				ExpectedProfit: simulatedBundleProfit,
-				ActualProfit:   actualBundleProfit,
-			}
-		}
+	err := ValidateGasPriceAndProfit(algoConf,
+		actualEGP, simulatedEGP, tolerablePriceDifferencePercent,
+		actualBundleProfit, simulatedBundleProfit,
+	)
+	if err != nil {
+		return err
 	}
 
 	*envDiff = *tmpEnvDiff
