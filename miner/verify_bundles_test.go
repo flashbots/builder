@@ -1,11 +1,13 @@
 package miner
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
 )
 
@@ -531,4 +533,78 @@ func TestExtractPrivateTxData(t *testing.T) {
 	result := extractPrivateTxsFromFailedBundles(includedBundles, allUsedBundles, mempoolTxHashes)
 
 	require.Equal(t, expectedResult, result)
+}
+
+func BenchmarkVerifyBundlesAtomicity(b *testing.B) {
+	_, _, signers := genTestSetup()
+
+	var (
+		env              = &environment{}
+		committedBundles []types.SimulatedBundle
+		allBundles       []types.SimulatedBundle
+		mempoolTxHashes  = make(map[common.Hash]struct{})
+	)
+
+	// generate committed bundles
+	for i := 0; i < 100; i++ {
+		data := crypto.Keccak256([]byte(fmt.Sprintf("ok-bundles-%x", i)))
+		tx := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), data)
+		_ = tx.Hash()
+		env.txs = append(env.txs, tx)
+		env.receipts = append(env.receipts, &types.Receipt{TxHash: tx.Hash(), Status: types.ReceiptStatusSuccessful})
+		bundleHash := common.BytesToHash(data)
+		committedBundles = append(committedBundles, types.SimulatedBundle{
+			OriginalBundle: types.MevBundle{
+				Txs:               types.Transactions{tx},
+				RevertingTxHashes: []common.Hash{},
+				Hash:              bundleHash,
+			},
+		})
+		allBundles = append(allBundles, types.SimulatedBundle{
+			OriginalBundle: types.MevBundle{
+				Txs:               types.Transactions{tx},
+				RevertingTxHashes: []common.Hash{},
+				Hash:              bundleHash,
+			},
+		})
+	}
+
+	// generate failed bundles
+	for i := 0; i < 100; i++ {
+		data := crypto.Keccak256([]byte(fmt.Sprintf("failed-bundles-%x", i)))
+		tx := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), data)
+		_ = tx.Hash()
+		bundleHash := common.BytesToHash(data)
+		allBundles = append(allBundles, types.SimulatedBundle{
+			OriginalBundle: types.MevBundle{
+				Txs:               types.Transactions{tx},
+				RevertingTxHashes: []common.Hash{},
+				Hash:              bundleHash,
+			},
+		})
+	}
+
+	// generate committed mempool txs
+	for i := 0; i < 100; i++ {
+		data := crypto.Keccak256([]byte(fmt.Sprintf("ok-mempool-tx-%x", i)))
+		tx := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), data)
+		hash := tx.Hash()
+		env.txs = append(env.txs, tx)
+		env.receipts = append(env.receipts, &types.Receipt{TxHash: hash, Status: types.ReceiptStatusSuccessful})
+		mempoolTxHashes[hash] = struct{}{}
+	}
+
+	// generate failed mempool tx hashes
+	for i := 0; i < 100; i++ {
+		data := crypto.Keccak256([]byte(fmt.Sprintf("failed-mempool-tx-%x", i)))
+		mempoolTxHashes[common.BytesToHash(data)] = struct{}{}
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		err := VerifyBundlesAtomicity(env, committedBundles, allBundles, nil, mempoolTxHashes)
+		if err != nil {
+			b.Fatal(err)
+		}
+	}
 }
