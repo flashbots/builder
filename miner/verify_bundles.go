@@ -114,14 +114,16 @@ func (e *ErrUnexpectedTx) Error() string {
 // 4. All txs in the block are either from mempool or from the included bundles
 func VerifyBundlesAtomicity(env *environment, committedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, mempoolTxHashes map[common.Hash]struct{}) error {
 	// bundleHash -> tx
-	includedBundles := make(map[common.Hash][]bundleTxData)
-	extractBundleTxDataFromBundles(committedBundles, includedBundles)
-	extractBundleTxDataFromSbundles(usedSbundles, includedBundles, true)
+	includedBundles := make(bundleHashToTransactionDataMap).
+		ExtractFromBundles(committedBundles).
+		ExtractFromSbundles(usedSbundles, true)
+
 	includedTxDataByHash := extractIncludedTxDataFromEnv(env)
 
-	allUsedBundles := make(map[common.Hash][]bundleTxData)
-	extractBundleTxDataFromBundles(allBundles, allUsedBundles)
-	extractBundleTxDataFromSbundles(usedSbundles, allUsedBundles, false)
+	allUsedBundles := make(bundleHashToTransactionDataMap).
+		ExtractFromBundles(allBundles).
+		ExtractFromSbundles(usedSbundles, false)
+
 	privateTxDataFromFailedBundles := extractPrivateTxsFromFailedBundles(includedBundles, allUsedBundles, mempoolTxHashes)
 
 	return checkBundlesAtomicity(includedBundles, includedTxDataByHash, privateTxDataFromFailedBundles, mempoolTxHashes)
@@ -141,6 +143,33 @@ type includedTxData struct {
 type privateTxData struct {
 	bundleHash common.Hash
 	index      int
+}
+
+type bundleHashToTransactionDataMap map[common.Hash][]bundleTxData
+
+func (btm bundleHashToTransactionDataMap) ExtractFromBundles(bundles []types.SimulatedBundle) bundleHashToTransactionDataMap {
+	for _, b := range bundles {
+		bundleData := make([]bundleTxData, len(b.OriginalBundle.Txs))
+		for i, tx := range b.OriginalBundle.Txs {
+			bundleData[i] = bundleTxData{
+				hash:      tx.Hash(),
+				canRevert: b.OriginalBundle.RevertingHash(tx.Hash()),
+			}
+		}
+
+		btm[b.OriginalBundle.Hash] = bundleData
+	}
+	return btm
+}
+
+func (btm bundleHashToTransactionDataMap) ExtractFromSbundles(sbundles []types.UsedSBundle, onlyIncluded bool) bundleHashToTransactionDataMap {
+	for _, b := range sbundles {
+		if onlyIncluded && !b.Success {
+			continue
+		}
+		btm[b.Bundle.Hash()] = getShareBundleTxData(b.Bundle)
+	}
+	return btm
 }
 
 // checkBundlesAtomicity checks that all txs from the included bundles are included in the block correctly
