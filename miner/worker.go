@@ -1547,9 +1547,20 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 	orderCloseTime := time.Now()
 
 	blockBundles, allBundles, usedSbundles, mempoolTxHashes, err := w.fillTransactionsSelectAlgo(nil, work)
-
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// We mark transactions created by the builder as mempool transactions so code validating bundles will not fail
+	// for transactions created by the builder such as mev share refunds.
+	for _, tx := range work.txs {
+		from, err := types.Sender(work.signer, tx)
+		if err != nil {
+			return nil, nil, err
+		}
+		if from == work.coinbase {
+			mempoolTxHashes[tx.Hash()] = struct{}{}
+		}
 	}
 
 	err = VerifyBundlesAtomicity(work, blockBundles, allBundles, usedSbundles, mempoolTxHashes)
