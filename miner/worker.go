@@ -1287,32 +1287,39 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	return env, nil
 }
 
-func (w *worker) fillTransactionsSelectAlgo(interrupt *atomic.Int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle, error) {
+func (w *worker) fillTransactionsSelectAlgo(interrupt *atomic.Int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle, map[common.Hash]struct{}, error) {
 	var (
-		blockBundles []types.SimulatedBundle
-		allBundles   []types.SimulatedBundle
-		usedSbundles []types.UsedSBundle
-		err          error
+		blockBundles    []types.SimulatedBundle
+		allBundles      []types.SimulatedBundle
+		usedSbundles    []types.UsedSBundle
+		mempoolTxHashes map[common.Hash]struct{}
+		err             error
 	)
 	switch w.flashbots.algoType {
 	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS:
-		blockBundles, allBundles, usedSbundles, err = w.fillTransactionsAlgoWorker(interrupt, env)
+		blockBundles, allBundles, usedSbundles, mempoolTxHashes, err = w.fillTransactionsAlgoWorker(interrupt, env)
 	case ALGO_MEV_GETH:
-		blockBundles, allBundles, err = w.fillTransactions(interrupt, env)
+		blockBundles, allBundles, mempoolTxHashes, err = w.fillTransactions(interrupt, env)
 	default:
-		blockBundles, allBundles, err = w.fillTransactions(interrupt, env)
+		blockBundles, allBundles, mempoolTxHashes, err = w.fillTransactions(interrupt, env)
 	}
-	return blockBundles, allBundles, usedSbundles, err
+	return blockBundles, allBundles, usedSbundles, mempoolTxHashes, err
 }
 
 // fillTransactions retrieves the pending transactions from the txpool and fills them
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
 // Returns error if any, otherwise the bundles that made it into the block and all bundles that passed simulation
-func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, error) {
+func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, map[common.Hash]struct{}, error) {
 	// Split the pending transactions into locals and remotes
 	// Fill the block with all available pending transactions.
 	pending := w.eth.TxPool().Pending(true)
+	mempoolTxHashes := make(map[common.Hash]struct{}, len(pending))
+	for _, txs := range pending {
+		for _, tx := range txs {
+			mempoolTxHashes[tx.Hash()] = struct{}{}
+		}
+	}
 	localTxs, remoteTxs := make(map[common.Address]types.Transactions), pending
 	for _, account := range w.eth.TxPool().Locals() {
 		if txs := remoteTxs[account]; len(txs) > 0 {
@@ -1338,14 +1345,14 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) ([]
 		bundleTxs, resultingBundle, mergedBundles, numBundles, allBundles, err = w.generateFlashbotsBundle(env, bundles, pending)
 		if err != nil {
 			log.Error("Failed to generate flashbots bundle", "err", err)
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		log.Info("Flashbots bundle", "ethToCoinbase", ethIntToFloat(resultingBundle.TotalEth), "gasUsed", resultingBundle.TotalGasUsed, "bundleScore", resultingBundle.MevGasPrice, "bundleLength", len(bundleTxs), "numBundles", numBundles, "worker", w.flashbots.maxMergedBundles)
 		if len(bundleTxs) == 0 {
-			return nil, nil, errors.New("no bundles to apply")
+			return nil, nil, nil, errors.New("no bundles to apply")
 		}
 		if err := w.commitBundle(env, bundleTxs, interrupt); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		blockBundles = mergedBundles
 		env.profit.Add(env.profit, resultingBundle.EthSentToCoinbase)
@@ -1354,50 +1361,54 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) ([]
 	if len(localTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, localTxs, nil, nil, env.header.BaseFee)
 		if err := w.commitTransactions(env, txs, interrupt); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 	if len(remoteTxs) > 0 {
 		txs := types.NewTransactionsByPriceAndNonce(env.signer, remoteTxs, nil, nil, env.header.BaseFee)
 		if err := w.commitTransactions(env, txs, interrupt); err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 
-	return blockBundles, allBundles, nil
+	return blockBundles, allBundles, mempoolTxHashes, nil
 }
 
 // fillTransactionsAlgoWorker retrieves the pending transactions and bundles from the txpool and fills them
 // into the given sealing block.
 // Returns error if any, otherwise the bundles that made it into the block and all bundles that passed simulation
-func (w *worker) fillTransactionsAlgoWorker(interrupt *atomic.Int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle, error) {
+func (w *worker) fillTransactionsAlgoWorker(interrupt *atomic.Int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle, map[common.Hash]struct{}, error) {
 	// Split the pending transactions into locals and remotes
 	// Fill the block with all available pending transactions.
 	pending := w.eth.TxPool().Pending(true)
+	mempoolTxHashes := make(map[common.Hash]struct{}, len(pending))
+	for _, txs := range pending {
+		for _, tx := range txs {
+			mempoolTxHashes[tx.Hash()] = struct{}{}
+		}
+	}
 	bundlesToConsider, sbundlesToConsider, err := w.getSimulatedBundles(env)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, nil, err
 	}
 
 	var (
 		newEnv       *environment
 		blockBundles []types.SimulatedBundle
 		usedSbundle  []types.UsedSBundle
+		start        = time.Now()
 	)
-
-	start := time.Now()
-
 	switch w.flashbots.algoType {
 	case ALGO_GREEDY_BUCKETS:
 		priceCutoffPercent := w.config.PriceCutoffPercent
 		if !(priceCutoffPercent >= 0 && priceCutoffPercent <= 100) {
-			return nil, nil, nil, errors.New("invalid price cutoff percent - must be between 0 and 100")
+			return nil, nil, nil, nil, errors.New("invalid price cutoff percent - must be between 0 and 100")
 		}
 
 		algoConf := &algorithmConfig{
+			DropRevertibleTxOnErr:  w.config.DiscardRevertibleTxOnErr,
 			EnforceProfit:          true,
-			ExpectedProfit:         nil,
-			ProfitThresholdPercent: defaultProfitThreshold,
+			ProfitThresholdPercent: defaultProfitThresholdPercent,
 			PriceCutoffPercent:     priceCutoffPercent,
 		}
 		builder := newGreedyBucketsBuilder(
@@ -1409,8 +1420,15 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *atomic.Int32, env *enviro
 	case ALGO_GREEDY:
 		fallthrough
 	default:
+		// For default greedy builder, set algorithm configuration to default values,
+		// except DropRevertibleTxOnErr which is passed in from worker config
+		algoConf := &algorithmConfig{
+			DropRevertibleTxOnErr:  w.config.DiscardRevertibleTxOnErr,
+			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
+			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
+		}
 		builder := newGreedyBuilder(
-			w.chain, w.chainConfig, w.blockList, env,
+			w.chain, w.chainConfig, algoConf, w.blockList, env,
 			w.config.BuilderTxSigningKey, interrupt,
 		)
 
@@ -1422,7 +1440,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *atomic.Int32, env *enviro
 	}
 	*env = *newEnv
 
-	return blockBundles, bundlesToConsider, usedSbundle, err
+	return blockBundles, bundlesToConsider, usedSbundle, mempoolTxHashes, err
 }
 
 func (w *worker) getSimulatedBundles(env *environment) ([]types.SimulatedBundle, []*types.SimSBundle, error) {
@@ -1512,9 +1530,26 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 
 	orderCloseTime := time.Now()
 
-	blockBundles, allBundles, usedSbundles, err := w.fillTransactionsSelectAlgo(nil, work)
-
+	blockBundles, allBundles, usedSbundles, mempoolTxHashes, err := w.fillTransactionsSelectAlgo(nil, work)
 	if err != nil {
+		return nil, nil, err
+	}
+
+	// We mark transactions created by the builder as mempool transactions so code validating bundles will not fail
+	// for transactions created by the builder such as mev share refunds.
+	for _, tx := range work.txs {
+		from, err := types.Sender(work.signer, tx)
+		if err != nil {
+			return nil, nil, err
+		}
+		if from == work.coinbase {
+			mempoolTxHashes[tx.Hash()] = struct{}{}
+		}
+	}
+
+	err = VerifyBundlesAtomicity(work, blockBundles, allBundles, usedSbundles, mempoolTxHashes)
+	if err != nil {
+		log.Error("Bundle invariant is violated for built block", "block", work.header.Number, "err", err)
 		return nil, nil, err
 	}
 
@@ -1603,7 +1638,7 @@ func (w *worker) commitWork(interrupt *atomic.Int32, noempty bool, timestamp int
 	}
 
 	// Fill pending transactions from the txpool
-	_, _, _, err = w.fillTransactionsSelectAlgo(interrupt, work)
+	_, _, _, _, err = w.fillTransactionsSelectAlgo(interrupt, work)
 	switch {
 	case err == nil:
 		// The entire block is filled, decrease resubmit interval in case
@@ -1933,7 +1968,10 @@ func containsHash(arr []common.Hash, match common.Hash) bool {
 
 // Compute the adjusted gas price for a whole bundle
 // Done by calculating all gas spent, adding transfers to the coinbase, and then dividing by gas used
-func (w *worker) computeBundleGas(env *environment, bundle types.MevBundle, state *state.StateDB, gasPool *core.GasPool, pendingTxs map[common.Address]types.Transactions, currentTxCount int) (simulatedBundle, error) {
+func (w *worker) computeBundleGas(
+	env *environment, bundle types.MevBundle, state *state.StateDB, gasPool *core.GasPool,
+	pendingTxs map[common.Address]types.Transactions, currentTxCount int,
+) (simulatedBundle, error) {
 	var totalGasUsed uint64 = 0
 	var tempGasUsed uint64
 	gasFees := new(big.Int)

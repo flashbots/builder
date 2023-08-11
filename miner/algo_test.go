@@ -39,6 +39,7 @@ var algoTests = []*algoTest{
 		},
 		WantProfit:          big.NewInt(2 * 21_000),
 		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 	{
 		// Trivial tx pool with 3 txs by two accounts and a block gas limit that only allows two txs
@@ -65,6 +66,7 @@ var algoTests = []*algoTest{
 		},
 		WantProfit:          big.NewInt(4 * 21_000),
 		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 	{
 		// Trivial bundle with one tx that reverts but is not allowed to revert.
@@ -83,6 +85,7 @@ var algoTests = []*algoTest{
 		},
 		WantProfit:          big.NewInt(0),
 		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 	{
 		// Trivial bundle with one tx that reverts and is allowed to revert.
@@ -104,6 +107,65 @@ var algoTests = []*algoTest{
 		},
 		WantProfit:          big.NewInt(50_000),
 		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		AlgorithmConfig:     defaultAlgorithmConfig,
+	},
+	{
+		// Trivial bundle with one tx that has nonce error and fails.
+		//
+		// Bundle should NOT be included since DropRevertibleTxOnErr is enabled.
+		Name:   "atomic-bundle-nonce-error-and-discard",
+		Header: &types.Header{GasLimit: 50_000},
+		Alloc: []core.GenesisAccount{
+			{Balance: big.NewInt(50_000)},
+			{Code: contractRevert},
+		},
+		Bundles: func(acc accByIndex, sign signByIndex, txs txByAccIndexAndNonce) []*bundle {
+			return []*bundle{
+				{
+					Txs:                types.Transactions{sign(0, &types.LegacyTx{Nonce: 1, Gas: 50_000, To: acc(1), GasPrice: big.NewInt(1)})},
+					RevertingTxIndices: []int{0},
+				},
+			}
+		},
+		WantProfit:          common.Big0,
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		AlgorithmConfig: algorithmConfig{
+			DropRevertibleTxOnErr:  true,
+			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
+			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
+		},
+	},
+	{
+		// Bundle with two transactions - first tx will revert and second has nonce error
+		//
+		// Bundle SHOULD be included ONLY with first tx since DropRevertibleTxOnErr is enabled.
+		Name: "bundle-with-revert-tx-and-invalid-nonce-discard",
+		Header: &types.Header{
+			GasLimit: 3 * 21_000,
+		},
+		Alloc: []core.GenesisAccount{
+			{Balance: big.NewInt(3 * 21_000)},
+			{Code: contractRevert},
+		},
+		Bundles: func(acc accByIndex, sign signByIndex, txs txByAccIndexAndNonce) []*bundle {
+			return []*bundle{
+				{
+					Txs:                types.Transactions{sign(0, &types.LegacyTx{Nonce: 0, Gas: 21_000, To: acc(1), GasPrice: big.NewInt(1)})},
+					RevertingTxIndices: []int{0},
+				},
+				{
+					Txs:                types.Transactions{sign(0, &types.LegacyTx{Nonce: 2, Gas: 42_000, To: acc(1), GasPrice: big.NewInt(1)})},
+					RevertingTxIndices: []int{0},
+				},
+			}
+		},
+		WantProfit:          big.NewInt(21_000),
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		AlgorithmConfig: algorithmConfig{
+			DropRevertibleTxOnErr:  true,
+			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
+			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
+		},
 	},
 	{
 		// Single failing tx that is included in the tx pool and in a bundle that is not allowed to
@@ -130,6 +192,7 @@ var algoTests = []*algoTest{
 		},
 		WantProfit:          big.NewInt(50_000),
 		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 }
 
@@ -152,7 +215,7 @@ func TestAlgo(t *testing.T) {
 					t.Fatalf("Simulate Bundles: %v", err)
 				}
 
-				gotProfit, err := runAlgoTest(algo, config, alloc, txPool, simBundles, test.Header, 1)
+				gotProfit, err := runAlgoTest(algo, test.AlgorithmConfig, config, alloc, txPool, simBundles, test.Header, 1)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -203,7 +266,7 @@ func BenchmarkAlgo(b *testing.B) {
 							}
 						}()
 
-						gotProfit, err := runAlgoTest(algo, config, alloc, txPoolCopy, simBundles, test.Header, scale)
+						gotProfit, err := runAlgoTest(algo, test.AlgorithmConfig, config, alloc, txPoolCopy, simBundles, test.Header, scale)
 						if err != nil {
 							b.Fatal(err)
 						}
@@ -218,8 +281,11 @@ func BenchmarkAlgo(b *testing.B) {
 }
 
 // runAlgo executes a single algoTest case and returns the profit.
-func runAlgoTest(algo AlgoType, config *params.ChainConfig, alloc core.GenesisAlloc,
-	txPool map[common.Address]types.Transactions, bundles []types.SimulatedBundle, header *types.Header, scale int) (gotProfit *big.Int, err error) {
+func runAlgoTest(
+	algo AlgoType, algoConf algorithmConfig,
+	config *params.ChainConfig, alloc core.GenesisAlloc,
+	txPool map[common.Address]types.Transactions, bundles []types.SimulatedBundle, header *types.Header, scale int,
+) (gotProfit *big.Int, err error) {
 	var (
 		statedb, chData = genTestSetupWithAlloc(config, alloc)
 		env             = newEnvironment(chData, statedb, header.Coinbase, header.GasLimit*uint64(scale), header.BaseFee)
@@ -229,10 +295,10 @@ func runAlgoTest(algo AlgoType, config *params.ChainConfig, alloc core.GenesisAl
 	// build block
 	switch algo {
 	case ALGO_GREEDY_BUCKETS:
-		builder := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, nil, nil, env, nil, nil)
+		builder := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	case ALGO_GREEDY:
-		builder := newGreedyBuilder(chData.chain, chData.chainConfig, nil, env, nil, nil)
+		builder := newGreedyBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	}
 	return resultEnv.profit, nil
@@ -280,6 +346,8 @@ type algoTest struct {
 	WantProfit *big.Int // Expected block profit
 
 	SupportedAlgorithms []AlgoType
+
+	AlgorithmConfig algorithmConfig
 }
 
 // setDefaults sets default values for the algoTest.

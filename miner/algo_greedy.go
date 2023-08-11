@@ -21,17 +21,22 @@ type greedyBuilder struct {
 	chainData        chainData
 	builderKey       *ecdsa.PrivateKey
 	interrupt        *atomic.Int32
+	algoConf         algorithmConfig
 }
 
 func newGreedyBuilder(
-	chain *core.BlockChain, chainConfig *params.ChainConfig,
+	chain *core.BlockChain, chainConfig *params.ChainConfig, algoConf *algorithmConfig,
 	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *atomic.Int32,
 ) *greedyBuilder {
+	if algoConf == nil {
+		algoConf = &defaultAlgorithmConfig
+	}
 	return &greedyBuilder{
 		inputEnvironment: env,
 		chainData:        chainData{chainConfig, chain, blacklist},
 		builderKey:       key,
 		interrupt:        interrupt,
+		algoConf:         *algoConf,
 	}
 }
 
@@ -67,7 +72,7 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
 			}
 		} else if bundle := order.Bundle(); bundle != nil {
 			//log.Debug("buildBlock considering bundle", "egp", bundle.MevGasPrice.String(), "hash", bundle.OriginalBundle.Hash)
-			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, defaultAlgorithmConfig)
+			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, b.algoConf)
 			orders.Pop()
 			if err != nil {
 				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
@@ -80,7 +85,7 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
 			usedEntry := types.UsedSBundle{
 				Bundle: sbundle.Bundle,
 			}
-			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, defaultAlgorithmConfig)
+			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, b.algoConf)
 			orders.Pop()
 			if err != nil {
 				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
