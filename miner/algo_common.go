@@ -178,6 +178,7 @@ func ValidateGasPriceAndProfit(algoConf algorithmConfig, actualPrice, expectedPr
 
 	var errLowProfit *lowProfitError = nil
 	if expectedPriceMultiple.Cmp(actualPriceMultiple) > 0 {
+		fmt.Println("egp diff", expectedPriceMultiple.String(), actualPriceMultiple.String())
 		errLowProfit = &lowProfitError{
 			ExpectedEffectiveGasPrice: expectedPrice,
 			ActualEffectiveGasPrice:   actualPrice,
@@ -194,6 +195,7 @@ func ValidateGasPriceAndProfit(algoConf algorithmConfig, actualPrice, expectedPr
 			if errLowProfit == nil {
 				errLowProfit = new(lowProfitError)
 			}
+			fmt.Println("profit diff")
 			errLowProfit.ExpectedProfit = expectedProfit
 			errLowProfit.ActualProfit = actualProfit
 		}
@@ -417,16 +419,12 @@ func BuildMultiTxSnapBlock(
 			break
 		}
 
+		orderFailed = false
+		// if snapshot cannot be instantiated, return early
 		if err = changes.env.state.NewMultiTxSnapshot(); err != nil {
+			log.Error("Failed to create snapshot", "err", err)
 			return nil, nil, err
 		}
-		orderFailed = false
-		//changes, err := newEnvChanges(inputEnvironment)
-		// if changes cannot be instantiated, return early
-		//if err != nil {
-		//	log.Error("Failed to create changes", "err", err)
-		//	return nil, nil, err
-		//}
 
 		if tx := order.Tx(); tx != nil {
 			_, skip, err := changes.commitTx(tx, chData)
@@ -474,17 +472,6 @@ func BuildMultiTxSnapBlock(
 			log.Error("Failed to apply changes with multi-transaction snapshot", "err", err)
 			buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to apply changes: %w", err))
 		}
-		//if orderFailed {
-		//	if err = changes.discard(); err != nil {
-		//		log.Error("Failed to discard changes with multi-transaction snapshot", "err", err)
-		//		buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to discard changes: %w", err))
-		//	}
-		//} else {
-		//	if err = changes.apply(); err != nil {
-		//		log.Error("Failed to apply changes with multi-transaction snapshot", "err", err)
-		//		buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to apply changes: %w", err))
-		//	}
-		//}
 	}
 
 	if err = changes.apply(); err != nil {

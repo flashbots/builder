@@ -788,9 +788,11 @@ func (sc stateComparisonTestContexts) Init(t *testing.T) stateComparisonTestCont
 		case SingleSnapshot:
 			tc.Name = "single-snapshot"
 			tc.changes, err = newEnvChanges(tc.env)
+			_ = tc.changes.env.state.MultiTxSnapshotCommit()
 		case MultiSnapshot:
 			tc.Name = "multi-snapshot"
 			tc.changes, err = newEnvChanges(tc.env)
+			_ = tc.changes.env.state.MultiTxSnapshotCommit()
 		}
 
 		require.NoError(t, err, "failed to initialize test contexts: %v", err)
@@ -801,152 +803,165 @@ func (sc stateComparisonTestContexts) Init(t *testing.T) stateComparisonTestCont
 
 func TestStateComparisons(t *testing.T) {
 	var testContexts = make(stateComparisonTestContexts, 3)
-	testContexts = testContexts.Init(t)
 
 	// test commit tx
-	for i := 0; i < 3; i++ {
-		tx1 := testContexts[i].signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1),
-			testContexts[i].signers.addresses[2], big.NewInt(0), []byte{})
-		var (
-			receipt *types.Receipt
-			status  int
-			err     error
-		)
-		switch i {
-		case Baseline:
-			receipt, status, err = testContexts[i].envDiff.commitTx(tx1, testContexts[i].chainData)
-			testContexts[i].envDiff.applyToBaseEnv()
+	t.Run("state-compare-commit-tx", func(t *testing.T) {
+		testContexts = testContexts.Init(t)
+		for i := 0; i < 3; i++ {
+			tx1 := testContexts[i].signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1),
+				testContexts[i].signers.addresses[2], big.NewInt(0), []byte{})
+			var (
+				receipt *types.Receipt
+				status  int
+				err     error
+			)
+			switch i {
+			case Baseline:
+				receipt, status, err = testContexts[i].envDiff.commitTx(tx1, testContexts[i].chainData)
+				testContexts[i].envDiff.applyToBaseEnv()
 
-		case SingleSnapshot:
-			receipt, status, err = testContexts[i].changes.commitTx(tx1, testContexts[i].chainData)
-			require.NoError(t, err, "can't commit single snapshot tx")
+			case SingleSnapshot:
+				require.NoError(t, testContexts[i].changes.env.state.NewMultiTxSnapshot(), "can't create multi tx snapshot: %v", err)
+				receipt, status, err = testContexts[i].changes.commitTx(tx1, testContexts[i].chainData)
+				require.NoError(t, err, "can't commit single snapshot tx")
 
-			err = testContexts[i].changes.apply()
-		case MultiSnapshot:
-			receipt, status, err = testContexts[i].changes.commitTx(tx1, testContexts[i].chainData)
-			require.NoError(t, err, "can't commit multi snapshot tx")
+				err = testContexts[i].changes.apply()
+			case MultiSnapshot:
+				require.NoError(t, testContexts[i].changes.env.state.NewMultiTxSnapshot(), "can't create multi tx snapshot: %v", err)
+				receipt, status, err = testContexts[i].changes.commitTx(tx1, testContexts[i].chainData)
+				require.NoError(t, err, "can't commit multi snapshot tx")
 
-			err = testContexts[i].changes.apply()
+				err = testContexts[i].changes.apply()
+			}
+			require.NoError(t, err, "can't commit tx")
+			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
+			require.Equal(t, 21000, int(receipt.GasUsed))
+			require.Equal(t, shiftTx, status)
 		}
-		require.NoError(t, err, "can't commit tx")
-		require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
-		require.Equal(t, 21000, int(receipt.GasUsed))
-		require.Equal(t, shiftTx, status)
-	}
 
-	testContexts.UpdateRootHashes(t)
-	testContexts.ValidateTestCases(t, Baseline)
-	testContexts.ValidateRootHashes(t, testContexts[Baseline].rootHash)
+		testContexts.UpdateRootHashes(t)
+		testContexts.ValidateTestCases(t, Baseline)
+		testContexts.ValidateRootHashes(t, testContexts[Baseline].rootHash)
+	})
 
 	// test bundle
-	for i, tc := range testContexts {
-		var (
-			signers = tc.signers
-			header  = tc.env.header
-			env     = tc.env
-			chData  = tc.chainData
-		)
+	t.Run("state-compare-bundle", func(t *testing.T) {
+		testContexts = testContexts.Init(t)
+		for i, tc := range testContexts {
+			var (
+				signers = tc.signers
+				header  = tc.env.header
+				env     = tc.env
+				chData  = tc.chainData
+			)
 
-		tx1 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
-		tx2 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
+			tx1 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
+			tx2 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
 
-		mevBundle := types.MevBundle{
-			Txs:         types.Transactions{tx1, tx2},
-			BlockNumber: header.Number,
-		}
-
-		simBundle, err := simulateBundle(env, mevBundle, chData, nil)
-		require.NoError(t, err, "can't simulate bundle: %v", err)
-
-		switch i {
-		case Baseline:
-			err = tc.envDiff.commitBundle(&simBundle, chData, nil, defaultAlgorithmConfig)
-			tc.envDiff.applyToBaseEnv()
-
-		case SingleSnapshot:
-			err = tc.changes.env.state.NewMultiTxSnapshot()
-			require.NoError(t, err, "can't create multi tx snapshot: %v", err)
-
-			err = tc.changes.commitBundle(&simBundle, chData, defaultAlgorithmConfig)
-			if err != nil {
-				break
+			mevBundle := types.MevBundle{
+				Txs:         types.Transactions{tx1, tx2},
+				BlockNumber: header.Number,
 			}
 
-			err = tc.changes.apply()
+			simBundle, err := simulateBundle(env, mevBundle, chData, nil)
+			require.NoError(t, err, "can't simulate bundle: %v", err)
 
-		case MultiSnapshot:
-			err = tc.changes.env.state.NewMultiTxSnapshot()
-			require.NoError(t, err, "can't create multi tx snapshot: %v", err)
-
-			err = tc.changes.commitBundle(&simBundle, chData, defaultAlgorithmConfig)
-			if err != nil {
-				break
-			}
-
-			err = tc.changes.apply()
-		}
-
-		require.NoError(t, err, "can't commit bundle: %v", err)
-	}
-
-	testContexts.UpdateRootHashes(t)
-	testContexts.ValidateTestCases(t, 0)
-	testContexts.ValidateRootHashes(t, testContexts[Baseline].rootHash)
-
-	// generate 100 transactions, with 50% of them failing
-	var (
-		txCount    = 100
-		failEveryN = 2
-	)
-	testContexts = testContexts.Init(t)
-	testContexts.GenerateTransactions(t, txCount, failEveryN)
-	require.Len(t, testContexts[Baseline].transactions, txCount)
-
-	for txIdx := 0; txIdx < txCount; txIdx++ {
-		for ctxIdx, tc := range testContexts {
-			tx := tc.transactions[txIdx]
-
-			var commitErr error
-			switch ctxIdx {
+			switch i {
 			case Baseline:
-				_, _, commitErr = tc.envDiff.commitTx(tx, tc.chainData)
+				err = tc.envDiff.commitBundle(&simBundle, chData, nil, defaultAlgorithmConfig)
+				if err != nil {
+					break
+				}
 				tc.envDiff.applyToBaseEnv()
 
 			case SingleSnapshot:
-				err := tc.changes.env.state.NewMultiTxSnapshot()
-				require.NoError(t, err, "can't create multi tx snapshot for tx %d: %v", txIdx, err)
-
-				_, _, commitErr = tc.changes.commitTx(tx, tc.chainData)
-				require.NoError(t, tc.changes.apply())
-			case MultiSnapshot:
-				err := tc.changes.env.state.NewMultiTxSnapshot()
-				require.NoError(t, err,
-					"can't create multi tx snapshot: %v", err)
-
 				err = tc.changes.env.state.NewMultiTxSnapshot()
-				require.NoError(t, err,
-					"can't create multi tx snapshot: %v", err)
+				require.NoError(t, err, "can't create multi tx snapshot: %v", err)
 
-				_, _, commitErr = tc.changes.commitTx(tx, tc.chainData)
-				require.NoError(t, tc.changes.apply())
+				err = tc.changes.commitBundle(&simBundle, chData, defaultAlgorithmConfig)
+				if err != nil {
+					break
+				}
 
-				// NOTE(wazzymandias): At the time of writing this, the changes struct does not reset after performing
-				// an apply - because the intended use of the changes struct is to create it and discard it
-				// after every commit->(discard||apply) loop.
-				// So for now to test multiple snapshots we apply the changes for the top of the stack and
-				// then pop the underlying state snapshot from the base of the stack.
-				// Otherwise, if changes are applied twice, then there can be double counting of transactions.
-				require.NoError(t, tc.changes.env.state.MultiTxSnapshotCommit())
+				err = tc.changes.apply()
+
+			case MultiSnapshot:
+				err = tc.changes.env.state.NewMultiTxSnapshot()
+				require.NoError(t, err, "can't create multi tx snapshot: %v", err)
+
+				err = tc.changes.commitBundle(&simBundle, chData, defaultAlgorithmConfig)
+				if err != nil {
+					break
+				}
+
+				err = tc.changes.apply()
 			}
 
-			if txIdx%failEveryN == 0 {
-				require.Errorf(t, commitErr, "tx %d should fail", txIdx)
-			} else {
-				require.NoError(t, commitErr, "tx %d should succeed, found: %v", txIdx, commitErr)
+			require.NoError(t, err, "can't commit bundle: %v", err)
+		}
+
+		testContexts.UpdateRootHashes(t)
+		testContexts.ValidateTestCases(t, 0)
+		testContexts.ValidateRootHashes(t, testContexts[Baseline].rootHash)
+	})
+
+	// test failed transactions
+	t.Run("state-compare-failed-txs", func(t *testing.T) {
+		// generate 100 transactions, with 50% of them failing
+		var (
+			txCount    = 100
+			failEveryN = 2
+		)
+		testContexts = testContexts.Init(t)
+		testContexts.GenerateTransactions(t, txCount, failEveryN)
+		require.Len(t, testContexts[Baseline].transactions, txCount)
+
+		for txIdx := 0; txIdx < txCount; txIdx++ {
+			for ctxIdx, tc := range testContexts {
+				tx := tc.transactions[txIdx]
+
+				var commitErr error
+				switch ctxIdx {
+				case Baseline:
+					_, _, commitErr = tc.envDiff.commitTx(tx, tc.chainData)
+					tc.envDiff.applyToBaseEnv()
+
+				case SingleSnapshot:
+					err := tc.changes.env.state.NewMultiTxSnapshot()
+					require.NoError(t, err, "can't create multi tx snapshot for tx %d: %v", txIdx, err)
+
+					_, _, commitErr = tc.changes.commitTx(tx, tc.chainData)
+					require.NoError(t, tc.changes.apply())
+				case MultiSnapshot:
+					err := tc.changes.env.state.NewMultiTxSnapshot()
+					require.NoError(t, err,
+						"can't create multi tx snapshot: %v", err)
+
+					err = tc.changes.env.state.NewMultiTxSnapshot()
+					require.NoError(t, err,
+						"can't create multi tx snapshot: %v", err)
+
+					_, _, commitErr = tc.changes.commitTx(tx, tc.chainData)
+					require.NoError(t, tc.changes.apply())
+
+					// NOTE(wazzymandias): At the time of writing this, the changes struct does not reset after performing
+					// an apply - because the intended use of the changes struct is to create it and discard it
+					// after every commit->(discard||apply) loop.
+					// So for now to test multiple snapshots we apply the changes for the top of the stack and
+					// then pop the underlying state snapshot from the base of the stack.
+					// Otherwise, if changes are applied twice, then there can be double counting of transactions.
+					require.NoError(t, tc.changes.env.state.MultiTxSnapshotCommit())
+				}
+
+				if txIdx%failEveryN == 0 {
+					require.Errorf(t, commitErr, "tx %d should fail", txIdx)
+				} else {
+					require.NoError(t, commitErr, "tx %d should succeed, found: %v", txIdx, commitErr)
+				}
 			}
 		}
-	}
-	testContexts.UpdateRootHashes(t)
-	testContexts.ValidateTestCases(t, 0)
-	testContexts.ValidateRootHashes(t, testContexts[Baseline].rootHash)
+		testContexts.UpdateRootHashes(t)
+		testContexts.ValidateTestCases(t, 0)
+		testContexts.ValidateRootHashes(t, testContexts[Baseline].rootHash)
+	})
 }

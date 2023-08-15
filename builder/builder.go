@@ -324,6 +324,11 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 			log.Error("could not validate block for capella", "err", err)
 		}
 	} else {
+		err = b.validator.ValidateBuilderSubmissionV2(&blockvalidation.BuilderBlockValidationRequestV2{SubmitBlockRequest: blockSubmitReq, RegisteredGasLimit: vd.GasLimit})
+		if err != nil {
+			log.Error("could not validate block for capella", "err", err)
+			return err
+		}
 		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
 		err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
 		if err != nil {
