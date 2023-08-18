@@ -2531,7 +2531,7 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 	// and dangling prefetcher, without defering each and holding on live refs.
 	defer statedb.StopPrefetcher()
 
-	feeRecipientBalanceBefore := statedb.GetBalance(feeRecipient)
+	feeRecipientBalanceBefore := new(big.Int).Set(statedb.GetBalance(feeRecipient))
 
 	receipts, _, usedGas, err := bc.processor.Process(block, statedb, vmConfig)
 	if err != nil {
