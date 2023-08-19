@@ -178,7 +178,6 @@ func ValidateGasPriceAndProfit(algoConf algorithmConfig, actualPrice, expectedPr
 
 	var errLowProfit *lowProfitError = nil
 	if expectedPriceMultiple.Cmp(actualPriceMultiple) > 0 {
-		fmt.Println("egp diff", expectedPriceMultiple.String(), actualPriceMultiple.String())
 		errLowProfit = &lowProfitError{
 			ExpectedEffectiveGasPrice: expectedPrice,
 			ActualEffectiveGasPrice:   actualPrice,
@@ -195,7 +194,6 @@ func ValidateGasPriceAndProfit(algoConf algorithmConfig, actualPrice, expectedPr
 			if errLowProfit == nil {
 				errLowProfit = new(lowProfitError)
 			}
-			fmt.Println("profit diff")
 			errLowProfit.ExpectedProfit = expectedProfit
 			errLowProfit.ActualProfit = actualProfit
 		}

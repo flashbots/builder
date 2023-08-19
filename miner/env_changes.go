@@ -99,7 +99,7 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 		}
 	}
 
-	c.profit.Add(c.profit, new(big.Int).Mul(new(big.Int).SetUint64(receipt.GasUsed), gasPrice))
+	c.profit = c.profit.Add(c.profit, new(big.Int).Mul(new(big.Int).SetUint64(receipt.GasUsed), gasPrice))
 	c.txs = append(c.txs, tx)
 	c.receipts = append(c.receipts, receipt)
 
@@ -155,6 +155,10 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 			break
 		}
 
+		if bundleErr != nil {
+			break
+		}
+
 		if receipt != nil {
 			if receipt.Status == types.ReceiptStatusFailed && !bundle.OriginalBundle.RevertingHash(txHash) {
 				// if transaction reverted and isn't specified as reverting hash, return error
@@ -191,6 +195,7 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 	)
 
 	if gasUsed == 0 {
+		c.rollback(gasUsedBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
 		return errors.New("bundle gas used is 0")
 	} else {
 		actualEGP = new(big.Int).Div(bundleProfit, big.NewInt(int64(gasUsed)))

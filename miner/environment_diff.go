@@ -207,7 +207,7 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	)
 
 	if gasUsed == 0 {
-		actualEGP = big.NewInt(0)
+		return errors.New("bundle gas used is 0")
 	} else {
 		actualEGP = new(big.Int).Div(bundleProfit, big.NewInt(int64(gasUsed)))
 	}
