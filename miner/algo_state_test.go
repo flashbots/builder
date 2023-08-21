@@ -868,6 +868,7 @@ func TestBundles(t *testing.T) {
 		[]common.Address{payProxyAddress, logContractAddress}, [][]byte{payProxyCode, logContractCode})
 	simulatedBundleList, err := simulateBundles(base.chainData.chainConfig,
 		types.CopyHeader(base.env.header), genesisAlloc, bundles[:])
+	require.NoError(t, err)
 
 	// commit bundles one by one to each test context to make sure each bundle result is deterministic
 	// apply all to the underlying environment at the end
