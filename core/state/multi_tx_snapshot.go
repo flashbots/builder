@@ -29,6 +29,10 @@ type MultiTxSnapshot struct {
 	accountNotPending map[common.Address]struct{}
 	accountNotDirty   map[common.Address]struct{}
 
+	// touched accounts are accounts that can be affected when snapshot is reverted
+	// we clear dirty storage for touched accounts when snapshot is reverted
+	touchedAccounts map[common.Address]struct{}
+
 	// TODO: snapdestructs, snapaccount storage
 }
 
@@ -51,6 +55,7 @@ func newMultiTxSnapshot() MultiTxSnapshot {
 		accountDeleted:    make(map[common.Address]bool),
 		accountNotPending: make(map[common.Address]struct{}),
 		accountNotDirty:   make(map[common.Address]struct{}),
+		touchedAccounts:   make(map[common.Address]struct{}),
 	}
 }
 
@@ -196,6 +201,7 @@ func (s *MultiTxSnapshot) objectChanged(address common.Address) bool {
 
 // updateBalanceChange updates the snapshot with the balance change.
 func (s *MultiTxSnapshot) updateBalanceChange(change balanceChange) {
+	s.touchedAccounts[*change.account] = struct{}{}
 	if s.objectChanged(*change.account) {
 		return
 	}
@@ -206,6 +212,7 @@ func (s *MultiTxSnapshot) updateBalanceChange(change balanceChange) {
 
 // updateNonceChange updates the snapshot with the nonce change.
 func (s *MultiTxSnapshot) updateNonceChange(change nonceChange) {
+	s.touchedAccounts[*change.account] = struct{}{}
 	if s.objectChanged(*change.account) {
 		return
 	}
@@ -216,6 +223,7 @@ func (s *MultiTxSnapshot) updateNonceChange(change nonceChange) {
 
 // updateCodeChange updates the snapshot with the code change.
 func (s *MultiTxSnapshot) updateCodeChange(change codeChange) {
+	s.touchedAccounts[*change.account] = struct{}{}
 	if s.objectChanged(*change.account) {
 		return
 	}
@@ -227,6 +235,7 @@ func (s *MultiTxSnapshot) updateCodeChange(change codeChange) {
 
 // updateResetObjectChange updates the snapshot with the reset object change.
 func (s *MultiTxSnapshot) updateResetObjectChange(change resetObjectChange) {
+	s.touchedAccounts[change.prev.address] = struct{}{}
 	address := change.prev.address
 	if _, ok := s.prevObjects[address]; !ok {
 		s.prevObjects[address] = change.prev
@@ -235,6 +244,7 @@ func (s *MultiTxSnapshot) updateResetObjectChange(change resetObjectChange) {
 
 // updateCreateObjectChange updates the snapshot with the createObjectChange.
 func (s *MultiTxSnapshot) updateCreateObjectChange(change createObjectChange) {
+	s.touchedAccounts[*change.account] = struct{}{}
 	if _, ok := s.prevObjects[*change.account]; !ok {
 		s.prevObjects[*change.account] = nil
 	}
@@ -242,6 +252,7 @@ func (s *MultiTxSnapshot) updateCreateObjectChange(change createObjectChange) {
 
 // updateSuicideChange updates the snapshot with the suicide change.
 func (s *MultiTxSnapshot) updateSuicideChange(change suicideChange) {
+	s.touchedAccounts[*change.account] = struct{}{}
 	if s.objectChanged(*change.account) {
 		return
 	}
@@ -255,6 +266,7 @@ func (s *MultiTxSnapshot) updateSuicideChange(change suicideChange) {
 
 // updatePendingStorage updates the snapshot with the pending storage change.
 func (s *MultiTxSnapshot) updatePendingStorage(address common.Address, key, value common.Hash, ok bool) {
+	s.touchedAccounts[address] = struct{}{}
 	if s.objectChanged(address) {
 		return
 	}
@@ -273,6 +285,7 @@ func (s *MultiTxSnapshot) updatePendingStorage(address common.Address, key, valu
 
 // updatePendingStatus updates the snapshot with previous pending status.
 func (s *MultiTxSnapshot) updatePendingStatus(address common.Address, pending, dirty bool) {
+	s.touchedAccounts[address] = struct{}{}
 	if !pending {
 		s.accountNotPending[address] = struct{}{}
 	}
@@ -283,6 +296,7 @@ func (s *MultiTxSnapshot) updatePendingStatus(address common.Address, pending, d
 
 // updateObjectDeleted updates the snapshot with the object deletion.
 func (s *MultiTxSnapshot) updateObjectDeleted(address common.Address, deleted bool) {
+	s.touchedAccounts[address] = struct{}{}
 	if s.objectChanged(address) {
 		return
 	}
@@ -412,6 +426,10 @@ func (s *MultiTxSnapshot) Merge(other *MultiTxSnapshot) error {
 		}
 	}
 
+	for address := range other.touchedAccounts {
+		s.touchedAccounts[address] = struct{}{}
+	}
+
 	return nil
 }
 
@@ -482,6 +500,13 @@ func (s *MultiTxSnapshot) revertState(st *StateDB) {
 	}
 	for address := range s.accountNotDirty {
 		delete(st.stateObjectsDirty, address)
+	}
+
+	// clean dirty state of touched accounts
+	for address := range s.touchedAccounts {
+		if obj, ok := st.stateObjects[address]; ok {
+			obj.dirtyStorage = make(Storage)
+		}
 	}
 }
 

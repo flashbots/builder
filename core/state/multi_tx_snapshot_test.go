@@ -346,6 +346,25 @@ func TestMultiTxSnapshotAccountChangesSimple(t *testing.T) {
 	})
 }
 
+// This test verifies that dirty account storage is properly cleaned for accounts after revert
+func TestMultiTxSnapshotAccountChangesRevertedByJournal(t *testing.T) {
+	testMultiTxSnapshot(t, func(s *StateDB) {
+		for _, addr := range addrs {
+			s.SetState(addr, common.HexToHash("0x01"), common.HexToHash("0x03"))
+		}
+		s.Finalise(true)
+		for _, addr := range addrs {
+			// we use normal snapshot here because it
+			// 1. does not mark an account dirty (even though we applied changes)
+			// 2. changes dirty, uncommitted state of the account
+			snap := s.Snapshot()
+			s.SetState(addr, common.HexToHash("0x01"), common.HexToHash("0x02"))
+			s.RevertToSnapshot(snap)
+		}
+		s.Finalise(true)
+	})
+}
+
 func TestMultiTxSnapshotRefund(t *testing.T) {
 	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
