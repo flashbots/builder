@@ -10,7 +10,7 @@ import (
 )
 
 func TestTxCommitSnaps(t *testing.T) {
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], GasLimit, big.NewInt(1))
 	tx := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
@@ -58,7 +58,7 @@ func TestTxCommitSnaps(t *testing.T) {
 	}
 }
 func TestBundleCommitSnaps(t *testing.T) {
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	algoConf := defaultAlgorithmConfig
 	algoConf.EnableMultiTxSnap = true
@@ -99,7 +99,7 @@ func TestBundleCommitSnaps(t *testing.T) {
 }
 
 func TestErrorTxCommitSnaps(t *testing.T) {
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], GasLimit, big.NewInt(1))
 	changes, err := newEnvChanges(env)
@@ -136,7 +136,7 @@ func TestErrorTxCommitSnaps(t *testing.T) {
 }
 
 func TestCommitTxOverGasLimitSnaps(t *testing.T) {
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], 21000, big.NewInt(1))
 	changes, err := newEnvChanges(env)
@@ -167,7 +167,7 @@ func TestCommitTxOverGasLimitSnaps(t *testing.T) {
 }
 
 func TestErrorBundleCommitSnaps(t *testing.T) {
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	algoConf := defaultAlgorithmConfig
 	algoConf.EnableMultiTxSnap = true
@@ -235,7 +235,7 @@ func TestErrorBundleCommitSnaps(t *testing.T) {
 }
 
 func TestErrorSBundleCommitSnaps(t *testing.T) {
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], 21000*2, big.NewInt(1))
 	changes, err := newEnvChanges(env)
@@ -310,7 +310,7 @@ func TestErrorSBundleCommitSnaps(t *testing.T) {
 }
 
 func TestBlacklistSnaps(t *testing.T) {
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	// NOTE: intermediate root hash MUST be generated before env changes are instantiated, otherwise state.MultiTxSnapshot
 	// will be invalidated and the test will fail

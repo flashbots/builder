@@ -195,6 +195,10 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	coinbaseBalanceDelta := new(big.Int).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
 	tmpEnvDiff.newProfit.Add(profitBefore, coinbaseBalanceDelta)
 
+	if bundle.MevGasPrice == nil {
+		return errors.New("bundle mev gas price is nil")
+	}
+
 	var (
 		bundleProfit = coinbaseBalanceDelta
 		// EGP = Effective Gas Price (Profit / GasUsed)

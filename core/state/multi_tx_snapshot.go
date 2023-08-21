@@ -54,6 +54,60 @@ func newMultiTxSnapshot() MultiTxSnapshot {
 	}
 }
 
+func (s MultiTxSnapshot) Copy() MultiTxSnapshot {
+	newSnapshot := newMultiTxSnapshot()
+	newSnapshot.invalid = s.invalid
+
+	for txHash, numLogs := range s.numLogsAdded {
+		newSnapshot.numLogsAdded[txHash] = numLogs
+	}
+
+	for address, object := range s.prevObjects {
+		newSnapshot.prevObjects[address] = object
+	}
+
+	for address, storage := range s.accountStorage {
+		newSnapshot.accountStorage[address] = make(map[common.Hash]*common.Hash)
+		for key, value := range storage {
+			newSnapshot.accountStorage[address][key] = value
+		}
+	}
+
+	for address, balance := range s.accountBalance {
+		newSnapshot.accountBalance[address] = balance
+	}
+
+	for address, nonce := range s.accountNonce {
+		newSnapshot.accountNonce[address] = nonce
+	}
+
+	for address, code := range s.accountCode {
+		newSnapshot.accountCode[address] = code
+	}
+
+	for address, codeHash := range s.accountCodeHash {
+		newSnapshot.accountCodeHash[address] = codeHash
+	}
+
+	for address, suicided := range s.accountSuicided {
+		newSnapshot.accountSuicided[address] = suicided
+	}
+
+	for address, deleted := range s.accountDeleted {
+		newSnapshot.accountDeleted[address] = deleted
+	}
+
+	for address := range s.accountNotPending {
+		newSnapshot.accountNotPending[address] = struct{}{}
+	}
+
+	for address := range s.accountNotDirty {
+		newSnapshot.accountNotDirty[address] = struct{}{}
+	}
+
+	return newSnapshot
+}
+
 // Equal returns true if the two MultiTxSnapshot are equal
 func (s *MultiTxSnapshot) Equal(other *MultiTxSnapshot) bool {
 	if other == nil {
@@ -385,6 +439,7 @@ func (s *MultiTxSnapshot) revertState(st *StateDB) {
 
 	// restore storage
 	for address, storage := range s.accountStorage {
+		st.stateObjects[address].dirtyStorage = make(Storage)
 		for key, value := range storage {
 			if value == nil {
 				if _, ok := st.stateObjects[address].pendingStorage[key]; !ok {
@@ -460,6 +515,14 @@ func (stack *MultiTxSnapshotStack) NewSnapshot() (*MultiTxSnapshot, error) {
 	snap := newMultiTxSnapshot()
 	stack.snapshots = append(stack.snapshots, snap)
 	return &snap, nil
+}
+
+func (stack *MultiTxSnapshotStack) Copy(statedb *StateDB) *MultiTxSnapshotStack {
+	newStack := NewMultiTxSnapshotStack(statedb)
+	for _, snapshot := range stack.snapshots {
+		newStack.snapshots = append(newStack.snapshots, snapshot.Copy())
+	}
+	return newStack
 }
 
 // Peek returns the snapshot at the top of the stack.

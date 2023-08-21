@@ -13,7 +13,7 @@ import (
 func TestBuildBlockGasLimit(t *testing.T) {
 	algos := []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS}
 	for _, algo := range algos {
-		statedb, chData, signers := genTestSetup()
+		statedb, chData, signers := genTestSetup(GasLimit)
 		env := newEnvironment(chData, statedb, signers.addresses[0], 21000, big.NewInt(1))
 		txs := make(map[common.Address]types.Transactions)
 
@@ -51,7 +51,7 @@ func TestBuildBlockGasLimit(t *testing.T) {
 }
 
 func TestTxWithMinerFeeHeap(t *testing.T) {
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], 21000, big.NewInt(1))
 

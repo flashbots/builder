@@ -300,7 +300,7 @@ func runAlgoTest(
 	txPool map[common.Address]types.Transactions, bundles []types.SimulatedBundle, header *types.Header, scale int,
 ) (gotProfit *big.Int, err error) {
 	var (
-		statedb, chData = genTestSetupWithAlloc(config, alloc)
+		statedb, chData = genTestSetupWithAlloc(config, alloc, GasLimit)
 		env             = newEnvironment(chData, statedb, header.Coinbase, header.GasLimit*uint64(scale), header.BaseFee)
 		resultEnv       *environment
 	)
@@ -326,7 +326,7 @@ func runAlgoTest(
 // simulateBundles simulates bundles and returns the simulated bundles.
 func simulateBundles(config *params.ChainConfig, header *types.Header, alloc core.GenesisAlloc, bundles []types.MevBundle) ([]types.SimulatedBundle, error) {
 	var (
-		statedb, chData = genTestSetupWithAlloc(config, alloc)
+		statedb, chData = genTestSetupWithAlloc(config, alloc, GasLimit)
 		env             = newEnvironment(chData, statedb, header.Coinbase, header.GasLimit, header.BaseFee)
 
 		simBundles = make([]types.SimulatedBundle, 0)

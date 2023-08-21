@@ -720,10 +720,10 @@ func (s *StateDB) Copy() *StateDB {
 	// Initialize new multi-transaction snapshot stack for the copied state
 	// NOTE(wazzymandias): We avoid copying the snapshot stack from the original state
 	//   because it may contain snapshots that are not valid for the copied state.
-	if s.multiTxSnapshotStack.Size() > 0 {
-		panic("cannot copy state with active multi-transaction snapshot stack")
-	}
-	state.multiTxSnapshotStack = NewMultiTxSnapshotStack(state)
+	//if s.multiTxSnapshotStack.Size() > 0 {
+	//	panic("cannot copy state with active multi-transaction snapshot stack")
+	//}
+	state.multiTxSnapshotStack = s.multiTxSnapshotStack.Copy(state)
 	// Copy the dirty states, logs, and preimages
 	for addr := range s.journal.dirties {
 		// As documented [here](https://github.com/ethereum/go-ethereum/pull/16485#issuecomment-380438527),
