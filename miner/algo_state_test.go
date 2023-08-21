@@ -241,7 +241,7 @@ func (sc stateComparisonTestContexts) SimulateBundle(testCtxIdx int, b types.Mev
 		env = tc.changes.env
 	}
 
-	return simulateBundle(env, b, tc.chainData, nil)
+	return simulateBundle(env.copy(), b, tc.chainData, nil)
 }
 
 func (sc stateComparisonTestContexts) ValidateRootHashes(t *testing.T, expected common.Hash) {
@@ -855,54 +855,33 @@ func TestBundles(t *testing.T) {
 		}
 	}
 
-	bundleMap := map[int][]types.SimulatedBundle{
-		Baseline:       make([]types.SimulatedBundle, 0),
-		SingleSnapshot: make([]types.SimulatedBundle, 0),
-		MultiSnapshot:  make([]types.SimulatedBundle, 0),
-	}
 	var (
-		simulationErrMap = map[int]error{
-			Baseline:       nil,
-			SingleSnapshot: nil,
-			MultiSnapshot:  nil,
-		}
 		commitErrMap = map[int]error{
 			Baseline:       nil,
 			SingleSnapshot: nil,
 			MultiSnapshot:  nil,
 		}
 	)
+
+	base := testContexts[0]
+	genesisAlloc := genGenesisAlloc(base.signers,
+		[]common.Address{payProxyAddress, logContractAddress}, [][]byte{payProxyCode, logContractCode})
+	simulatedBundleList, err := simulateBundles(base.chainData.chainConfig,
+		types.CopyHeader(base.env.header), genesisAlloc, bundles[:])
+
 	// commit bundles one by one to each test context to make sure each bundle result is deterministic
 	// apply all to the underlying environment at the end
-	for bundleIdx, b := range bundles {
-		// first compare simulation results
-		for tcIdx, tc := range testContexts {
-			sim, simErr := testContexts.SimulateBundle(tcIdx, b)
-			t.Logf("bundle simulation error [bundle index %d] [%s]: %v", bundleIdx, tc.Name, simErr)
-
-			simulationErrMap[tcIdx] = simErr
-			bundleMap[tcIdx] = append(bundleMap[tcIdx], sim)
-
-			if simulationErrMap[Baseline] != nil {
-				require.NotNilf(t, simulationErrMap[tcIdx], "simulation error is nil for test context %s", tc.Name)
-				require.Equal(t, simulationErrMap[Baseline].Error(), simulationErrMap[tcIdx].Error(),
-					"simulation error mismatch for test context %s", tc.Name)
-			} else {
-				require.NoError(t, simulationErrMap[tcIdx], "simulation error for test context %s", tc.Name)
-			}
-		}
-
+	for _, b := range simulatedBundleList {
 		algoConf := defaultAlgorithmConfig
 		algoConf.EnforceProfit = true
 		for tcIdx, tc := range testContexts {
 			var commitErr error
-			sim := bundleMap[tcIdx][bundleIdx]
 
 			switch tcIdx {
 			case Baseline:
-				commitErr = tc.envDiff.commitBundle(&sim, tc.chainData, nil, algoConf)
+				commitErr = tc.envDiff.commitBundle(&b, tc.chainData, nil, algoConf)
 			case SingleSnapshot, MultiSnapshot:
-				commitErr = tc.changes.commitBundle(&sim, tc.chainData, algoConf)
+				commitErr = tc.changes.commitBundle(&b, tc.chainData, algoConf)
 
 				if commitErrMap[Baseline] != nil {
 					require.NoError(t, tc.changes.env.state.MultiTxSnapshotRevert())
