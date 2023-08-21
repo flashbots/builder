@@ -181,6 +181,11 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 		return bundleErr
 	}
 
+	if bundle.MevGasPrice == nil {
+		c.rollback(gasUsedBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
+		return ErrMevGasPriceNotSet
+	}
+
 	var (
 		bundleProfit = new(big.Int).Sub(c.env.state.GetBalance(c.env.coinbase), coinbaseBefore)
 		gasUsed      = c.usedGas - gasUsedBefore

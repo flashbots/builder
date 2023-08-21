@@ -45,6 +45,7 @@ var (
 var emptyCodeHash = common.HexToHash("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
 
 var (
+	ErrMevGasPriceNotSet = errors.New("mev gas price not set")
 	errInterrupt         = errors.New("miner worker interrupted")
 	errNoAlgorithmConfig = errors.New("no algorithm configuration specified")
 	errNoPrivateKey      = errors.New("no private key provided")

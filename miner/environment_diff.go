@@ -196,7 +196,7 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	tmpEnvDiff.newProfit.Add(profitBefore, coinbaseBalanceDelta)
 
 	if bundle.MevGasPrice == nil {
-		return errors.New("bundle mev gas price is nil")
+		return ErrMevGasPriceNotSet
 	}
 
 	var (

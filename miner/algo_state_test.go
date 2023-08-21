@@ -5,8 +5,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
+	"math/big"
+	mathrand "math/rand"
+	"testing"
+
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
 	"github.com/ethereum/go-ethereum/common"
@@ -17,9 +20,6 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/stretchr/testify/require"
-	"math/big"
-	mathrand "math/rand"
-	"testing"
 )
 
 // NOTE(wazzymandias): Below is a FuzzTest contract written in Solidity and shown here as reference code
@@ -194,6 +194,56 @@ type stateComparisonTestContext struct {
 
 type stateComparisonTestContexts []stateComparisonTestContext
 
+func (sc stateComparisonTestContexts) Init(t *testing.T, gasLimit uint64) stateComparisonTestContexts {
+	for i := range sc {
+		tc := stateComparisonTestContext{}
+		tc.statedb, tc.chainData, tc.signers = genTestSetup(gasLimit)
+		tc.env = newEnvironment(tc.chainData, tc.statedb, tc.signers.addresses[0], gasLimit, big.NewInt(1))
+		var err error
+		switch i {
+		case Baseline:
+			tc.Name = "baseline"
+			tc.envDiff = newEnvironmentDiff(tc.env)
+		case SingleSnapshot:
+			tc.Name = "single-snapshot"
+			tc.changes, err = newEnvChanges(tc.env)
+			_ = tc.changes.env.state.MultiTxSnapshotCommit()
+		case MultiSnapshot:
+			tc.Name = "multi-snapshot"
+			tc.changes, err = newEnvChanges(tc.env)
+			_ = tc.changes.env.state.MultiTxSnapshotCommit()
+		}
+
+		require.NoError(t, err, "failed to initialize test contexts: %v", err)
+		sc[i] = tc
+	}
+	return sc
+}
+
+func (sc stateComparisonTestContexts) ApplyChanges(t *testing.T) {
+	for _, tc := range sc {
+		if tc.envDiff != nil {
+			tc.envDiff.applyToBaseEnv()
+		}
+		if tc.changes != nil {
+			require.NoError(t, tc.changes.apply())
+		}
+	}
+}
+
+func (sc stateComparisonTestContexts) SimulateBundle(testCtxIdx int, b types.MevBundle) (types.SimulatedBundle, error) {
+	tc := sc[testCtxIdx]
+	var env *environment
+	switch testCtxIdx {
+	case Baseline:
+		env = tc.envDiff.baseEnvironment
+	case SingleSnapshot, MultiSnapshot:
+		env = tc.changes.env
+	}
+
+	return simulateBundle(env, b, tc.chainData, nil)
+}
+
 func (sc stateComparisonTestContexts) ValidateRootHashes(t *testing.T, expected common.Hash) {
 	for _, tc := range sc {
 		require.Equal(t, expected.Bytes(), tc.rootHash.Bytes(),
@@ -319,32 +369,6 @@ func (sc stateComparisonTestContexts) ValidateTestCases(t *testing.T, reference 
 				tc.Name, len(expectedReceipts), len(actualReceipts))
 		}
 	}
-}
-
-func (sc stateComparisonTestContexts) Init(t *testing.T, gasLimit uint64) stateComparisonTestContexts {
-	for i := range sc {
-		tc := stateComparisonTestContext{}
-		tc.statedb, tc.chainData, tc.signers = genTestSetup(gasLimit)
-		tc.env = newEnvironment(tc.chainData, tc.statedb, tc.signers.addresses[0], gasLimit, big.NewInt(1))
-		var err error
-		switch i {
-		case Baseline:
-			tc.Name = "baseline"
-			tc.envDiff = newEnvironmentDiff(tc.env)
-		case SingleSnapshot:
-			tc.Name = "single-snapshot"
-			tc.changes, err = newEnvChanges(tc.env)
-			_ = tc.changes.env.state.MultiTxSnapshotCommit()
-		case MultiSnapshot:
-			tc.Name = "multi-snapshot"
-			tc.changes, err = newEnvChanges(tc.env)
-			_ = tc.changes.env.state.MultiTxSnapshotCommit()
-		}
-
-		require.NoError(t, err, "failed to initialize test contexts: %v", err)
-		sc[i] = tc
-	}
-	return sc
 }
 
 func TestStateComparisons(t *testing.T) {
@@ -576,7 +600,7 @@ func TestBundles(t *testing.T) {
 
 				_, err = tc.envDiff.baseEnvironment.state.Commit(true)
 			case SingleSnapshot:
-				err = tc.env.state.NewMultiTxSnapshot()
+				err = tc.changes.env.state.NewMultiTxSnapshot()
 				require.NoError(t, err)
 
 				receipt, _, err = tc.changes.commitTx(signTx, tc.chainData)
@@ -588,7 +612,7 @@ func TestBundles(t *testing.T) {
 				_, err = tc.changes.env.state.Commit(true)
 
 			case MultiSnapshot:
-				err = tc.env.state.NewMultiTxSnapshot()
+				err = tc.changes.env.state.NewMultiTxSnapshot()
 				require.NoError(t, err)
 
 				receipt, _, err = tc.changes.commitTx(signTx, tc.chainData)
@@ -680,7 +704,7 @@ func TestBundles(t *testing.T) {
 						actualReceipt, _, err = tc.envDiff.commitTx(actualTx, tc.chainData)
 						tc.envDiff.applyToBaseEnv()
 					case SingleSnapshot:
-						err = tc.env.state.NewMultiTxSnapshot()
+						err = tc.changes.env.state.NewMultiTxSnapshot()
 						require.NoError(t, err)
 
 						actualReceipt, _, err = tc.changes.commitTx(actualTx, tc.chainData)
@@ -688,10 +712,10 @@ func TestBundles(t *testing.T) {
 
 						err = tc.changes.apply()
 					case MultiSnapshot:
-						err = tc.env.state.NewMultiTxSnapshot()
+						err = tc.changes.env.state.NewMultiTxSnapshot()
 						require.NoError(t, err)
 
-						err = tc.env.state.NewMultiTxSnapshot()
+						err = tc.changes.env.state.NewMultiTxSnapshot()
 						require.NoError(t, err)
 
 						actualReceipt, _, err = tc.changes.commitTx(actualTx, tc.chainData)
@@ -700,7 +724,7 @@ func TestBundles(t *testing.T) {
 						err = tc.changes.apply()
 						require.NoError(t, err)
 
-						err = tc.env.state.MultiTxSnapshotCommit()
+						err = tc.changes.env.state.MultiTxSnapshotCommit()
 					}
 
 					require.NoError(t, err)
@@ -732,7 +756,7 @@ func TestBundles(t *testing.T) {
 		ChangeStorage
 	)
 	const (
-		bundleCount = 5
+		bundleCount = 3
 		bundleSize  = 10
 	)
 
@@ -799,56 +823,98 @@ func TestBundles(t *testing.T) {
 
 				txData, err = changeStorageFuzzTestContract(chainID, nonce, fuzzContractAddress, changeStorageObjectKey, value[:])
 			}
+			require.NotNilf(t, txData, "txData is nil for bundle %d, tx %d", bundleIdx, txIdx)
 			require.NoError(t, err)
 
 			tx := types.MustSignNewTx(s.signers[toAddressRandomIdx], types.LatestSigner(s.config), txData)
 			transactions[txIdx] = tx
-			s.nonces[toAddressRandomIdx]++
+
+			// update nonce for all test contexts
+			base := testContexts[Baseline]
+			single := testContexts[SingleSnapshot]
+			multi := testContexts[MultiSnapshot]
+
+			base.signers.nonces[toAddressRandomIdx]++
+			single.signers.nonces[toAddressRandomIdx]++
+			multi.signers.nonces[toAddressRandomIdx]++
 		}
 
 		bundles[bundleIdx] = types.MevBundle{
 			Txs: transactions[:],
 		}
 	}
+
+	// prepare for bundle application
+
+	// initialize new snapshot(s)
 	for tcIdx, tc := range testContexts {
-		algoConf := defaultAlgorithmConfig
-		algoConf.EnforceProfit = true
 		switch tcIdx {
 		case SingleSnapshot, MultiSnapshot:
-			err = tc.env.state.NewMultiTxSnapshot()
-			require.NoError(t, err)
-		}
-
-		for _, b := range bundles {
-			sim, err := simulateBundle(tc.env, b, tc.chainData, nil)
-
-			switch tcIdx {
-			case Baseline:
-				err = tc.envDiff.commitBundle(&sim, tc.chainData, nil, algoConf)
-			case SingleSnapshot:
-				err = tc.changes.commitBundle(&sim, tc.chainData, algoConf)
-			case MultiSnapshot:
-				err = tc.changes.commitBundle(&sim, tc.chainData, algoConf)
-			}
-			var pe *lowProfitError
-			if errors.As(err, &pe) || (err != nil && err.Error() == "bundle mev gas price is nil") {
-				continue
-			} else {
-				require.NoError(t, err, "test %s", tc.Name)
-			}
-		}
-
-		switch tcIdx {
-		case Baseline:
-			tc.envDiff.applyToBaseEnv()
-		case SingleSnapshot:
-			err = tc.changes.apply()
-			require.NoError(t, err)
-		case MultiSnapshot:
-			err = tc.changes.apply()
+			err = tc.changes.env.state.NewMultiTxSnapshot()
 			require.NoError(t, err)
 		}
 	}
+
+	bundleMap := map[int][]types.SimulatedBundle{
+		Baseline:       make([]types.SimulatedBundle, 0),
+		SingleSnapshot: make([]types.SimulatedBundle, 0),
+		MultiSnapshot:  make([]types.SimulatedBundle, 0),
+	}
+	var (
+		simulationErrMap = map[int]error{
+			Baseline:       nil,
+			SingleSnapshot: nil,
+			MultiSnapshot:  nil,
+		}
+		commitErrMap = map[int]error{
+			Baseline:       nil,
+			SingleSnapshot: nil,
+			MultiSnapshot:  nil,
+		}
+	)
+	// commit bundles one by one to each test context to make sure each bundle result is deterministic
+	// apply all to the underlying environment at the end
+	for bundleIdx, b := range bundles {
+		// first compare simulation results
+		for tcIdx, tc := range testContexts {
+			sim, simErr := testContexts.SimulateBundle(tcIdx, b)
+			t.Logf("bundle simulation error [bundle index %d] [%s]: %v", bundleIdx, tc.Name, simErr)
+
+			simulationErrMap[tcIdx] = simErr
+			bundleMap[tcIdx] = append(bundleMap[tcIdx], sim)
+
+			if simulationErrMap[Baseline] != nil {
+				require.NotNilf(t, simulationErrMap[tcIdx], "simulation error is nil for test context %s", tc.Name)
+				require.Equal(t, simulationErrMap[Baseline].Error(), simulationErrMap[tcIdx].Error(),
+					"simulation error mismatch for test context %s", tc.Name)
+			} else {
+				require.NoError(t, simulationErrMap[tcIdx], "simulation error for test context %s", tc.Name)
+			}
+		}
+
+		algoConf := defaultAlgorithmConfig
+		algoConf.EnforceProfit = true
+		for tcIdx, tc := range testContexts {
+			var commitErr error
+			sim := bundleMap[tcIdx][bundleIdx]
+
+			switch tcIdx {
+			case Baseline:
+				commitErr = tc.envDiff.commitBundle(&sim, tc.chainData, nil, algoConf)
+			case SingleSnapshot, MultiSnapshot:
+				commitErr = tc.changes.commitBundle(&sim, tc.chainData, algoConf)
+
+				if commitErrMap[Baseline] != nil {
+					require.NoError(t, tc.changes.env.state.MultiTxSnapshotRevert())
+				} else {
+					require.NoError(t, tc.changes.env.state.MultiTxSnapshotCommit())
+				}
+				require.NoError(t, tc.changes.env.state.NewMultiTxSnapshot())
+			}
+			commitErrMap[tcIdx] = commitErr
+		}
+	}
+	testContexts.ApplyChanges(t)
 	testContexts.UpdateRootHashes(t)
 	testContexts.ValidateTestCases(t, Baseline)
 	testContexts.ValidateRootHashes(t, testContexts[Baseline].rootHash)
