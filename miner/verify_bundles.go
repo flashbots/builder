@@ -185,6 +185,7 @@ func checkBundlesAtomicity(
 		var (
 			firstTxBlockIdx  int
 			firstTxBundleIdx int
+			firstTxFound     = false
 		)
 		// 1. locate the first included tx of the bundle
 		for bundleIdx, tx := range b {
@@ -204,9 +205,20 @@ func checkBundlesAtomicity(
 				return NewErrBundleTxReverted(bundleHash, tx.hash, bundleIdx)
 			}
 
+			// optional txs can be outside the bundle, so we don't use them to determine ordering of the bundle
+			if tx.canRevert {
+				continue
+			}
+
 			firstTxBlockIdx = txInclusion.index
 			firstTxBundleIdx = bundleIdx
+			firstTxFound = true
 			break
+		}
+
+		// none of the txs from the bundle are included
+		if !firstTxFound {
+			continue
 		}
 
 		currentBlockTx := firstTxBlockIdx + 1
@@ -226,14 +238,19 @@ func checkBundlesAtomicity(
 				}
 			}
 
+			if txInclusion.reverted && !tx.canRevert {
+				return NewErrBundleTxReverted(bundleHash, tx.hash, bundleIdx)
+			}
+
+			// we don't do position check for optional txs
+			if tx.canRevert {
+				continue
+			}
+
 			// we allow gaps between txs in the bundle,
 			// but txs must be in the right order
 			if txInclusion.index < currentBlockTx {
 				return NewErrBundleTxWrongPlace(bundleHash, tx.hash, bundleIdx, txInclusion.index, currentBlockTx)
-			}
-
-			if txInclusion.reverted && !tx.canRevert {
-				return NewErrBundleTxReverted(bundleHash, tx.hash, bundleIdx)
 			}
 
 			currentBlockTx = txInclusion.index + 1
