@@ -11,7 +11,7 @@ import (
 )
 
 func TestBuildBlockGasLimit(t *testing.T) {
-	algos := []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS}
+	algos := []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP}
 	for _, algo := range algos {
 		statedb, chData, signers := genTestSetup(GasLimit)
 		env := newEnvironment(chData, statedb, signers.addresses[0], 21000, big.NewInt(1))
@@ -29,17 +29,17 @@ func TestBuildBlockGasLimit(t *testing.T) {
 
 		var result *environment
 		switch algo {
-		case ALGO_GREEDY_BUCKETS:
-			builder, err := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, &defaultAlgorithmConfig, nil, env, nil, nil)
-			if err != nil {
-				t.Fatalf("Error creating greedy buckets builder: %v", err)
-			}
-			result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
 		case ALGO_GREEDY:
-			builder, err := newGreedyBuilder(chData.chain, chData.chainConfig, &defaultAlgorithmConfig, nil, env, nil, nil)
-			if err != nil {
-				t.Fatalf("Error creating greedy builder: %v", err)
-			}
+			builder := newGreedyBuilder(chData.chain, chData.chainConfig, &defaultAlgorithmConfig, nil, env, nil, nil)
+			result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
+		case ALGO_GREEDY_MULTISNAP:
+			builder := newGreedyMultiSnapBuilder(chData.chain, chData.chainConfig, &defaultAlgorithmConfig, nil, env, nil, nil)
+			result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
+		case ALGO_GREEDY_BUCKETS:
+			builder := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, &defaultAlgorithmConfig, nil, env, nil, nil)
+			result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
+		case ALGO_GREEDY_BUCKETS_MULTISNAP:
+			builder := newGreedyBucketsMultiSnapBuilder(chData.chain, chData.chainConfig, &defaultAlgorithmConfig, nil, env, nil, nil)
 			result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
 		}
 

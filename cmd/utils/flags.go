@@ -697,14 +697,6 @@ var (
 		Usage:    "Enable the builder",
 		Category: flags.BuilderCategory,
 	}
-	BuilderEnableMultiTxSnapshot = &cli.BoolFlag{
-		Name: "builder.multi_tx_snapshot",
-		Usage: "Enable multi-transaction snapshots for block building, " +
-			"which decrease amount of state copying on bundle reverts (note: experimental)",
-		EnvVars:  []string{"BUILDER_MULTI_TX_SNAPSHOT"},
-		Value:    ethconfig.Defaults.Miner.EnableMultiTransactionSnapshot,
-		Category: flags.BuilderCategory,
-	}
 
 	// BuilderAlgoTypeFlag replaces MinerAlgoTypeFlag to move away from deprecated miner package
 	// Note: builder.algotype was previously miner.algotype - this flag is still propagated to the miner configuration,
@@ -1972,7 +1964,6 @@ func setMiner(ctx *cli.Context, cfg *miner.Config) {
 		}
 	}
 
-	cfg.EnableMultiTransactionSnapshot = ctx.Bool(BuilderEnableMultiTxSnapshot.Name)
 	cfg.DiscardRevertibleTxOnErr = ctx.Bool(BuilderDiscardRevertibleTxOnErr.Name)
 	cfg.PriceCutoffPercent = ctx.Int(BuilderPriceCutoffPercentFlag.Name)
 }

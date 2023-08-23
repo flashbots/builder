@@ -61,7 +61,6 @@ func TestBundleCommitSnaps(t *testing.T) {
 	statedb, chData, signers := genTestSetup(GasLimit)
 
 	algoConf := defaultAlgorithmConfig
-	algoConf.EnableMultiTxSnap = true
 	env := newEnvironment(chData, statedb, signers.addresses[0], GasLimit, big.NewInt(1))
 
 	tx1 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
@@ -170,7 +169,6 @@ func TestErrorBundleCommitSnaps(t *testing.T) {
 	statedb, chData, signers := genTestSetup(GasLimit)
 
 	algoConf := defaultAlgorithmConfig
-	algoConf.EnableMultiTxSnap = true
 	env := newEnvironment(chData, statedb, signers.addresses[0], 21000*2, big.NewInt(1))
 
 	// This tx will be included before bundle so bundle will fail because of gas limit

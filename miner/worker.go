@@ -1312,7 +1312,7 @@ func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) 
 		err             error
 	)
 	switch w.flashbots.algoType {
-	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS:
+	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP:
 		blockBundles, allBundles, usedSbundles, mempoolTxHashes, err = w.fillTransactionsAlgoWorker(interrupt, env)
 	case ALGO_MEV_GETH:
 		blockBundles, allBundles, mempoolTxHashes, err = w.fillTransactions(interrupt, env)
@@ -1426,37 +1426,59 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 			EnforceProfit:          true,
 			ProfitThresholdPercent: defaultProfitThresholdPercent,
 			PriceCutoffPercent:     priceCutoffPercent,
-			EnableMultiTxSnap:      w.config.EnableMultiTransactionSnapshot,
 		}
-		builder, err := newGreedyBucketsBuilder(
+		builder := newGreedyBucketsBuilder(
 			w.chain, w.chainConfig, algoConf, w.blockList, env,
 			w.config.BuilderTxSigningKey, interrupt,
 		)
-		if err != nil {
-			return nil, nil, nil, nil, err
-		}
 
 		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
-	case ALGO_GREEDY:
-		fallthrough
-	default:
-		// For default greedy builder, set algorithm configuration to default values,
-		// except DropRevertibleTxOnErr and EnableMultiTxSnap which are passed in from worker config
+	case ALGO_GREEDY_BUCKETS_MULTISNAP:
+		priceCutoffPercent := w.config.PriceCutoffPercent
+		if !(priceCutoffPercent >= 0 && priceCutoffPercent <= 100) {
+			return nil, nil, nil, nil, errors.New("invalid price cutoff percent - must be between 0 and 100")
+		}
+
 		algoConf := &algorithmConfig{
-			EnableMultiTxSnap:      w.config.EnableMultiTransactionSnapshot,
+			DropRevertibleTxOnErr:  w.config.DiscardRevertibleTxOnErr,
+			EnforceProfit:          true,
+			ProfitThresholdPercent: defaultProfitThresholdPercent,
+			PriceCutoffPercent:     priceCutoffPercent,
+		}
+		builder := newGreedyBucketsMultiSnapBuilder(
+			w.chain, w.chainConfig, algoConf, w.blockList, env,
+			w.config.BuilderTxSigningKey, interrupt,
+		)
+		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
+	case ALGO_GREEDY_MULTISNAP:
+		// For greedy multi-snap builder, set algorithm configuration to default values,
+		// except DropRevertibleTxOnErr which is passed in from worker config
+		algoConf := &algorithmConfig{
 			DropRevertibleTxOnErr:  w.config.DiscardRevertibleTxOnErr,
 			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
 			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
 		}
 
-		builder, err := newGreedyBuilder(
+		builder := newGreedyMultiSnapBuilder(
+			w.chain, w.chainConfig, algoConf, w.blockList, env,
+			w.config.BuilderTxSigningKey, interrupt,
+		)
+		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
+	case ALGO_GREEDY:
+		fallthrough
+	default:
+		// For default greedy builder, set algorithm configuration to default values,
+		// except DropRevertibleTxOnErr which is passed in from worker config
+		algoConf := &algorithmConfig{
+			DropRevertibleTxOnErr:  w.config.DiscardRevertibleTxOnErr,
+			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
+			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
+		}
+
+		builder := newGreedyBuilder(
 			w.chain, w.chainConfig, algoConf, w.blockList,
 			env, w.config.BuilderTxSigningKey, interrupt,
 		)
-		if err != nil {
-			return nil, nil, nil, nil, err
-		}
-
 		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
 	}
 

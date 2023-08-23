@@ -38,7 +38,7 @@ var algoTests = []*algoTest{
 			}
 		},
 		WantProfit:          big.NewInt(2 * 21_000),
-		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP},
 		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 	{
@@ -65,7 +65,7 @@ var algoTests = []*algoTest{
 			}
 		},
 		WantProfit:          big.NewInt(4 * 21_000),
-		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP},
 		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 	{
@@ -84,7 +84,7 @@ var algoTests = []*algoTest{
 			}
 		},
 		WantProfit:          big.NewInt(0),
-		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP},
 		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 	{
@@ -106,7 +106,7 @@ var algoTests = []*algoTest{
 			}
 		},
 		WantProfit:          big.NewInt(50_000),
-		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP},
 		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 	{
@@ -128,7 +128,7 @@ var algoTests = []*algoTest{
 			}
 		},
 		WantProfit:          common.Big0,
-		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP},
 		AlgorithmConfig: algorithmConfig{
 			DropRevertibleTxOnErr:  true,
 			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
@@ -160,7 +160,7 @@ var algoTests = []*algoTest{
 			}
 		},
 		WantProfit:          big.NewInt(21_000),
-		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP},
 		AlgorithmConfig: algorithmConfig{
 			DropRevertibleTxOnErr:  true,
 			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
@@ -191,7 +191,7 @@ var algoTests = []*algoTest{
 			}
 		},
 		WantProfit:          big.NewInt(50_000),
-		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP},
 		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 }
@@ -204,38 +204,25 @@ func TestAlgo(t *testing.T) {
 
 	for _, test := range algoTests {
 		for _, algo := range test.SupportedAlgorithms {
-			// test with multi-tx-snapshot enabled and disabled (default)
-			multiSnapDisabled := defaultAlgorithmConfig
-			multiSnapDisabled.EnableMultiTxSnap = false
+			testName := fmt.Sprintf("%s-%s", test.Name, algo.String())
 
-			multiSnapEnabled := defaultAlgorithmConfig
-			multiSnapEnabled.EnableMultiTxSnap = true
-
-			algoConfigs := []algorithmConfig{
-				multiSnapEnabled,
-				multiSnapDisabled,
-			}
-			for _, algoConf := range algoConfigs {
-				testName := fmt.Sprintf("%s-%s-%t", test.Name, algo.String(), algoConf.EnableMultiTxSnap)
-
-				t.Run(testName, func(t *testing.T) {
-					alloc, txPool, bundles, err := test.build(signer, 1)
-					if err != nil {
-						t.Fatalf("Build: %v", err)
-					}
-					simBundles, err := simulateBundles(config, test.Header, alloc, bundles)
-					if err != nil {
-						t.Fatalf("Simulate Bundles: %v", err)
-					}
-					gotProfit, err := runAlgoTest(algo, algoConf, config, alloc, txPool, simBundles, test.Header, 1)
-					if err != nil {
-						t.Fatal(err)
-					}
-					if test.WantProfit.Cmp(gotProfit) != 0 {
-						t.Fatalf("Profit: want %v, got %v", test.WantProfit, gotProfit)
-					}
-				})
-			}
+			t.Run(testName, func(t *testing.T) {
+				alloc, txPool, bundles, err := test.build(signer, 1)
+				if err != nil {
+					t.Fatalf("Build: %v", err)
+				}
+				simBundles, err := simulateBundles(config, test.Header, alloc, bundles)
+				if err != nil {
+					t.Fatalf("Simulate Bundles: %v", err)
+				}
+				gotProfit, err := runAlgoTest(algo, test.AlgorithmConfig, config, alloc, txPool, simBundles, test.Header, 1)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if test.WantProfit.Cmp(gotProfit) != 0 {
+					t.Fatalf("Profit: want %v, got %v", test.WantProfit, gotProfit)
+				}
+			})
 		}
 	}
 }
@@ -307,17 +294,17 @@ func runAlgoTest(
 
 	// build block
 	switch algo {
-	case ALGO_GREEDY_BUCKETS:
-		builder, err := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
-		if err != nil {
-			return nil, err
-		}
-		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	case ALGO_GREEDY:
-		builder, err := newGreedyBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
-		if err != nil {
-			return nil, err
-		}
+		builder := newGreedyBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
+		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
+	case ALGO_GREEDY_MULTISNAP:
+		builder := newGreedyMultiSnapBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
+		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
+	case ALGO_GREEDY_BUCKETS:
+		builder := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
+		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
+	case ALGO_GREEDY_BUCKETS_MULTISNAP:
+		builder := newGreedyBucketsMultiSnapBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	}
 	return resultEnv.profit, nil

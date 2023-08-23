@@ -38,7 +38,6 @@ var (
 		ExpectedProfit:         nil,
 		ProfitThresholdPercent: defaultProfitThresholdPercent,
 		PriceCutoffPercent:     defaultPriceCutoffPercent,
-		EnableMultiTxSnap:      false,
 	}
 )
 
@@ -84,9 +83,6 @@ type algorithmConfig struct {
 	// is 10 (i.e. 10%), then the minimum effective gas price included in the same bucket as the top transaction
 	// is (1000 * 10%) = 100 wei.
 	PriceCutoffPercent int
-	// EnableMultiTxSnap is true if we want to use multi-transaction snapshot for committing transactions,
-	// which reduce state copies when reverting failed bundles (note: experimental)
-	EnableMultiTxSnap bool
 }
 
 type chainData struct {
@@ -120,56 +116,6 @@ type (
 	// CommitTxFunc is the function signature for committing a transaction
 	CommitTxFunc func(*types.Transaction, chainData) (*types.Receipt, int, error)
 )
-
-func NewBuildBlockFunc(
-	inputEnvironment *environment,
-	builderKey *ecdsa.PrivateKey,
-	chData chainData,
-	algoConf algorithmConfig,
-	greedyBuckets *greedyBucketsBuilder,
-	greedy *greedyBuilder,
-) BuildBlockFunc {
-	if algoConf.EnableMultiTxSnap {
-		return func(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
-			orders := types.NewTransactionsByPriceAndNonce(inputEnvironment.signer, transactions,
-				simBundles, simSBundles, inputEnvironment.header.BaseFee)
-
-			usedBundles, usedSbundles, err := BuildMultiTxSnapBlock(
-				inputEnvironment,
-				builderKey,
-				chData,
-				algoConf,
-				orders,
-			)
-			if err != nil {
-				log.Trace("Error(s) building multi-tx snapshot block", "err", err)
-			}
-			return inputEnvironment, usedBundles, usedSbundles
-		}
-	} else if builder := greedyBuckets; builder != nil {
-		return func(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
-			orders := types.NewTransactionsByPriceAndNonce(inputEnvironment.signer, transactions,
-				simBundles, simSBundles, inputEnvironment.header.BaseFee)
-
-			envDiff := newEnvironmentDiff(inputEnvironment.copy())
-			usedBundles, usedSbundles := builder.mergeOrdersIntoEnvDiff(envDiff, orders)
-			envDiff.applyToBaseEnv()
-			return envDiff.baseEnvironment, usedBundles, usedSbundles
-		}
-	} else if builder := greedy; builder != nil {
-		return func(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
-			orders := types.NewTransactionsByPriceAndNonce(inputEnvironment.signer, transactions,
-				simBundles, simSBundles, inputEnvironment.header.BaseFee)
-
-			envDiff := newEnvironmentDiff(inputEnvironment.copy())
-			usedBundles, usedSbundles := builder.mergeOrdersIntoEnvDiff(envDiff, orders)
-			envDiff.applyToBaseEnv()
-			return envDiff.baseEnvironment, usedBundles, usedSbundles
-		}
-	} else {
-		panic("invalid call to build block function")
-	}
-}
 
 func ValidateGasPriceAndProfit(algoConf algorithmConfig, actualPrice, expectedPrice *big.Int, tolerablePriceDifferencePercent int,
 	actualProfit, expectedProfit *big.Int) error {

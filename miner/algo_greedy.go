@@ -20,36 +20,24 @@ type greedyBuilder struct {
 	chainData        chainData
 	builderKey       *ecdsa.PrivateKey
 	interrupt        *int32
-	buildBlockFunc   BuildBlockFunc
 	algoConf         algorithmConfig
 }
 
 func newGreedyBuilder(
 	chain *core.BlockChain, chainConfig *params.ChainConfig, algoConf *algorithmConfig,
 	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32,
-) (*greedyBuilder, error) {
+) *greedyBuilder {
 	if algoConf == nil {
-		return nil, errNoAlgorithmConfig
+		panic("algoConf cannot be nil")
 	}
 
-	builder := &greedyBuilder{
+	return &greedyBuilder{
 		inputEnvironment: env,
-		chainData:        chainData{chainConfig: chainConfig, chain: chain, blacklist: blacklist},
+		chainData:        chainData{chainConfig, chain, blacklist},
 		builderKey:       key,
 		interrupt:        interrupt,
 		algoConf:         *algoConf,
 	}
-	// Initialize block builder function
-	builder.buildBlockFunc = NewBuildBlockFunc(
-		builder.inputEnvironment,
-		builder.builderKey,
-		builder.chainData,
-		builder.algoConf,
-		nil,
-		builder,
-	)
-
-	return builder, nil
 }
 
 func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
@@ -115,5 +103,9 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
 }
 
 func (b *greedyBuilder) buildBlock(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
-	return b.buildBlockFunc(simBundles, simSBundles, transactions)
+	orders := types.NewTransactionsByPriceAndNonce(b.inputEnvironment.signer, transactions, simBundles, simSBundles, b.inputEnvironment.header.BaseFee)
+	envDiff := newEnvironmentDiff(b.inputEnvironment.copy())
+	usedBundles, usedSbundles := b.mergeOrdersIntoEnvDiff(envDiff, orders)
+	envDiff.applyToBaseEnv()
+	return envDiff.baseEnvironment, usedBundles, usedSbundles
 }

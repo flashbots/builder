@@ -158,7 +158,6 @@ var (
 
 	builderApiFlags = []cli.Flag{
 		utils.BuilderEnabled,
-		utils.BuilderEnableMultiTxSnapshot,
 		utils.BuilderAlgoTypeFlag,
 		utils.BuilderPriceCutoffPercentFlag,
 		utils.BuilderEnableValidatorChecks,

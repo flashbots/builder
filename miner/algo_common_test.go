@@ -525,7 +525,7 @@ func TestGetSealingWorkAlgos(t *testing.T) {
 		testConfig.AlgoType = ALGO_MEV_GETH
 	})
 
-	for _, algoType := range []AlgoType{ALGO_MEV_GETH, ALGO_GREEDY, ALGO_GREEDY_BUCKETS} {
+	for _, algoType := range []AlgoType{ALGO_MEV_GETH, ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP} {
 		local := new(params.ChainConfig)
 		*local = *ethashChainConfig
 		local.TerminalTotalDifficulty = big.NewInt(0)
@@ -540,7 +540,7 @@ func TestGetSealingWorkAlgosWithProfit(t *testing.T) {
 		testConfig.BuilderTxSigningKey = nil
 	})
 
-	for _, algoType := range []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS} {
+	for _, algoType := range []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP} {
 		var err error
 		testConfig.BuilderTxSigningKey, err = crypto.GenerateKey()
 		require.NoError(t, err)
