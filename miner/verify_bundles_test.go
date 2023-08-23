@@ -27,6 +27,20 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 	}{
 		// Success cases
 		{
+			name: "Simple bundle with 1 tx included",
+			includedBundles: map[common.Hash][]bundleTxData{
+				common.HexToHash("0xb1"): {
+					{hash: common.HexToHash("0xb11"), canRevert: false},
+				},
+			},
+			includedTxDataByHash: map[common.Hash]includedTxData{
+				common.HexToHash("0xb11"): {hash: common.HexToHash("0xb11"), index: 0, reverted: false},
+			},
+			privateTxData:   nil,
+			mempoolTxHashes: nil,
+			expectedErr:     nil,
+		},
+		{
 			name: "Simple bundle included",
 			includedBundles: map[common.Hash][]bundleTxData{
 				common.HexToHash("0xb1"): {
@@ -121,6 +135,24 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 			expectedErr:     nil,
 		},
 		{
+			name: "Bundle marked included but none of the txs are included (all optional)",
+			includedBundles: map[common.Hash][]bundleTxData{
+				common.HexToHash("0xb1"): {
+					{hash: common.HexToHash("0xb11"), canRevert: true},
+					{hash: common.HexToHash("0xb12"), canRevert: true},
+					{hash: common.HexToHash("0xb13"), canRevert: true},
+				},
+			},
+			includedTxDataByHash: map[common.Hash]includedTxData{
+				common.HexToHash("0xc1"): {hash: common.HexToHash("0xc1"), index: 0, reverted: false},
+			},
+			mempoolTxHashes: map[common.Hash]struct{}{
+				common.HexToHash("0xc1"): {},
+			},
+			privateTxData: nil,
+			expectedErr:   nil,
+		},
+		{
 			name: "Simple bundle included with all revertible tx, last of them is included as success",
 			includedBundles: map[common.Hash][]bundleTxData{
 				common.HexToHash("0xb1"): {
@@ -182,6 +214,76 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 			privateTxData: nil,
 			mempoolTxHashes: map[common.Hash]struct{}{
 				common.HexToHash("0xc1"): {},
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "Two bundles included, one have optional tx in the middle that gets included as part of other bundle",
+			includedBundles: map[common.Hash][]bundleTxData{
+				common.HexToHash("0xb1"): {
+					{hash: common.HexToHash("0xb00"), canRevert: true},
+					{hash: common.HexToHash("0xb12"), canRevert: false},
+				},
+				common.HexToHash("0xb2"): {
+					{hash: common.HexToHash("0xb21"), canRevert: false},
+					{hash: common.HexToHash("0xb00"), canRevert: true},
+					{hash: common.HexToHash("0xb22"), canRevert: false},
+				},
+			},
+			includedTxDataByHash: map[common.Hash]includedTxData{
+				common.HexToHash("0xb00"): {hash: common.HexToHash("0xb00"), index: 0, reverted: false},
+				common.HexToHash("0xb12"): {hash: common.HexToHash("0xb12"), index: 1, reverted: false},
+				common.HexToHash("0xc1"):  {hash: common.HexToHash("0xc1"), index: 2, reverted: true},
+				common.HexToHash("0xb21"): {hash: common.HexToHash("0xb21"), index: 3, reverted: false},
+				common.HexToHash("0xb22"): {hash: common.HexToHash("0xb22"), index: 4, reverted: false},
+			},
+			privateTxData: nil,
+			mempoolTxHashes: map[common.Hash]struct{}{
+				common.HexToHash("0xc1"): {},
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "Optional tx in the middle of the bundle was included after the bundle as part of mempool",
+			includedBundles: map[common.Hash][]bundleTxData{
+				common.HexToHash("0xb1"): {
+					{hash: common.HexToHash("0xb11"), canRevert: false},
+					{hash: common.HexToHash("0xb00"), canRevert: true},
+					{hash: common.HexToHash("0xb12"), canRevert: false},
+				},
+			},
+			includedTxDataByHash: map[common.Hash]includedTxData{
+				common.HexToHash("0xb11"): {hash: common.HexToHash("0xb11"), index: 0, reverted: false},
+				common.HexToHash("0xb12"): {hash: common.HexToHash("0xb12"), index: 1, reverted: false},
+				common.HexToHash("0xc1"):  {hash: common.HexToHash("0xc1"), index: 2, reverted: true},
+				common.HexToHash("0xb00"): {hash: common.HexToHash("0xb00"), index: 3, reverted: false},
+			},
+			privateTxData: nil,
+			mempoolTxHashes: map[common.Hash]struct{}{
+				common.HexToHash("0xc1"):  {},
+				common.HexToHash("0xb00"): {},
+			},
+			expectedErr: nil,
+		},
+		{
+			name: "Optional tx in the middle of the bundle was included before the bundle as part of mempool",
+			includedBundles: map[common.Hash][]bundleTxData{
+				common.HexToHash("0xb1"): {
+					{hash: common.HexToHash("0xb11"), canRevert: false},
+					{hash: common.HexToHash("0xb00"), canRevert: true},
+					{hash: common.HexToHash("0xb12"), canRevert: false},
+				},
+			},
+			includedTxDataByHash: map[common.Hash]includedTxData{
+				common.HexToHash("0xb00"): {hash: common.HexToHash("0xb00"), index: 0, reverted: false},
+				common.HexToHash("0xb11"): {hash: common.HexToHash("0xb11"), index: 1, reverted: false},
+				common.HexToHash("0xb12"): {hash: common.HexToHash("0xb12"), index: 2, reverted: false},
+				common.HexToHash("0xc1"):  {hash: common.HexToHash("0xc1"), index: 3, reverted: true},
+			},
+			privateTxData: nil,
+			mempoolTxHashes: map[common.Hash]struct{}{
+				common.HexToHash("0xc1"):  {},
+				common.HexToHash("0xb00"): {},
 			},
 			expectedErr: nil,
 		},
@@ -423,7 +525,7 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 				require.NoError(t, err)
 			} else {
 				require.Error(t, err)
-				require.Equal(t, err, test.expectedErr)
+				require.Equal(t, test.expectedErr, err)
 			}
 		})
 	}
