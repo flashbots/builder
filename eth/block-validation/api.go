@@ -88,6 +88,8 @@ func NewAccessVerifierFromFile(path string) (*AccessVerifier, error) {
 
 type BlockValidationConfig struct {
 	BlacklistSourceFilePath string
+	// If set to true, proposer payment is assumed to be in the last transaction of the block.
+	ForceLastTxPayment bool
 }
 
 // Register adds catalyst APIs to the full node.
@@ -104,7 +106,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg BlockValidationConfig
 	stack.RegisterAPIs([]rpc.API{
 		{
 			Namespace: "flashbots",
-			Service:   NewBlockValidationAPI(backend, accessVerifier),
+			Service:   NewBlockValidationAPI(backend, accessVerifier, cfg.ForceLastTxPayment),
 		},
 	})
 	return nil
@@ -113,14 +115,17 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg BlockValidationConfig
 type BlockValidationAPI struct {
 	eth            *eth.Ethereum
 	accessVerifier *AccessVerifier
+	// If set to true, proposer payment is assumed to be in the last transaction of the block.
+	forceLastTxPayment bool
 }
 
 // NewConsensusAPI creates a new consensus api for the given backend.
 // The underlying blockchain needs to have a valid terminal total difficulty set.
-func NewBlockValidationAPI(eth *eth.Ethereum, accessVerifier *AccessVerifier) *BlockValidationAPI {
+func NewBlockValidationAPI(eth *eth.Ethereum, accessVerifier *AccessVerifier, forceLastTxPayment bool) *BlockValidationAPI {
 	return &BlockValidationAPI{
-		eth:            eth,
-		accessVerifier: accessVerifier,
+		eth:                eth,
+		accessVerifier:     accessVerifier,
+		forceLastTxPayment: forceLastTxPayment,
 	}
 }
 
@@ -180,7 +185,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockV
 		vmconfig = vm.Config{Tracer: tracer}
 	}
 
-	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig)
+	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig, api.forceLastTxPayment)
 	if err != nil {
 		log.Error("invalid payload", "hash", payload.BlockHash.String(), "number", payload.BlockNumber, "parentHash", payload.ParentHash.String(), "err", err)
 		return err
@@ -272,7 +277,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockV
 		vmconfig = vm.Config{Tracer: tracer}
 	}
 
-	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig)
+	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig, api.forceLastTxPayment)
 	if err != nil {
 		log.Error("invalid payload", "hash", payload.BlockHash.String(), "number", payload.BlockNumber, "parentHash", payload.ParentHash.String(), "err", err)
 		return err

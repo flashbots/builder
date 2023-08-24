@@ -190,6 +190,9 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	if ctx.IsSet(utils.BuilderBlockValidationBlacklistSourceFilePath.Name) {
 		bvConfig.BlacklistSourceFilePath = ctx.String(utils.BuilderBlockValidationBlacklistSourceFilePath.Name)
 	}
+	if ctx.IsSet(utils.BuilderBlockValidationForceLastTxPayment.Name) {
+		bvConfig.ForceLastTxPayment = ctx.Bool(utils.BuilderBlockValidationForceLastTxPayment.Name)
+	}
 
 	if err := blockvalidationapi.Register(stack, eth, bvConfig); err != nil {
 		utils.Fatalf("Failed to register the Block Validation API: %v", err)

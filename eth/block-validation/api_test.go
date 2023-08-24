@@ -3,6 +3,7 @@ package blockvalidation
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"math/big"
 	"os"
 	"testing"
@@ -23,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/downloader"
@@ -51,7 +53,14 @@ var (
 	testValidatorKey, _ = crypto.HexToECDSA("28c3cd61b687fdd03488e167a5d84f50269df2a4c29a2cfb1390903aa775c5d0")
 	testValidatorAddr   = crypto.PubkeyToAddress(testValidatorKey.PublicKey)
 
+	testBuilderKeyHex = "0bfbbbc68fefd990e61ba645efb84e0a62e94d5fff02c9b1da8eb45fea32b4e0"
+	testBuilderKey, _ = crypto.HexToECDSA(testBuilderKeyHex)
+	testBuilderAddr   = crypto.PubkeyToAddress(testBuilderKey.PublicKey)
+
 	testBalance = big.NewInt(2e18)
+
+	// This EVM code generates a log when the contract is created.
+	logCode = common.Hex2Bytes("60606040525b7f24ec1d3ff24c2f6ff210738839dbc339cd45a5294d85c79361016243157aae7b60405180905060405180910390a15b600a8060416000396000f360606040526008565b00")
 )
 
 func TestValidateBuilderSubmissionV1(t *testing.T) {
@@ -61,13 +70,10 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	ethservice.Merger().ReachTTD()
 	defer n.Close()
 
-	api := NewBlockValidationAPI(ethservice, nil)
+	api := NewBlockValidationAPI(ethservice, nil, false)
 	parent := preMergeBlocks[len(preMergeBlocks)-1]
 
 	api.eth.APIBackend.Miner().SetEtherbase(testValidatorAddr)
-
-	// This EVM code generates a log when the contract is created.
-	logCode := common.Hex2Bytes("60606040525b7f24ec1d3ff24c2f6ff210738839dbc339cd45a5294d85c79361016243157aae7b60405180905060405180910390a15b600a8060416000396000f360606040526008565b00")
 
 	statedb, _ := ethservice.BlockChain().StateAt(parent.Root())
 	nonce := statedb.GetNonce(testAddr)
@@ -167,20 +173,17 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 
 func TestValidateBuilderSubmissionV2(t *testing.T) {
 	genesis, preMergeBlocks := generatePreMergeChain(20)
-	os.Setenv("BUILDER_TX_SIGNING_KEY", "0x28c3cd61b687fdd03488e167a5d84f50269df2a4c29a2cfb1390903aa775c5d0")
+	os.Setenv("BUILDER_TX_SIGNING_KEY", testBuilderKeyHex)
 	time := preMergeBlocks[len(preMergeBlocks)-1].Time() + 5
 	genesis.Config.ShanghaiTime = &time
 	n, ethservice := startEthService(t, genesis, preMergeBlocks)
 	ethservice.Merger().ReachTTD()
 	defer n.Close()
 
-	api := NewBlockValidationAPI(ethservice, nil)
+	api := NewBlockValidationAPI(ethservice, nil, false)
 	parent := preMergeBlocks[len(preMergeBlocks)-1]
 
-	api.eth.APIBackend.Miner().SetEtherbase(testValidatorAddr)
-
-	// This EVM code generates a log when the contract is created.
-	logCode := common.Hex2Bytes("60606040525b7f24ec1d3ff24c2f6ff210738839dbc339cd45a5294d85c79361016243157aae7b60405180905060405180910390a15b600a8060416000396000f360606040526008565b00")
+	api.eth.APIBackend.Miner().SetEtherbase(testBuilderAddr)
 
 	statedb, _ := ethservice.BlockChain().StateAt(parent.Root())
 	nonce := statedb.GetNonce(testAddr)
@@ -235,7 +238,8 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 				ProposerFeeRecipient: proposerAddr,
 				GasLimit:             execData.GasLimit,
 				GasUsed:              execData.GasUsed,
-				Value:                uint256.NewInt(0),
+				// This value is actual profit + 1, validation should fail
+				Value: uint256.NewInt(149842511727213),
 			},
 			ExecutionPayload: payload,
 		},
@@ -314,7 +318,7 @@ func generatePreMergeChain(n int) (*core.Genesis, []*types.Block) {
 	config := params.AllEthashProtocolChanges
 	genesis := &core.Genesis{
 		Config:     config,
-		Alloc:      core.GenesisAlloc{testAddr: {Balance: testBalance}},
+		Alloc:      core.GenesisAlloc{testAddr: {Balance: testBalance}, testValidatorAddr: {Balance: testBalance}, testBuilderAddr: {Balance: testBalance}},
 		ExtraData:  []byte("test genesis"),
 		Timestamp:  9000,
 		BaseFee:    big.NewInt(params.InitialBaseFee),
@@ -518,4 +522,264 @@ func WithdrawalToBlockRequestWithdrawal(withdrawals types.Withdrawals) []*capell
 		}
 	}
 	return withdrawalsData
+}
+
+type buildBlockArgs struct {
+	parentHash    common.Hash
+	parentRoot    common.Hash
+	feeRecipient  common.Address
+	txs           types.Transactions
+	random        common.Hash
+	number        uint64
+	gasLimit      uint64
+	timestamp     uint64
+	extraData     []byte
+	baseFeePerGas *big.Int
+	withdrawals   types.Withdrawals
+}
+
+func buildBlock(args buildBlockArgs, chain *core.BlockChain) (*engine.ExecutableData, error) {
+	header := &types.Header{
+		ParentHash: args.parentHash,
+		Coinbase:   args.feeRecipient,
+		Number:     big.NewInt(int64(args.number)),
+		GasLimit:   args.gasLimit,
+		Time:       args.timestamp,
+		Extra:      args.extraData,
+		BaseFee:    args.baseFeePerGas,
+		MixDigest:  args.random,
+	}
+
+	err := chain.Engine().Prepare(chain, header)
+	if err != nil {
+		return nil, err
+	}
+
+	statedb, err := chain.StateAt(args.parentRoot)
+	if err != nil {
+		return nil, err
+	}
+
+	receipts := make([]*types.Receipt, 0, len(args.txs))
+	gasPool := core.GasPool(header.GasLimit)
+	vmConfig := vm.Config{}
+	for i, tx := range args.txs {
+		statedb.SetTxContext(tx.Hash(), i)
+		receipt, err := core.ApplyTransaction(chain.Config(), chain, &args.feeRecipient, &gasPool, statedb, header, tx, &header.GasUsed, vmConfig, nil)
+		if err != nil {
+			return nil, err
+		}
+		receipts = append(receipts, receipt)
+	}
+
+	block, err := chain.Engine().FinalizeAndAssemble(chain, header, statedb, args.txs, nil, receipts, args.withdrawals)
+	if err != nil {
+		return nil, err
+	}
+
+	execData := engine.BlockToExecutableData(block, common.Big0, nil, nil, nil)
+
+	return execData.ExecutionPayload, nil
+}
+
+func executableDataToBlockValidationRequest(execData *engine.ExecutableData, proposer common.Address, value *big.Int, withdrawalsRoot common.Hash) (*BuilderBlockValidationRequestV2, error) {
+	payload, err := ExecutableDataToExecutionPayloadV2(execData)
+	if err != nil {
+		return nil, err
+	}
+
+	proposerAddr := bellatrix.ExecutionAddress{}
+	copy(proposerAddr[:], proposer.Bytes())
+
+	value256, overflow := uint256.FromBig(value)
+	if overflow {
+		return nil, errors.New("could not convert value to uint256")
+	}
+	blockRequest := &BuilderBlockValidationRequestV2{
+		SubmitBlockRequest: capellaapi.SubmitBlockRequest{
+			Signature: phase0.BLSSignature{},
+			Message: &apiv1.BidTrace{
+				ParentHash:           phase0.Hash32(execData.ParentHash),
+				BlockHash:            phase0.Hash32(execData.BlockHash),
+				ProposerFeeRecipient: proposerAddr,
+				GasLimit:             execData.GasLimit,
+				GasUsed:              execData.GasUsed,
+				Value:                value256,
+			},
+			ExecutionPayload: payload,
+		},
+		RegisteredGasLimit: execData.GasLimit,
+		WithdrawalsRoot:    withdrawalsRoot,
+	}
+	return blockRequest, nil
+}
+
+// This tests payment when the proposer fee recipient is the same as the coinbase
+func TestValidateBuilderSubmissionV2_CoinbasePaymentDefault(t *testing.T) {
+	genesis, preMergeBlocks := generatePreMergeChain(20)
+	lastBlock := preMergeBlocks[len(preMergeBlocks)-1]
+	time := lastBlock.Time() + 5
+	genesis.Config.ShanghaiTime = &time
+	n, ethservice := startEthService(t, genesis, preMergeBlocks)
+	ethservice.Merger().ReachTTD()
+	defer n.Close()
+
+	api := NewBlockValidationAPI(ethservice, nil, false)
+
+	baseFee := eip1559.CalcBaseFee(ethservice.BlockChain().Config(), lastBlock.Header())
+	txs := make(types.Transactions, 0)
+
+	statedb, _ := ethservice.BlockChain().StateAt(lastBlock.Root())
+	nonce := statedb.GetNonce(testAddr)
+	signer := types.LatestSigner(ethservice.BlockChain().Config())
+
+	expectedProfit := uint64(0)
+
+	tx1, _ := types.SignTx(types.NewTransaction(nonce, common.Address{0x16}, big.NewInt(10), 21000, big.NewInt(2*baseFee.Int64()), nil), signer, testKey)
+	txs = append(txs, tx1)
+	expectedProfit += 21000 * baseFee.Uint64()
+
+	// this tx will use 56996 gas
+	tx2, _ := types.SignTx(types.NewContractCreation(nonce+1, new(big.Int), 1000000, big.NewInt(2*baseFee.Int64()), logCode), signer, testKey)
+	txs = append(txs, tx2)
+	expectedProfit += 56996 * baseFee.Uint64()
+
+	tx3, _ := types.SignTx(types.NewTransaction(nonce+2, testAddr, big.NewInt(10), 21000, baseFee, nil), signer, testKey)
+	txs = append(txs, tx3)
+
+	// this transaction sends 7 wei to the proposer fee recipient, this should count as a profit
+	tx4, _ := types.SignTx(types.NewTransaction(nonce+3, testValidatorAddr, big.NewInt(7), 21000, baseFee, nil), signer, testKey)
+	txs = append(txs, tx4)
+	expectedProfit += 7
+
+	// transactions from the proposer fee recipient
+
+	// this transaction sends 3 wei from the proposer fee recipient to the proposer fee recipient and pays tip of baseFee
+	// this should not count as a profit (because balance does not increase)
+	// Base fee is burned from the balance so it should decrease decreasing the profit.
+	tx5, _ := types.SignTx(types.NewTransaction(0, testValidatorAddr, big.NewInt(3), 21000, big.NewInt(2*baseFee.Int64()), nil), signer, testValidatorKey)
+	txs = append(txs, tx5)
+	expectedProfit -= 21000 * baseFee.Uint64()
+
+	// this tx sends 11 wei from the proposer fee recipient to some other address and burns 21000*baseFee
+	// this should count as negative profit
+	tx6, _ := types.SignTx(types.NewTransaction(1, testAddr, big.NewInt(11), 21000, baseFee, nil), signer, testValidatorKey)
+	txs = append(txs, tx6)
+	expectedProfit -= 11 + 21000*baseFee.Uint64()
+
+	withdrawals := []*types.Withdrawal{
+		{
+			Index:     0,
+			Validator: 1,
+			Amount:    100,
+			Address:   testAddr,
+		},
+		{
+			Index:     1,
+			Validator: 1,
+			Amount:    100,
+			Address:   testAddr,
+		},
+	}
+	withdrawalsRoot := types.DeriveSha(types.Withdrawals(withdrawals), trie.NewStackTrie(nil))
+
+	buildBlockArgs := buildBlockArgs{
+		parentHash:    lastBlock.Hash(),
+		parentRoot:    lastBlock.Root(),
+		feeRecipient:  testValidatorAddr,
+		txs:           txs,
+		random:        common.Hash{},
+		number:        lastBlock.NumberU64() + 1,
+		gasLimit:      lastBlock.GasLimit(),
+		timestamp:     lastBlock.Time() + 5,
+		extraData:     nil,
+		baseFeePerGas: baseFee,
+		withdrawals:   withdrawals,
+	}
+
+	execData, err := buildBlock(buildBlockArgs, ethservice.BlockChain())
+	require.NoError(t, err)
+
+	value := big.NewInt(int64(expectedProfit))
+
+	req, err := executableDataToBlockValidationRequest(execData, testValidatorAddr, value, withdrawalsRoot)
+	require.NoError(t, err)
+	require.NoError(t, api.ValidateBuilderSubmissionV2(req))
+
+	// try to claim less profit than expected, should work
+	value.SetUint64(expectedProfit - 1)
+
+	req, err = executableDataToBlockValidationRequest(execData, testValidatorAddr, value, withdrawalsRoot)
+	require.NoError(t, err)
+	require.NoError(t, api.ValidateBuilderSubmissionV2(req))
+
+	// try to claim more profit than expected, should fail
+	value.SetUint64(expectedProfit + 1)
+
+	req, err = executableDataToBlockValidationRequest(execData, testValidatorAddr, value, withdrawalsRoot)
+	require.NoError(t, err)
+	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(req), "payment")
+}
+
+func TestValidateBuilderSubmissionV2_Blocklist(t *testing.T) {
+	genesis, preMergeBlocks := generatePreMergeChain(20)
+	lastBlock := preMergeBlocks[len(preMergeBlocks)-1]
+	time := lastBlock.Time() + 5
+	genesis.Config.ShanghaiTime = &time
+	n, ethservice := startEthService(t, genesis, preMergeBlocks)
+	ethservice.Merger().ReachTTD()
+	defer n.Close()
+
+	accessVerifier := &AccessVerifier{
+		blacklistedAddresses: map[common.Address]struct{}{
+			testAddr: {},
+		},
+	}
+
+	apiWithBlock := NewBlockValidationAPI(ethservice, accessVerifier, false)
+	apiNoBlock := NewBlockValidationAPI(ethservice, nil, false)
+
+	baseFee := eip1559.CalcBaseFee(ethservice.BlockChain().Config(), lastBlock.Header())
+	blockedTxs := make(types.Transactions, 0)
+
+	statedb, _ := ethservice.BlockChain().StateAt(lastBlock.Root())
+
+	signer := types.LatestSigner(ethservice.BlockChain().Config())
+
+	nonce := statedb.GetNonce(testAddr)
+	tx, _ := types.SignTx(types.NewTransaction(nonce, common.Address{0x16}, big.NewInt(10), 21000, baseFee, nil), signer, testKey)
+	blockedTxs = append(blockedTxs, tx)
+
+	nonce = statedb.GetNonce(testBuilderAddr)
+	tx, _ = types.SignTx(types.NewTransaction(nonce, testAddr, big.NewInt(10), 21000, baseFee, nil), signer, testBuilderKey)
+	blockedTxs = append(blockedTxs, tx)
+
+	withdrawalsRoot := types.DeriveSha(types.Withdrawals(nil), trie.NewStackTrie(nil))
+
+	for i, tx := range blockedTxs {
+		t.Run(fmt.Sprintf("tx %d", i), func(t *testing.T) {
+			buildBlockArgs := buildBlockArgs{
+				parentHash:    lastBlock.Hash(),
+				parentRoot:    lastBlock.Root(),
+				feeRecipient:  testValidatorAddr,
+				txs:           types.Transactions{tx},
+				random:        common.Hash{},
+				number:        lastBlock.NumberU64() + 1,
+				gasLimit:      lastBlock.GasLimit(),
+				timestamp:     lastBlock.Time() + 5,
+				extraData:     nil,
+				baseFeePerGas: baseFee,
+				withdrawals:   nil,
+			}
+
+			execData, err := buildBlock(buildBlockArgs, ethservice.BlockChain())
+			require.NoError(t, err)
+
+			req, err := executableDataToBlockValidationRequest(execData, testValidatorAddr, common.Big0, withdrawalsRoot)
+			require.NoError(t, err)
+
+			require.NoError(t, apiNoBlock.ValidateBuilderSubmissionV2(req))
+			require.ErrorContains(t, apiWithBlock.ValidateBuilderSubmissionV2(req), "blacklisted")
+		})
+	}
 }

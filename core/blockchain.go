@@ -2473,7 +2473,11 @@ func (bc *BlockChain) SetBlockValidatorAndProcessorForTesting(v Validator, p Pro
 	bc.processor = p
 }
 
-func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Address, expectedProfit *big.Int, registeredGasLimit uint64, vmConfig vm.Config) error {
+// ValidatePayload validates the payload of the block.
+// It returns nil if the payload is valid, otherwise it returns an error.
+//   - `forceLastTxPayment` if set to true, proposer payment is assumed to be in the last transaction of the block
+//     otherwise we use proposer balance changes after the block to calculate proposer payment (see details in the code)
+func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Address, expectedProfit *big.Int, registeredGasLimit uint64, vmConfig vm.Config, forceLastTxPayment bool) error {
 	header := block.Header()
 	if err := bc.engine.VerifyHeader(bc, header); err != nil {
 		return err
@@ -2506,10 +2510,15 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 	// and dangling prefetcher, without defering each and holding on live refs.
 	defer statedb.StopPrefetcher()
 
+	feeRecipientBalanceBefore := new(big.Int).Set(statedb.GetBalance(feeRecipient))
+
 	receipts, _, usedGas, err := bc.processor.Process(block, statedb, vmConfig)
 	if err != nil {
 		return err
 	}
+
+	feeRecipientBalanceDelta := new(big.Int).Set(statedb.GetBalance(feeRecipient))
+	feeRecipientBalanceDelta.Sub(feeRecipientBalanceDelta, feeRecipientBalanceBefore)
 
 	if bc.Config().IsShanghai(header.Number, header.Time) {
 		if header.WithdrawalsHash == nil {
@@ -2531,6 +2540,18 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 
 	if err := bc.validator.ValidateState(block, statedb, receipts, usedGas); err != nil {
 		return err
+	}
+
+	// Validate proposer payment
+
+	if !forceLastTxPayment {
+		if feeRecipientBalanceDelta.Cmp(expectedProfit) >= 0 {
+			if feeRecipientBalanceDelta.Cmp(expectedProfit) > 0 {
+				log.Warn("builder claimed profit is lower than calculated profit", "expected", expectedProfit, "actual", feeRecipientBalanceDelta)
+			}
+			return nil
+		}
+		log.Warn("proposer payment not enough, trying last tx payment validation", "expected", expectedProfit, "actual", feeRecipientBalanceDelta)
 	}
 
 	if len(receipts) == 0 {
