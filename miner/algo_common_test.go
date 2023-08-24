@@ -10,7 +10,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
@@ -218,8 +217,6 @@ func newEnvironment(data chainData, state *state.StateDB, coinbase common.Addres
 		state:     state,
 		gasPool:   new(core.GasPool).AddGas(gasLimit),
 		coinbase:  coinbase,
-		ancestors: mapset.NewSet[common.Hash](),
-		family:    mapset.NewSet[common.Hash](),
 		header: &types.Header{
 			Coinbase:   coinbase,
 			ParentHash: currentBlock.Hash(),
@@ -229,7 +226,6 @@ func newEnvironment(data chainData, state *state.StateDB, coinbase common.Addres
 			BaseFee:    baseFee,
 			Difficulty: big.NewInt(0),
 		},
-		uncles: make(map[common.Hash]*types.Header),
 		profit: new(big.Int),
 	}
 }

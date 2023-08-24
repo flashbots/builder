@@ -18,9 +18,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/consensus/misc"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/eth"
@@ -72,14 +73,14 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	nonce := statedb.GetNonce(testAddr)
 
 	tx1, _ := types.SignTx(types.NewTransaction(nonce, common.Address{0x16}, big.NewInt(10), 21000, big.NewInt(2*params.InitialBaseFee), nil), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
-	ethservice.TxPool().AddLocal(tx1)
+	ethservice.TxPool().Add([]*txpool.Transaction{{Tx: tx1}}, true, true, false)
 
 	cc, _ := types.SignTx(types.NewContractCreation(nonce+1, new(big.Int), 1000000, big.NewInt(2*params.InitialBaseFee), logCode), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
-	ethservice.TxPool().AddLocal(cc)
+	ethservice.TxPool().Add([]*txpool.Transaction{{Tx: cc}}, true, true, false)
 
-	baseFee := misc.CalcBaseFee(params.AllEthashProtocolChanges, preMergeBlocks[len(preMergeBlocks)-1].Header())
+	baseFee := eip1559.CalcBaseFee(params.AllEthashProtocolChanges, preMergeBlocks[len(preMergeBlocks)-1].Header())
 	tx2, _ := types.SignTx(types.NewTransaction(nonce+2, testAddr, big.NewInt(10), 21000, baseFee, nil), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
-	ethservice.TxPool().AddLocal(tx2)
+	ethservice.TxPool().Add([]*txpool.Transaction{{Tx: tx2}}, true, true, false)
 
 	execData, err := assembleBlock(api, parent.Hash(), &engine.PayloadAttributes{
 		Timestamp:             parent.Time() + 5,
@@ -185,14 +186,14 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	nonce := statedb.GetNonce(testAddr)
 
 	tx1, _ := types.SignTx(types.NewTransaction(nonce, common.Address{0x16}, big.NewInt(10), 21000, big.NewInt(2*params.InitialBaseFee), nil), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
-	ethservice.TxPool().AddLocal(tx1)
+	ethservice.TxPool().Add([]*txpool.Transaction{{Tx: tx1}}, true, true, false)
 
 	cc, _ := types.SignTx(types.NewContractCreation(nonce+1, new(big.Int), 1000000, big.NewInt(2*params.InitialBaseFee), logCode), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
-	ethservice.TxPool().AddLocal(cc)
+	ethservice.TxPool().Add([]*txpool.Transaction{{Tx: cc}}, true, true, false)
 
-	baseFee := misc.CalcBaseFee(params.AllEthashProtocolChanges, preMergeBlocks[len(preMergeBlocks)-1].Header())
+	baseFee := eip1559.CalcBaseFee(params.AllEthashProtocolChanges, preMergeBlocks[len(preMergeBlocks)-1].Header())
 	tx2, _ := types.SignTx(types.NewTransaction(nonce+2, testAddr, big.NewInt(10), 21000, baseFee, nil), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
-	ethservice.TxPool().AddLocal(tx2)
+	ethservice.TxPool().Add([]*txpool.Transaction{{Tx: tx2}}, true, true, false)
 
 	withdrawals := []*types.Withdrawal{
 		{

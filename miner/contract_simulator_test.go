@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
@@ -136,13 +137,7 @@ func TestSimulatorState(t *testing.T) {
 	testParticipants := NewTestParticipants(5, 5)
 	alloc = testParticipants.AppendToGenesisAlloc(alloc)
 
-	var genesis = core.Genesis{
-		Config:   &chainConfig,
-		Alloc:    alloc,
-		GasLimit: 30000000,
-	}
-
-	w, b := newTestWorkerGenesis(t, &chainConfig, engine, db, genesis, 0)
+	w, b := newTestWorker(t, &chainConfig, engine, db, 0)
 	w.setEtherbase(crypto.PubkeyToAddress(testConfig.BuilderTxSigningKey.PublicKey))
 
 	simBackend := backends.NewSimulatedBackendChain(db, b.chain)
@@ -196,7 +191,12 @@ func TestSimulatorState(t *testing.T) {
 	}
 
 	buildBlock := func(txs []*types.Transaction, requireTx int) *types.Block {
-		errs := b.txPool.AddLocals(txs)
+		// TODO: deneb support
+		txpoolTxs := make([]*txpool.Transaction, len(txs))
+		for i, tx := range txs {
+			txpoolTxs[i] = &txpool.Transaction{Tx: tx}
+		}
+		errs := b.txPool.Add(txpoolTxs, true, true, false)
 		for _, err := range errs {
 			require.NoError(t, err)
 		}

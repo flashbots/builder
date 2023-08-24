@@ -17,6 +17,12 @@ type multiWorker struct {
 	regularWorker *worker
 }
 
+func (w *multiWorker) setSyncing(syncing bool) {
+	for _, worker := range w.workers {
+		worker.syncing.Store(syncing)
+	}
+}
+
 func (w *multiWorker) stop() {
 	for _, worker := range w.workers {
 		worker.stop()
@@ -71,18 +77,6 @@ func (w *multiWorker) setRecommitInterval(interval time.Duration) {
 func (w *multiWorker) setEtherbase(addr common.Address) {
 	for _, worker := range w.workers {
 		worker.setEtherbase(addr)
-	}
-}
-
-func (w *multiWorker) enablePreseal() {
-	for _, worker := range w.workers {
-		worker.enablePreseal()
-	}
-}
-
-func (w *multiWorker) disablePreseal() {
-	for _, worker := range w.workers {
-		worker.disablePreseal()
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
@@ -187,7 +188,7 @@ var algoTests = []*algoTest{
 		},
 		Bundles: func(acc accByIndex, sign signByIndex, txs txByAccIndexAndNonce) []*bundle {
 			return []*bundle{
-				{Txs: types.Transactions{txs(0, 0)}},
+				{Txs: types.Transactions{txs(0, 0).Tx}},
 			}
 		},
 		WantProfit:          big.NewInt(50_000),
@@ -253,16 +254,25 @@ func BenchmarkAlgo(b *testing.B) {
 					}
 
 					b.ResetTimer()
-					var txPoolCopy map[common.Address]types.Transactions
+					var txPoolCopy map[common.Address][]*txpool.LazyTransaction
 					for i := 0; i < b.N; i++ {
 						// Note: copy is needed as the greedyAlgo modifies the txPool.
 						func() {
 							b.StopTimer()
 							defer b.StartTimer()
 
-							txPoolCopy = make(map[common.Address]types.Transactions, len(txPool))
+							txPoolCopy = make(map[common.Address][]*txpool.LazyTransaction, len(txPool))
 							for addr, txs := range txPool {
-								txPoolCopy[addr] = txs
+								for _, tx := range txs {
+									txPoolCopy[addr] = append(txPoolCopy[addr], &txpool.LazyTransaction{
+										Pool: 	tx.Pool,
+										Hash:      tx.Hash,
+										Tx:        tx.Tx,
+										Time:      tx.Time,
+										GasFeeCap: tx.GasFeeCap,
+										GasTipCap: tx.GasTipCap,
+									})
+								}
 							}
 						}()
 
@@ -284,7 +294,7 @@ func BenchmarkAlgo(b *testing.B) {
 func runAlgoTest(
 	algo AlgoType, algoConf algorithmConfig,
 	config *params.ChainConfig, alloc core.GenesisAlloc,
-	txPool map[common.Address]types.Transactions, bundles []types.SimulatedBundle, header *types.Header, scale int,
+	txPool map[common.Address][]*txpool.LazyTransaction, bundles []types.SimulatedBundle, header *types.Header, scale int,
 ) (gotProfit *big.Int, err error) {
 	var (
 		statedb, chData = genTestSetupWithAlloc(config, alloc)
@@ -371,7 +381,7 @@ func (test *algoTest) setDefaults() {
 //
 // The scale parameter can be used to scale up the number of the provided scenario
 // of the algoTest inside the returned genesis alloc and tx pool.
-func (test *algoTest) build(signer types.Signer, scale int) (alloc core.GenesisAlloc, txPool map[common.Address]types.Transactions, bundles []types.MevBundle, err error) {
+func (test *algoTest) build(signer types.Signer, scale int) (alloc core.GenesisAlloc, txPool map[common.Address][]*txpool.LazyTransaction, bundles []types.MevBundle, err error) {
 	test.once.Do(test.setDefaults)
 
 	// generate accounts
@@ -380,7 +390,7 @@ func (test *algoTest) build(signer types.Signer, scale int) (alloc core.GenesisA
 
 	// build alloc
 	alloc = make(core.GenesisAlloc, n*scale)
-	txPool = make(map[common.Address]types.Transactions)
+	txPool = make(map[common.Address][]*txpool.LazyTransaction)
 	bundles = make([]types.MevBundle, 0)
 
 	for s := 0; s < scale; s++ {
@@ -400,9 +410,16 @@ func (test *algoTest) build(signer types.Signer, scale int) (alloc core.GenesisA
 					panic(fmt.Sprintf("invalid account %d, should be in [0, %d]", i, n-1))
 				}
 
-				signedTxs := make(types.Transactions, len(txs))
+				signedTxs := make([]*txpool.LazyTransaction, len(txs))
 				for j, tx := range txs {
-					signedTxs[j] = types.MustSignNewTx(prvs[s*n+i], signer, tx)
+					signedTx := types.MustSignNewTx(prvs[s*n+i], signer, tx)
+					signedTxs[j] = &txpool.LazyTransaction{
+						Hash:      signedTx.Hash(),
+						Tx:        &txpool.Transaction{Tx: signedTx},
+						Time:      signedTx.Time(),
+						GasFeeCap: signedTx.GasFeeCap(),
+						GasTipCap: signedTx.GasTipCap(),
+					}
 				}
 				txPool[addrs[s*n+i]] = signedTxs
 			}
@@ -450,10 +467,10 @@ func signByIndexFunc(prvs []*ecdsa.PrivateKey, signer types.Signer) signByIndex 
 
 // txByAccIndexAndNonce returns the transaction with the given nonce of the
 // genesis account with the given index.
-type txByAccIndexAndNonce func(int, uint64) *types.Transaction
+type txByAccIndexAndNonce func(int, uint64) *txpool.Transaction
 
-func txByAccIndexAndNonceFunc(accs []common.Address, txPool map[common.Address]types.Transactions) txByAccIndexAndNonce {
-	return func(i int, nonce uint64) *types.Transaction {
+func txByAccIndexAndNonceFunc(accs []common.Address, txPool map[common.Address][]*txpool.LazyTransaction) txByAccIndexAndNonce {
+	return func(i int, nonce uint64) *txpool.Transaction {
 		if 0 > i || i >= len(accs) {
 			panic(fmt.Sprintf("invalid account %d, should be in [0, %d]", i, len(accs)-1))
 		}
@@ -462,8 +479,8 @@ func txByAccIndexAndNonceFunc(accs []common.Address, txPool map[common.Address]t
 
 		// q&d: iterate to find nonce
 		for _, tx := range txs {
-			if tx.Nonce() == nonce {
-				return tx
+			if tx.Tx.Tx.Nonce() == nonce {
+				return tx.Tx
 			}
 		}
 		panic(fmt.Sprintf("tx for account %d with nonce %d does not exist", i, nonce))

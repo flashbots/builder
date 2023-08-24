@@ -186,16 +186,22 @@ func (miner *Miner) update() {
 					shouldStart = true
 					log.Info("Mining aborted due to sync")
 				}
+				miner.worker.setSyncing(true)
+
 			case downloader.FailedEvent:
 				canStart = true
 				if shouldStart {
 					miner.worker.start()
 				}
+				miner.worker.setSyncing(false)
+
 			case downloader.DoneEvent:
 				canStart = true
 				if shouldStart {
 					miner.worker.start()
 				}
+				miner.worker.setSyncing(false)
+
 				// Stop reacting to downloader events
 				events.Unsubscribe()
 			}
@@ -251,12 +257,14 @@ func (miner *Miner) SetRecommitInterval(interval time.Duration) {
 	miner.worker.setRecommitInterval(interval)
 }
 
-// Pending returns the currently pending block and associated state.
+// Pending returns the currently pending block and associated state. The returned
+// values can be nil in case the pending block is not initialized
 func (miner *Miner) Pending() (*types.Block, *state.StateDB) {
 	return miner.worker.regularWorker.pending()
 }
 
-// PendingBlock returns the currently pending block.
+// PendingBlock returns the currently pending block. The returned block can be
+// nil in case the pending block is not initialized.
 //
 // Note, to access both the pending block and the pending state
 // simultaneously, please use Pending(), as the pending state can
@@ -266,6 +274,7 @@ func (miner *Miner) PendingBlock() *types.Block {
 }
 
 // PendingBlockAndReceipts returns the currently pending block and corresponding receipts.
+// The returned values can be nil in case the pending block is not initialized.
 func (miner *Miner) PendingBlockAndReceipts() (*types.Block, types.Receipts) {
 	return miner.worker.pendingBlockAndReceipts()
 }
@@ -278,23 +287,6 @@ func (miner *Miner) SetEtherbase(addr common.Address) {
 // For pre-1559 blocks, it sets the ceiling.
 func (miner *Miner) SetGasCeil(ceil uint64) {
 	miner.worker.setGasCeil(ceil)
-}
-
-// EnablePreseal turns on the preseal mining feature. It's enabled by default.
-// Note this function shouldn't be exposed to API, it's unnecessary for users
-// (miners) to actually know the underlying detail. It's only for outside project
-// which uses this library.
-func (miner *Miner) EnablePreseal() {
-	miner.worker.enablePreseal()
-}
-
-// DisablePreseal turns off the preseal mining feature. It's necessary for some
-// fake consensus engine which can seal blocks instantaneously.
-// Note this function shouldn't be exposed to API, it's unnecessary for users
-// (miners) to actually know the underlying detail. It's only for outside project
-// which uses this library.
-func (miner *Miner) DisablePreseal() {
-	miner.worker.disablePreseal()
 }
 
 // SubscribePendingLogs starts delivering logs from pending transactions

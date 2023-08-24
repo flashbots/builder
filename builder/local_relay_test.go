@@ -144,7 +144,7 @@ func TestGetHeader(t *testing.T) {
 		ExtraData:     []byte{},
 	}
 
-	forkchoiceBlock, err := engine.ExecutableDataToBlock(*forkchoiceData)
+	forkchoiceBlock, err := engine.ExecutableDataToBlock(*forkchoiceData, nil)
 	require.NoError(t, err)
 	forkchoiceBlockProfit := big.NewInt(10)
 
@@ -205,7 +205,7 @@ func TestGetPayload(t *testing.T) {
 		ExtraData:     []byte{},
 	}
 
-	forkchoiceBlock, err := engine.ExecutableDataToBlock(*forkchoiceData)
+	forkchoiceBlock, err := engine.ExecutableDataToBlock(*forkchoiceData, nil)
 	require.NoError(t, err)
 	forkchoiceBlockProfit := big.NewInt(10)
 
