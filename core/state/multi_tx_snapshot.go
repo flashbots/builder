@@ -110,6 +110,10 @@ func (s MultiTxSnapshot) Copy() MultiTxSnapshot {
 		newSnapshot.accountNotDirty[address] = struct{}{}
 	}
 
+	for address := range s.touchedAccounts {
+		newSnapshot.touchedAccounts[address] = struct{}{}
+	}
+
 	return newSnapshot
 }
 
@@ -167,7 +171,8 @@ func (s *MultiTxSnapshot) Equal(other *MultiTxSnapshot) bool {
 		reflect.DeepEqual(s.accountSuicided, other.accountSuicided) &&
 		reflect.DeepEqual(s.accountDeleted, other.accountDeleted) &&
 		reflect.DeepEqual(s.accountNotPending, other.accountNotPending) &&
-		reflect.DeepEqual(s.accountNotDirty, other.accountNotDirty)
+		reflect.DeepEqual(s.accountNotDirty, other.accountNotDirty) &&
+		reflect.DeepEqual(s.touchedAccounts, other.touchedAccounts)
 }
 
 // updateFromJournal updates the snapshot with the changes from the journal.

@@ -58,6 +58,10 @@ contract StateFuzzTest {
     function changeStorage(bytes32 key, bytes memory newValue) public {
         storageData[key] = newValue;
     }
+	
+	function touchContract(address contractAddress) public view returns (bytes32) {
+		return extcodehash(contractAddress);
+	}
 }
 `
 
@@ -82,24 +86,25 @@ func changeBalanceFuzzTestContract(nonce uint64, to, address common.Address, new
 	}, nil
 }
 
-func resetObjectFuzzTestContract(nonce uint64, address common.Address, key [32]byte) (types.TxData, error) {
+func changeStorageFuzzTestContract(chainID *big.Int, nonce uint64, to common.Address, key [32]byte, value []byte) (types.TxData, error) {
 	abi, err := StatefuzztestMetaData.GetAbi()
 	if err != nil {
 		return nil, err
 	}
 
-	data, err := abi.Pack("resetObject", key)
+	data, err := abi.Pack("changeStorage", key, value)
 	if err != nil {
 		return nil, err
 	}
 
-	return &types.LegacyTx{
-		Nonce:    nonce,
-		GasPrice: big.NewInt(1),
-		Gas:      10_000_000,
-		To:       (*common.Address)(address[:]),
-		Value:    big.NewInt(0),
-		Data:     data,
+	return &types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		Gas:       100_000,
+		GasFeeCap: big.NewInt(1),
+		To:        (*common.Address)(to[:]),
+		Value:     big.NewInt(0),
+		Data:      data,
 	}, nil
 }
 
@@ -125,6 +130,27 @@ func createObjectFuzzTestContract(chainID *big.Int, nonce uint64, to common.Addr
 	}, nil
 }
 
+func resetObjectFuzzTestContract(nonce uint64, address common.Address, key [32]byte) (types.TxData, error) {
+	abi, err := StatefuzztestMetaData.GetAbi()
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := abi.Pack("resetObject", key)
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.LegacyTx{
+		Nonce:    nonce,
+		GasPrice: big.NewInt(1),
+		Gas:      10_000_000,
+		To:       (*common.Address)(address[:]),
+		Value:    big.NewInt(0),
+		Data:     data,
+	}, nil
+}
+
 func selfDestructFuzzTestContract(chainID *big.Int, nonce uint64, to common.Address) (types.TxData, error) {
 	abi, err := StatefuzztestMetaData.GetAbi()
 	if err != nil {
@@ -140,28 +166,6 @@ func selfDestructFuzzTestContract(chainID *big.Int, nonce uint64, to common.Addr
 		ChainID:   chainID,
 		Nonce:     nonce,
 		Gas:       500_000,
-		GasFeeCap: big.NewInt(1),
-		To:        (*common.Address)(to[:]),
-		Value:     big.NewInt(0),
-		Data:      data,
-	}, nil
-}
-
-func changeStorageFuzzTestContract(chainID *big.Int, nonce uint64, to common.Address, key [32]byte, value []byte) (types.TxData, error) {
-	abi, err := StatefuzztestMetaData.GetAbi()
-	if err != nil {
-		return nil, err
-	}
-
-	data, err := abi.Pack("changeStorage", key, value)
-	if err != nil {
-		return nil, err
-	}
-
-	return &types.DynamicFeeTx{
-		ChainID:   chainID,
-		Nonce:     nonce,
-		Gas:       100_000,
 		GasFeeCap: big.NewInt(1),
 		To:        (*common.Address)(to[:]),
 		Value:     big.NewInt(0),
