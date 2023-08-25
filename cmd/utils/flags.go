@@ -370,7 +370,6 @@ var (
 		Value:    ethconfig.Defaults.TxPool.Lifetime,
 		Category: flags.TxPoolCategory,
 	}
-
 	TxPoolPrivateLifetimeFlag = &cli.DurationFlag{
 		Name:     "txpool.privatelifetime",
 		Usage:    "Maximum amount of time private transactions are withheld from public broadcasting",

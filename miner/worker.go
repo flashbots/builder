@@ -834,9 +834,6 @@ func (w *worker) commitTransaction(env *environment, tx *txpool.Transaction) ([]
 	envGasUsed := env.header.GasUsed
 	stateDB := env.state
 
-	// It's important to copy then .SetTxContext() - don't reorder.
-	stateDB.SetTxContext(tx.Tx.Hash(), env.tcount)
-
 	snapshot := stateDB.Snapshot()
 
 	gasPrice, err := tx.Tx.EffectiveGasTip(env.header.BaseFee)
@@ -913,6 +910,9 @@ func (w *worker) commitBundle(env *environment, txs []*txpool.Transaction, inter
 			return errCouldNotApplyTransaction
 		}
 
+		// It's important to copy then .SetTxContext() - don't reorder.
+		env.state.SetTxContext(tx.Tx.Hash(), env.tcount)
+		
 		logs, err := w.commitTransaction(env, tx)
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):

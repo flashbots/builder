@@ -39,7 +39,7 @@ func (h *handler) syncTransactions(p *eth.Peer) {
 	for _, batch := range h.txpool.Pending(false) {
 		for _, tx := range batch {
 			// don't share any transactions marked as private
-			if !h.txpool.IsPrivateTxHash(tx.Tx.Tx.Hash()) {
+			if !h.txpool.IsPrivateTxHash(tx.Resolve().Tx.Hash()) {
 				hashes = append(hashes, tx.Hash)
 			}
 		}
