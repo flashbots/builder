@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
-	capellaapi "github.com/attestantio/go-builder-client/api/capella"
-	apiv1 "github.com/attestantio/go-builder-client/api/v1"
+	builderApiBellatrix "github.com/attestantio/go-builder-client/api/bellatrix"
+	builderApiCapella "github.com/attestantio/go-builder-client/api/capella"
+	builderApiV1 "github.com/attestantio/go-builder-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -46,8 +46,8 @@ type ValidatorData struct {
 }
 
 type IRelay interface {
-	SubmitBlock(msg *bellatrixapi.SubmitBlockRequest, vd ValidatorData) error
-	SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
+	SubmitBlock(msg *builderApiBellatrix.SubmitBlockRequest, vd ValidatorData) error
+	SubmitBlockCapella(msg *builderApiCapella.SubmitBlockRequest, vd ValidatorData) error
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
 	Config() RelayConfig
 	Start() error
@@ -235,7 +235,7 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, 
 		return err
 	}
 
-	blockBidMsg := apiv1.BidTrace{
+	blockBidMsg := builderApiV1.BidTrace{
 		Slot:                 attrs.Slot,
 		ParentHash:           payload.ParentHash,
 		BlockHash:            payload.BlockHash,
@@ -253,7 +253,7 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, 
 		return err
 	}
 
-	blockSubmitReq := bellatrixapi.SubmitBlockRequest{
+	blockSubmitReq := builderApiBellatrix.SubmitBlockRequest{
 		Signature:        signature,
 		Message:          &blockBidMsg,
 		ExecutionPayload: payload,
@@ -294,7 +294,7 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 		return err
 	}
 
-	blockBidMsg := apiv1.BidTrace{
+	blockBidMsg := builderApiV1.BidTrace{
 		Slot:                 attrs.Slot,
 		ParentHash:           payload.ParentHash,
 		BlockHash:            payload.BlockHash,
@@ -312,7 +312,7 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 		return err
 	}
 
-	blockSubmitReq := capellaapi.SubmitBlockRequest{
+	blockSubmitReq := builderApiCapella.SubmitBlockRequest{
 		Signature:        signature,
 		Message:          &blockBidMsg,
 		ExecutionPayload: payload,

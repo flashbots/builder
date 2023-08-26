@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	apiv1 "github.com/attestantio/go-builder-client/api/v1"
+	builderApiV1 "github.com/attestantio/go-builder-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/flashbots/go-boost-utils/bls"
@@ -29,19 +29,19 @@ func (v *ValidatorPrivateData) Sign(msg ssz.ObjWithHashTreeRoot, d phase0.Domain
 	return ssz.SignMessage(msg, d, v.sk)
 }
 
-func (v *ValidatorPrivateData) PrepareRegistrationMessage(feeRecipientHex string) (apiv1.SignedValidatorRegistration, error) {
+func (v *ValidatorPrivateData) PrepareRegistrationMessage(feeRecipientHex string) (builderApiV1.SignedValidatorRegistration, error) {
 	address, err := utils.HexToAddress(feeRecipientHex)
 	if err != nil {
-		return apiv1.SignedValidatorRegistration{}, err
+		return builderApiV1.SignedValidatorRegistration{}, err
 	}
 
 	if len(v.Pk) != 48 {
-		return apiv1.SignedValidatorRegistration{}, errors.New("invalid public key")
+		return builderApiV1.SignedValidatorRegistration{}, errors.New("invalid public key")
 	}
 	pubkey := phase0.BLSPubKey{}
 	copy(pubkey[:], v.Pk)
 
-	msg := &apiv1.ValidatorRegistration{
+	msg := &builderApiV1.ValidatorRegistration{
 		FeeRecipient: address,
 		GasLimit:     1000,
 		Timestamp:    time.Now(),
@@ -49,7 +49,7 @@ func (v *ValidatorPrivateData) PrepareRegistrationMessage(feeRecipientHex string
 	}
 	signature, err := v.Sign(msg, ssz.DomainBuilder)
 	if err != nil {
-		return apiv1.SignedValidatorRegistration{}, err
+		return builderApiV1.SignedValidatorRegistration{}, err
 	}
-	return apiv1.SignedValidatorRegistration{Message: msg, Signature: signature}, nil
+	return builderApiV1.SignedValidatorRegistration{Message: msg, Signature: signature}, nil
 }

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	apiv1 "github.com/attestantio/go-builder-client/api/v1"
+	builderApiV1 "github.com/attestantio/go-builder-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/beacon/engine"
@@ -102,7 +102,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 	expectedProposerPubkey, err := utils.HexToPubkey(testBeacon.validator.Pk.String())
 	require.NoError(t, err)
 
-	expectedMessage := apiv1.BidTrace{
+	expectedMessage := builderApiV1.BidTrace{
 		Slot:                 uint64(25),
 		ParentHash:           phase0.Hash32{0x02, 0x03},
 		BuilderPubkey:        builder.builderPublicKey,

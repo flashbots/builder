@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/attestantio/go-builder-client/api/bellatrix"
-	"github.com/attestantio/go-builder-client/api/capella"
+	builderApiBellatrix "github.com/attestantio/go-builder-client/api/bellatrix"
+	builderApiCapella "github.com/attestantio/go-builder-client/api/capella"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -41,7 +41,7 @@ func (r *RemoteRelayAggregator) Stop() {
 	}
 }
 
-func (r *RemoteRelayAggregator) SubmitBlock(msg *bellatrix.SubmitBlockRequest, registration ValidatorData) error {
+func (r *RemoteRelayAggregator) SubmitBlock(msg *builderApiBellatrix.SubmitBlockRequest, registration ValidatorData) error {
 	r.registrationsCacheLock.RLock()
 	defer r.registrationsCacheLock.RUnlock()
 
@@ -61,7 +61,7 @@ func (r *RemoteRelayAggregator) SubmitBlock(msg *bellatrix.SubmitBlockRequest, r
 	return nil
 }
 
-func (r *RemoteRelayAggregator) SubmitBlockCapella(msg *capella.SubmitBlockRequest, registration ValidatorData) error {
+func (r *RemoteRelayAggregator) SubmitBlockCapella(msg *builderApiCapella.SubmitBlockRequest, registration ValidatorData) error {
 	r.registrationsCacheLock.RLock()
 	defer r.registrationsCacheLock.RUnlock()
 
