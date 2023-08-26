@@ -93,7 +93,7 @@ type environment struct {
 	gasPool  *core.GasPool  // available gas used to pack transactions
 	coinbase common.Address
 
-	profit    *big.Int
+	profit *big.Int
 
 	header   *types.Header
 	txs      []*types.Transaction
@@ -109,7 +109,7 @@ func (env *environment) copy() *environment {
 		coinbase: env.coinbase,
 		header:   types.CopyHeader(env.header),
 		receipts: copyReceipts(env.receipts),
-		profit:    new(big.Int).Set(env.profit),
+		profit:   new(big.Int).Set(env.profit),
 	}
 	if env.gasPool != nil {
 		gasPool := *env.gasPool
@@ -805,8 +805,8 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		state:    state,
 		coinbase: coinbase,
 		header:   header,
-		profit:    new(big.Int),
-  	}
+		profit:   new(big.Int),
+	}
 	// Keep track of transactions which return errors so they can be removed
 	env.tcount = 0
 	env.gasPool = new(core.GasPool).AddGas(header.GasLimit)
@@ -912,7 +912,7 @@ func (w *worker) commitBundle(env *environment, txs []*txpool.Transaction, inter
 
 		// It's important to copy then .SetTxContext() - don't reorder.
 		env.state.SetTxContext(tx.Tx.Hash(), env.tcount)
-		
+
 		logs, err := w.commitTransaction(env, tx)
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):

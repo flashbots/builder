@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
-	capellaapi "github.com/attestantio/go-builder-client/api/capella"
-	apiv1 "github.com/attestantio/go-builder-client/api/v1"
+	builderApiBellatrix "github.com/attestantio/go-builder-client/api/bellatrix"
+	builderApiCapella "github.com/attestantio/go-builder-client/api/capella"
+	builderApiV1 "github.com/attestantio/go-builder-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -102,9 +102,9 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	copy(proposerAddr[:], testValidatorAddr[:])
 
 	blockRequest := &BuilderBlockValidationRequest{
-		SubmitBlockRequest: bellatrixapi.SubmitBlockRequest{
+		SubmitBlockRequest: builderApiBellatrix.SubmitBlockRequest{
 			Signature: phase0.BLSSignature{},
-			Message: &apiv1.BidTrace{
+			Message: &builderApiV1.BidTrace{
 				ParentHash:           phase0.Hash32(execData.ParentHash),
 				BlockHash:            phase0.Hash32(execData.BlockHash),
 				ProposerFeeRecipient: proposerAddr,
@@ -230,9 +230,9 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	copy(proposerAddr[:], testValidatorAddr.Bytes())
 
 	blockRequest := &BuilderBlockValidationRequestV2{
-		SubmitBlockRequest: capellaapi.SubmitBlockRequest{
+		SubmitBlockRequest: builderApiCapella.SubmitBlockRequest{
 			Signature: phase0.BLSSignature{},
-			Message: &apiv1.BidTrace{
+			Message: &builderApiV1.BidTrace{
 				ParentHash:           phase0.Hash32(execData.ParentHash),
 				BlockHash:            phase0.Hash32(execData.BlockHash),
 				ProposerFeeRecipient: proposerAddr,
@@ -302,7 +302,7 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 }
 
 func updatePayloadHash(t *testing.T, blockRequest *BuilderBlockValidationRequest) {
-	updatedBlock, err := engine.ExecutionPayloadToBlock(blockRequest.ExecutionPayload)
+	updatedBlock, err := engine.ExecutionPayloadV1ToBlock(blockRequest.ExecutionPayload)
 	require.NoError(t, err)
 	copy(blockRequest.Message.BlockHash[:], updatedBlock.Hash().Bytes()[:32])
 }
@@ -596,9 +596,9 @@ func executableDataToBlockValidationRequest(execData *engine.ExecutableData, pro
 		return nil, errors.New("could not convert value to uint256")
 	}
 	blockRequest := &BuilderBlockValidationRequestV2{
-		SubmitBlockRequest: capellaapi.SubmitBlockRequest{
+		SubmitBlockRequest: builderApiCapella.SubmitBlockRequest{
 			Signature: phase0.BLSSignature{},
-			Message: &apiv1.BidTrace{
+			Message: &builderApiV1.BidTrace{
 				ParentHash:           phase0.Hash32(execData.ParentHash),
 				BlockHash:            phase0.Hash32(execData.BlockHash),
 				ProposerFeeRecipient: proposerAddr,

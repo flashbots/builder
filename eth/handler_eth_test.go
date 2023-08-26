@@ -316,7 +316,7 @@ func testSendTransactions(t *testing.T, protocol uint) {
 		insert[nonce] = &txpool.Transaction{Tx: tx}
 	}
 	go handler.txpool.Add(insert, false, false, false) // Need goroutine to not block on feed
-	time.Sleep(250 * time.Millisecond)          // Wait until tx events get out of the system (can't use events, tx broadcaster races with peer join)
+	time.Sleep(250 * time.Millisecond)                 // Wait until tx events get out of the system (can't use events, tx broadcaster races with peer join)
 
 	// Create a source handler to send messages through and a sink peer to receive them
 	p2pSrc, p2pSink := p2p.MsgPipe()

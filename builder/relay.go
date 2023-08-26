@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/attestantio/go-builder-client/api/bellatrix"
-	"github.com/attestantio/go-builder-client/api/capella"
+	builderApiBellatrix "github.com/attestantio/go-builder-client/api/bellatrix"
+	builderApiCapella "github.com/attestantio/go-builder-client/api/capella"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/flashbots/go-boost-utils/utils"
 )
@@ -134,7 +134,7 @@ func (r *RemoteRelay) Start() error {
 
 func (r *RemoteRelay) Stop() {}
 
-func (r *RemoteRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, _ ValidatorData) error {
+func (r *RemoteRelay) SubmitBlock(msg *builderApiBellatrix.SubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
 	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"
 	if r.cancellationsEnabled {
@@ -155,7 +155,7 @@ func (r *RemoteRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, _ Validator
 	return nil
 }
 
-func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData) error {
+func (r *RemoteRelay) SubmitBlockCapella(msg *builderApiCapella.SubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
 
 	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"

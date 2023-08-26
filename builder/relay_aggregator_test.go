@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/attestantio/go-builder-client/api/bellatrix"
-	"github.com/attestantio/go-builder-client/api/capella"
+	builderApiBellatrix "github.com/attestantio/go-builder-client/api/bellatrix"
+	builderApiCapella "github.com/attestantio/go-builder-client/api/capella"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,10 +22,10 @@ type testRelay struct {
 	gvsErr  error
 
 	requestedSlot         uint64
-	submittedMsg          *bellatrix.SubmitBlockRequest
-	submittedMsgCh        chan *bellatrix.SubmitBlockRequest
-	submittedMsgCapella   *capella.SubmitBlockRequest
-	submittedMsgChCapella chan *capella.SubmitBlockRequest
+	submittedMsg          *builderApiBellatrix.SubmitBlockRequest
+	submittedMsgCh        chan *builderApiBellatrix.SubmitBlockRequest
+	submittedMsgCapella   *builderApiCapella.SubmitBlockRequest
+	submittedMsgChCapella chan *builderApiCapella.SubmitBlockRequest
 }
 
 type testRelayAggBackend struct {
@@ -46,7 +46,7 @@ func newTestRelayAggBackend(numRelay int) *testRelayAggBackend {
 	return &testRelayAggBackend{testRelays, ragg}
 }
 
-func (r *testRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, registration ValidatorData) error {
+func (r *testRelay) SubmitBlock(msg *builderApiBellatrix.SubmitBlockRequest, registration ValidatorData) error {
 	if r.submittedMsgCh != nil {
 		select {
 		case r.submittedMsgCh <- msg:
@@ -57,7 +57,7 @@ func (r *testRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, registration 
 	return r.sbError
 }
 
-func (r *testRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, registration ValidatorData) error {
+func (r *testRelay) SubmitBlockCapella(msg *builderApiCapella.SubmitBlockRequest, registration ValidatorData) error {
 	if r.submittedMsgCh != nil {
 		select {
 		case r.submittedMsgChCapella <- msg:
@@ -145,7 +145,7 @@ func TestRemoteRelayAggregator(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// if submitting for unseen VD should error out
-		msg := &bellatrix.SubmitBlockRequest{}
+		msg := &builderApiBellatrix.SubmitBlockRequest{}
 		err = backend.ragg.SubmitBlock(msg, ValidatorData{GasLimit: 40})
 		require.Error(t, err)
 	})
@@ -166,12 +166,12 @@ func TestRemoteRelayAggregator(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// if submitting for unseen VD should error out
-		msg := &bellatrix.SubmitBlockRequest{}
+		msg := &builderApiBellatrix.SubmitBlockRequest{}
 		err = backend.ragg.SubmitBlock(msg, ValidatorData{GasLimit: 40})
 		require.Error(t, err)
 
 		// should submit to the single pirmary if its the only one matching
-		backend.relays[0].submittedMsgCh = make(chan *bellatrix.SubmitBlockRequest, 1)
+		backend.relays[0].submittedMsgCh = make(chan *builderApiBellatrix.SubmitBlockRequest, 1)
 		err = backend.ragg.SubmitBlock(msg, ValidatorData{GasLimit: 10})
 		require.NoError(t, err)
 		select {
@@ -212,9 +212,9 @@ func TestRemoteRelayAggregator(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// should submit to multiple matching relays
-		backend.relays[0].submittedMsgCh = make(chan *bellatrix.SubmitBlockRequest, 1)
-		backend.relays[2].submittedMsgCh = make(chan *bellatrix.SubmitBlockRequest, 1)
-		msg := &bellatrix.SubmitBlockRequest{}
+		backend.relays[0].submittedMsgCh = make(chan *builderApiBellatrix.SubmitBlockRequest, 1)
+		backend.relays[2].submittedMsgCh = make(chan *builderApiBellatrix.SubmitBlockRequest, 1)
+		msg := &builderApiBellatrix.SubmitBlockRequest{}
 		err = backend.ragg.SubmitBlock(msg, ValidatorData{GasLimit: 10})
 		require.Error(t, err)
 

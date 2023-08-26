@@ -586,8 +586,8 @@ func (envDiff *environmentDiff) commitSBundleInner(
 	var (
 		totalProfit      *big.Int = new(big.Int)
 		refundableProfit *big.Int = new(big.Int)
-		coinbaseDelta  = new(big.Int)
-		coinbaseBefore *big.Int
+		coinbaseDelta             = new(big.Int)
+		coinbaseBefore   *big.Int
 	)
 	// insert body and check it
 	for i, el := range b.Body {
