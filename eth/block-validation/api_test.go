@@ -69,7 +69,7 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	ethservice.Merger().ReachTTD()
 	defer n.Close()
 
-	api := NewBlockValidationAPI(ethservice, nil, false)
+	api := NewBlockValidationAPI(ethservice, nil, true)
 	parent := preMergeBlocks[len(preMergeBlocks)-1]
 
 	api.eth.APIBackend.Miner().SetEtherbase(testValidatorAddr)
@@ -179,7 +179,7 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	ethservice.Merger().ReachTTD()
 	defer n.Close()
 
-	api := NewBlockValidationAPI(ethservice, nil, false)
+	api := NewBlockValidationAPI(ethservice, nil, true)
 	parent := preMergeBlocks[len(preMergeBlocks)-1]
 
 	api.eth.APIBackend.Miner().SetEtherbase(testBuilderAddr)
@@ -623,7 +623,7 @@ func TestValidateBuilderSubmissionV2_CoinbasePaymentDefault(t *testing.T) {
 	ethservice.Merger().ReachTTD()
 	defer n.Close()
 
-	api := NewBlockValidationAPI(ethservice, nil, false)
+	api := NewBlockValidationAPI(ethservice, nil, true)
 
 	baseFee := misc.CalcBaseFee(ethservice.BlockChain().Config(), lastBlock.Header())
 	txs := make(types.Transactions, 0)
@@ -735,8 +735,8 @@ func TestValidateBuilderSubmissionV2_Blocklist(t *testing.T) {
 		},
 	}
 
-	apiWithBlock := NewBlockValidationAPI(ethservice, accessVerifier, false)
-	apiNoBlock := NewBlockValidationAPI(ethservice, nil, false)
+	apiWithBlock := NewBlockValidationAPI(ethservice, accessVerifier, true)
+	apiNoBlock := NewBlockValidationAPI(ethservice, nil, true)
 
 	baseFee := misc.CalcBaseFee(ethservice.BlockChain().Config(), lastBlock.Header())
 	blockedTxs := make(types.Transactions, 0)
