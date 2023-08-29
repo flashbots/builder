@@ -140,9 +140,9 @@ $ geth --help
     --builder.validation_blacklist value
           Path to file containing blacklisted addresses, json-encoded list of strings
           
-    --builder.validation_force_last_tx_payment (default: true)
-          Block validation API will enforce that the last tx in the block is payment to
-          the proposer.
+    --builder.validation_use_balance_diff (default: false)
+          Block validation API will use fee recipient balance difference for profit
+          calculation.
    
     --builder.validator_checks     (default: false)
           Enable the validator checks
