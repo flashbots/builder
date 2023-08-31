@@ -32,6 +32,9 @@ type testEthereumService struct {
 }
 
 func (t *testEthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error {
+	if attrs.ProposerCommitment > 0 {
+		return errors.New("proposeCommitment is not supported in test ethereum service")
+	}
 	sealedBlockCallback(t.testBlock, t.testBlockValue, time.Now(), t.testBundlesMerged, t.testAllBundles, t.testUsedSbundles)
 	return nil
 }
@@ -55,13 +58,14 @@ func (s *EthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, seal
 	// Send a request to generate a full block in the background.
 	// The result can be obtained via the returned channel.
 	args := &miner.BuildPayloadArgs{
-		Parent:       attrs.HeadHash,
-		Timestamp:    uint64(attrs.Timestamp),
-		FeeRecipient: attrs.SuggestedFeeRecipient,
-		GasLimit:     attrs.GasLimit,
-		Random:       attrs.Random,
-		Withdrawals:  attrs.Withdrawals,
-		BlockHook:    sealedBlockCallback,
+		Parent:             attrs.HeadHash,
+		Timestamp:          uint64(attrs.Timestamp),
+		FeeRecipient:       attrs.SuggestedFeeRecipient,
+		GasLimit:           attrs.GasLimit,
+		Random:             attrs.Random,
+		Withdrawals:        attrs.Withdrawals,
+		BlockHook:          sealedBlockCallback,
+		ProposerCommitment: attrs.ProposerCommitment,
 	}
 
 	payload, err := s.eth.Miner().BuildPayload(args)

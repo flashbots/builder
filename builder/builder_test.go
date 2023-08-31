@@ -36,9 +36,10 @@ func TestOnPayloadAttributes(t *testing.T) {
 	feeRecipient, _ := utils.HexToAddress("0xabcf8e0d4e9587369b2301d0790347320302cc00")
 	testRelay := testRelay{
 		gvsVd: ValidatorData{
-			Pubkey:       PubkeyHex(testBeacon.validator.Pk.String()),
-			FeeRecipient: feeRecipient,
-			GasLimit:     10,
+			Pubkey:             PubkeyHex(testBeacon.validator.Pk.String()),
+			FeeRecipient:       feeRecipient,
+			GasLimit:           10,
+			ProposerCommitment: 1,
 		},
 	}
 

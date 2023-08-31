@@ -40,9 +40,10 @@ const (
 type PubkeyHex string
 
 type ValidatorData struct {
-	Pubkey       PubkeyHex
-	FeeRecipient bellatrix.ExecutionAddress
-	GasLimit     uint64
+	Pubkey             PubkeyHex
+	FeeRecipient       bellatrix.ExecutionAddress
+	GasLimit           uint64
+	ProposerCommitment uint64
 }
 
 type IRelay interface {
@@ -413,7 +414,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 		queueBestEntry         blockQueueEntry
 	)
 
-	log.Debug("runBuildingJob", "slot", attrs.Slot, "parent", attrs.HeadHash, "payloadTimestamp", uint64(attrs.Timestamp))
+	log.Debug("runBuildingJob", "slot", attrs.Slot, "parent", attrs.HeadHash, "payloadTimestamp", uint64(attrs.Timestamp), "proposerCommitment", attrs.ProposerCommitment, "gasLimit", attrs.GasLimit)
 
 	submitBestBlock := func() {
 		queueMu.Lock()

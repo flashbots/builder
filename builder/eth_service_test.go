@@ -76,6 +76,31 @@ func startEthService(t *testing.T, genesis *core.Genesis, blocks []*types.Block)
 	return n, ethservice
 }
 
+func TestBuildBlockUnsupportedProposerCommitment(t *testing.T) {
+	genesis, blocks := generatePreMergeChain(10)
+	n, ethservice := startEthService(t, genesis, blocks)
+	defer n.Close()
+
+	parent := ethservice.BlockChain().CurrentBlock()
+
+	testPayloadAttributes := &types.BuilderPayloadAttributes{
+		Timestamp:             hexutil.Uint64(parent.Time + 1),
+		Random:                common.Hash{0x05, 0x10},
+		SuggestedFeeRecipient: common.Address{0x04, 0x10},
+		GasLimit:              uint64(4800000),
+		Slot:                  uint64(25),
+		ProposerCommitment:    1,
+	}
+
+	service := NewEthereumService(ethservice)
+	service.eth.APIBackend.Miner().SetEtherbase(common.Address{0x05, 0x11})
+
+	err := service.BuildBlock(testPayloadAttributes, func(block *types.Block, blockValue *big.Int, _ time.Time, _, _ []types.SimulatedBundle, _ []types.UsedSBundle) {
+	})
+
+	require.ErrorContainsf(t, err, "TOB_ROB_SPLIT not supported yet", "expected error")
+}
+
 func TestBuildBlock(t *testing.T) {
 	genesis, blocks := generatePreMergeChain(10)
 	n, ethservice := startEthService(t, genesis, blocks)
@@ -89,6 +114,7 @@ func TestBuildBlock(t *testing.T) {
 		SuggestedFeeRecipient: common.Address{0x04, 0x10},
 		GasLimit:              uint64(4800000),
 		Slot:                  uint64(25),
+		ProposerCommitment:    0,
 	}
 
 	service := NewEthereumService(ethservice)

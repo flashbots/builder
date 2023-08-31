@@ -87,6 +87,10 @@ func (w *multiWorker) disablePreseal() {
 }
 
 func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
+	if args.ProposerCommitment != 1 {
+		log.Error("TOB_ROB_SPLIT not supported yet")
+		return nil, errors.New("TOB_ROB_SPLIT not supported yet")
+	}
 	// Build the initial version with no transaction included. It should be fast
 	// enough to run. The empty payload can at least make sure there is something
 	// to deliver for not missing slot.
