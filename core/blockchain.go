@@ -2496,9 +2496,9 @@ func (bc *BlockChain) SetBlockValidatorAndProcessorForTesting(v Validator, p Pro
 
 // ValidatePayload validates the payload of the block.
 // It returns nil if the payload is valid, otherwise it returns an error.
-//   - `forceLastTxPayment` if set to true, proposer payment is assumed to be in the last transaction of the block
+//   - `useBalanceDiffProfit` if set to false, proposer payment is assumed to be in the last transaction of the block
 //     otherwise we use proposer balance changes after the block to calculate proposer payment (see details in the code)
-func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Address, expectedProfit *big.Int, registeredGasLimit uint64, vmConfig vm.Config, forceLastTxPayment bool) error {
+func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Address, expectedProfit *big.Int, registeredGasLimit uint64, vmConfig vm.Config, useBalanceDiffProfit bool) error {
 	header := block.Header()
 	if err := bc.engine.VerifyHeader(bc, header, true); err != nil {
 		return err
@@ -2565,7 +2565,7 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 
 	// Validate proposer payment
 
-	if !forceLastTxPayment {
+	if useBalanceDiffProfit {
 		if feeRecipientBalanceDelta.Cmp(expectedProfit) >= 0 {
 			if feeRecipientBalanceDelta.Cmp(expectedProfit) > 0 {
 				log.Warn("builder claimed profit is lower than calculated profit", "expected", expectedProfit, "actual", feeRecipientBalanceDelta)
