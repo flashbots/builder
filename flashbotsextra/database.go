@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 )
@@ -61,7 +62,7 @@ func NewDatabaseService(postgresDSN string) (*DatabaseService, error) {
 		return nil, err
 	}
 
-	insertMissingBundleStmt, err := db.PrepareNamed("insert into bundles (bundle_hash, param_signed_txs, param_block_number, param_timestamp, received_timestamp, param_reverting_tx_hashes, coinbase_diff, total_gas_used, state_block_number, gas_fees, eth_sent_to_coinbase) values (:bundle_hash, :param_signed_txs, :param_block_number, :param_timestamp, :received_timestamp, :param_reverting_tx_hashes, :coinbase_diff, :total_gas_used, :state_block_number, :gas_fees, :eth_sent_to_coinbase) on conflict (bundle_hash, param_block_number) do nothing returning id")
+	insertMissingBundleStmt, err := db.PrepareNamed("insert into bundles (bundle_hash, param_signed_txs, param_block_number, param_timestamp, received_timestamp, param_reverting_tx_hashes, coinbase_diff, total_gas_used, state_block_number, gas_fees, eth_sent_to_coinbase, bundle_uuid) values (:bundle_hash, :param_signed_txs, :param_block_number, :param_timestamp, :received_timestamp, :param_reverting_tx_hashes, :coinbase_diff, :total_gas_used, :state_block_number, :gas_fees, :eth_sent_to_coinbase, :bundle_uuid) on conflict do nothing returning id")
 	if err != nil {
 		return nil, err
 	}
@@ -111,21 +112,22 @@ func (ds *DatabaseService) getBundleIds(ctx context.Context, blockNumber uint64,
 	}
 
 	for _, request := range requestsToMake {
-		query, args, err := sqlx.In("select id, bundle_hash from bundles where param_block_number = ? and bundle_hash in (?)", blockNumber, request)
+		query, args, err := sqlx.In("select id, bundle_hash, bundle_uuid from bundles where param_block_number = ? and bundle_hash in (?)", blockNumber, request)
 		if err != nil {
 			return nil, err
 		}
 		query = ds.db.Rebind(query)
 
 		queryRes := []struct {
-			Id         uint64 `db:"id"`
-			BundleHash string `db:"bundle_hash"`
+			Id         uint64    `db:"id"`
+			BundleHash string    `db:"bundle_hash"`
+			BundleUUID uuid.UUID `db:"bundle_uuid"`
 		}{}
+
 		err = ds.db.SelectContext(ctx, &queryRes, query, args...)
 		if err != nil {
 			return nil, err
 		}
-
 		for _, row := range queryRes {
 			bundleIdsMap[row.BundleHash] = row.Id
 		}
@@ -250,7 +252,7 @@ func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, blockValue *big
 	bidTrace *apiv1.BidTrace) {
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
-
+	
 	bundleIdsMap, err := ds.getBundleIdsAndInsertMissingBundles(ctx, block.NumberU64(), allBundles)
 	if err != nil {
 		log.Error("could not insert bundles", "err", err)

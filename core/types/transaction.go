@@ -19,9 +19,11 @@ package types
 import (
 	"bytes"
 	"container/heap"
+	"encoding/binary"
 	"errors"
 	"io"
 	"math/big"
+	"sort"
 	"sync/atomic"
 	"time"
 
@@ -30,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/google/uuid"
+	"golang.org/x/crypto/sha3"
 )
 
 var (
@@ -782,6 +785,23 @@ type MevBundle struct {
 	MaxTimestamp      uint64
 	RevertingTxHashes []common.Hash
 	Hash              common.Hash
+}
+
+func (b *MevBundle) UniquePayload() []byte {
+	var buf []byte
+	buf = binary.AppendVarint(buf, b.BlockNumber.Int64())
+	buf = append(buf, b.Hash[:]...)
+	sort.Slice(b.RevertingTxHashes, func(i, j int) bool {
+		return bytes.Compare(b.RevertingTxHashes[i][:], b.RevertingTxHashes[j][:]) <= 0
+	})
+	for _, txHash := range b.RevertingTxHashes {
+		buf = append(buf, txHash[:]...)
+	}
+	return buf
+}
+
+func (b *MevBundle) ComputeUUID() uuid.UUID {
+	return uuid.NewHash(sha3.NewLegacyKeccak256(), uuid.Nil, b.UniquePayload(), 5)
 }
 
 func (b *MevBundle) RevertingHash(hash common.Hash) bool {
