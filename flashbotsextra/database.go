@@ -265,7 +265,6 @@ func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, blockValue *big
 	commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle,
 	usedSbundles []types.UsedSBundle,
 	bidTrace *apiv1.BidTrace) {
-
 	var allUUIDBundles = make([]uuidBundle, 0, len(allBundles))
 	for _, bundle := range allBundles {
 		allUUIDBundles = append(allUUIDBundles, uuidBundle{bundle, bundle.OriginalBundle.ComputeUUID()})
