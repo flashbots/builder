@@ -720,6 +720,19 @@ func TestValidateBuilderSubmissionV2_CoinbasePaymentDefault(t *testing.T) {
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(req), "payment")
 }
 
+//func TestBlockAssembler(t *testing.T) {
+//	genesis, preMergeBlocks := generatePreMergeChain(20)
+//	lastBlock := preMergeBlocks[len(preMergeBlocks)-1]
+//	time := lastBlock.Time() + 5
+//	genesis.Config.ShanghaiTime = &time
+//	n, ethservice := startEthService(t, genesis, preMergeBlocks)
+//	ethservice.Merger().ReachTTD()
+//	defer n.Close()
+//
+//	apiNoBlock := NewBlockValidationAPI(ethservice, nil, false)
+//	baseFee := misc.CalcBaseFee(ethservice.BlockChain().Config(), lastBlock.Header())
+//}
+
 func TestValidateBuilderSubmissionV2_Blocklist(t *testing.T) {
 	genesis, preMergeBlocks := generatePreMergeChain(20)
 	lastBlock := preMergeBlocks[len(preMergeBlocks)-1]

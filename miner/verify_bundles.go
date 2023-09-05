@@ -113,6 +113,10 @@ func (e *ErrUnexpectedTx) Error() string {
 // 3. All txs from the bundle must be in the right order, gaps between txs are allowed
 // 4. All txs in the block are either from mempool or from the included bundles
 func VerifyBundlesAtomicity(env *environment, committedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, mempoolTxHashes map[common.Hash]struct{}) error {
+	// TOB blocks do not contain bundles
+	if env.isTob {
+		return nil
+	}
 	// bundleHash -> tx
 	includedBundles := make(bundleHashToTransactionDataMap).
 		ExtractFromBundles(committedBundles).

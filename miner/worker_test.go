@@ -658,7 +658,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 
 	// This API should work even when the automatic sealing is not enabled
 	for _, c := range cases {
-		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, nil, true, nil)
+		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, nil, true, false, nil, nil, nil)
 		if c.expectErr {
 			if err == nil {
 				t.Error("Expect error but get nil")
@@ -674,7 +674,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 	// This API should work even when the automatic sealing is enabled
 	w.start()
 	for _, c := range cases {
-		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, nil, false, nil)
+		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, nil, false, false, nil, nil, nil)
 		if c.expectErr {
 			if err == nil {
 				t.Error("Expect error but get nil")
@@ -822,7 +822,7 @@ func testBundles(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		block, _, err := w.getSealingBlock(w.chain.CurrentBlock().Hash(), w.chain.CurrentHeader().Time+12, testUserAddress, 0, common.Hash{}, nil, false, nil)
+		block, _, err := w.getSealingBlock(w.chain.CurrentBlock().Hash(), w.chain.CurrentHeader().Time+12, testUserAddress, 0, common.Hash{}, nil, false, false, nil, nil, nil)
 		require.NoError(t, err)
 
 		state, err := w.chain.State()

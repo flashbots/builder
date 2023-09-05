@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"sort"
 
 	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
 	capellaapi "github.com/attestantio/go-builder-client/api/capella"
+	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
@@ -17,6 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -226,6 +229,112 @@ func (r *BuilderBlockValidationRequestV2) UnmarshalJSON(data []byte) error {
 	}
 	r.SubmitBlockRequest = *blockRequest
 	return nil
+}
+
+type BlockAssemblerRequest struct {
+	TobPayload         *capella.ExecutionPayload `json:"tob_payload"`
+	TobPayloadBidValue *big.Int                  `json:"tob_payload_bid_value,string"`
+	RobPayload         *capella.ExecutionPayload `json:"rob_payload"`
+	RobPayloadBidValue *big.Int                  `json:"rob_payload_bid_value,string"`
+}
+
+func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*engine.ExecutionPayloadEnvelope, error) {
+	if params.TobPayload == nil {
+		return nil, errors.New("nil tob payload")
+	}
+	if params.RobPayload == nil {
+		return nil, errors.New("nil rob payload")
+	}
+	if params.TobPayload.ParentHash != params.RobPayload.ParentHash {
+		return nil, errors.New("tob and rob payloads have different parent hashes")
+	}
+
+	tobBlock, err := engine.ExecutionPayloadV2ToBlock(params.TobPayload)
+	if err != nil {
+		return nil, err
+	}
+	robBlock, err := engine.ExecutionPayloadV2ToBlock(params.RobPayload)
+	if err != nil {
+		return nil, err
+	}
+
+	if params.TobPayload.ParentHash != phase0.Hash32(tobBlock.ParentHash()) {
+		return nil, fmt.Errorf("incorrect ParentHash %s, expected %s", params.TobPayload.ParentHash.String(), tobBlock.ParentHash().String())
+	}
+	if params.TobPayload.BlockHash != phase0.Hash32(tobBlock.Hash()) {
+		return nil, fmt.Errorf("incorrect BlockHash %s, expected %s", params.TobPayload.BlockHash.String(), tobBlock.Hash().String())
+	}
+	if params.RobPayload.ParentHash != phase0.Hash32(robBlock.Hash()) {
+		return nil, fmt.Errorf("incorrect ParentHash %s, expected %s", params.RobPayload.BlockHash.String(), robBlock.Hash().String())
+	}
+	if params.RobPayload.BlockHash != phase0.Hash32(robBlock.Hash()) {
+		return nil, fmt.Errorf("incorrect BlockHash %s, expected %s", params.RobPayload.BlockHash.String(), robBlock.Hash().String())
+	}
+
+	// TODO - check for gas limits
+	// TODO - we still need to support validator payments
+
+	// txs sorted by nonce per address
+	txMap := make(map[common.Address]types.Transactions)
+	seenTxs := make(map[common.Hash]struct{})
+	assemblerSigner := types.LatestSigner(api.eth.BlockChain().Config())
+	for _, tx := range tobBlock.Transactions() {
+		from, err := types.Sender(assemblerSigner, tx)
+		if err != nil {
+			return nil, err
+		}
+		txMap[from] = txMap[from].Append(tx)
+		// check for duplicate txs
+		// if we see duplicate tx just ignore it, its already added
+		if _, ok := seenTxs[tx.Hash()]; ok {
+			continue
+		} else {
+			seenTxs[tx.Hash()] = struct{}{}
+		}
+	}
+	for _, tx := range robBlock.Transactions() {
+		from, err := types.Sender(assemblerSigner, tx)
+		if err != nil {
+			return nil, err
+		}
+
+		txMap[from] = txMap[from].Append(tx)
+		// check for duplicate txs
+		// if we see duplicate tx just ignore it, its already added
+		if _, ok := seenTxs[tx.Hash()]; ok {
+			continue
+		} else {
+			seenTxs[tx.Hash()] = struct{}{}
+		}
+	}
+	// sort each address's txs by nonce
+	for _, txs := range txMap {
+		sort.Slice(txs, func(i, j int) bool {
+			return txs.Index(i).Nonce() < txs.Index(j).Nonce()
+		})
+	}
+
+	log.Info("DEBUG PAYLOAD ASSEMBLER: Txmap is ", "txmap", txMap)
+	// assemble the txs in map[sender]txs format and pass it in the BuildPayload call
+	block, err := api.eth.Miner().PayloadAssembler(&miner.BuildPayloadArgs{
+		Parent:    common.Hash(params.TobPayload.ParentHash),
+		Timestamp: params.TobPayload.Timestamp,
+		// TODO - this should be relayer fee recipient
+		FeeRecipient:       common.Address(params.TobPayload.FeeRecipient),
+		GasLimit:           params.RobPayload.GasLimit,
+		Random:             params.TobPayload.PrevRandao,
+		Withdrawals:        nil,
+		BlockHook:          nil,
+		TobBlockHook:       nil,
+		ProposerCommitment: 2,
+		AssemblerTxs:       txMap,
+	})
+	if err != nil {
+		return nil, err
+	}
+	resolvedBlock := block.ResolveFull()
+
+	return resolvedBlock, nil
 }
 
 func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockValidationRequestV2) error {

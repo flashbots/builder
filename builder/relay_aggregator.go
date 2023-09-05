@@ -18,6 +18,26 @@ type RemoteRelayAggregator struct {
 	registrationsCache     map[ValidatorData][]IRelay
 }
 
+func (r *RemoteRelayAggregator) SubmitTobBlock(msg *bellatrix.SubmitBlockRequest, vd ValidatorData) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (r *RemoteRelayAggregator) SubmitRobBlock(msg *bellatrix.SubmitBlockRequest, vd ValidatorData) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (r *RemoteRelayAggregator) SubmitTobBlockCapella(msg *capella.SubmitBlockRequest, vd ValidatorData) error {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (r *RemoteRelayAggregator) SubmitRobBlockCapella(msg *capella.SubmitBlockRequest, vd ValidatorData) error {
+	//TODO implement me
+	panic("implement me")
+}
+
 func NewRemoteRelayAggregator(primary IRelay, secondary []IRelay) *RemoteRelayAggregator {
 	relays := []IRelay{primary}
 	return &RemoteRelayAggregator{
