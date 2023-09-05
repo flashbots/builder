@@ -151,7 +151,7 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 	require.Equal(t, sealedAt.Truncate(time.Millisecond), dbBlock.SealedAt.UTC().Truncate(time.Millisecond))
 
 	var bundles []DbBundle
-	ds.db.Select(&bundles, "select bundle_hash, param_signed_txs, param_block_number, param_timestamp, param_reverting_tx_hashes, coinbase_diff, total_gas_used, state_block_number, gas_fees, eth_sent_to_coinbase from bundles order by param_timestamp")
+	ds.db.Select(&bundles, "select bundle_hash, param_signed_txs, param_block_number, param_timestamp, param_reverting_tx_hashes, coinbase_diff, total_gas_used, state_block_number, gas_fees, eth_sent_to_coinbase, bundle_uuid from bundles order by param_timestamp")
 	require.Len(t, bundles, 4)
 	require.Equal(t, []DbBundle{SimulatedBundleToDbBundle(&simBundle1), SimulatedBundleToDbBundle(&simBundle2), SimulatedBundleToDbBundle(&simBundle3), SimulatedBundleToDbBundle(&simBundle4)}, bundles)
 

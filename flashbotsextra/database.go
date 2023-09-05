@@ -93,12 +93,12 @@ func Min(l int, r int) int {
 	return r
 }
 
-func (ds *DatabaseService) getBundleIds(ctx context.Context, blockNumber uint64, bundles []types.SimulatedBundle) (map[string]uint64, error) {
+func (ds *DatabaseService) getBundleIds(ctx context.Context, blockNumber uint64, bundles []uuidBundle) (map[uuid.UUID]uint64, error) {
 	if len(bundles) == 0 {
 		return nil, nil
 	}
 
-	bundleIdsMap := make(map[string]uint64, len(bundles))
+	bundleIdsMap := make(map[uuid.UUID]uint64, len(bundles))
 
 	// Batch by 500
 	requestsToMake := [][]string{make([]string, 0, Min(500, len(bundles)))}
@@ -108,7 +108,7 @@ func (ds *DatabaseService) getBundleIds(ctx context.Context, blockNumber uint64,
 			cRequestInd += 1
 			requestsToMake = append(requestsToMake, make([]string, 0, Min(500, len(bundles)-i)))
 		}
-		requestsToMake[cRequestInd] = append(requestsToMake[cRequestInd], bundle.OriginalBundle.Hash.String())
+		requestsToMake[cRequestInd] = append(requestsToMake[cRequestInd], bundle.SimulatedBundle.OriginalBundle.Hash.String())
 	}
 
 	for _, request := range requestsToMake {
@@ -128,8 +128,19 @@ func (ds *DatabaseService) getBundleIds(ctx context.Context, blockNumber uint64,
 		if err != nil {
 			return nil, err
 		}
+	RowLoop:
 		for _, row := range queryRes {
-			bundleIdsMap[row.BundleHash] = row.Id
+			for _, b := range bundles {
+				// if UUID agree it's same exact bundle we stop searching
+				if b.UUID == row.BundleUUID {
+					bundleIdsMap[b.UUID] = row.Id
+					continue RowLoop
+				}
+				// we can have multiple bundles with same hash eventually, so we fall back on getting row with same hash
+				if b.SimulatedBundle.OriginalBundle.Hash.String() == row.BundleHash {
+					bundleIdsMap[b.UUID] = row.Id
+				}
+			}
 		}
 	}
 
@@ -137,24 +148,23 @@ func (ds *DatabaseService) getBundleIds(ctx context.Context, blockNumber uint64,
 }
 
 // TODO: cache locally for current block!
-func (ds *DatabaseService) getBundleIdsAndInsertMissingBundles(ctx context.Context, blockNumber uint64, bundles []types.SimulatedBundle) (map[string]uint64, error) {
+func (ds *DatabaseService) getBundleIdsAndInsertMissingBundles(ctx context.Context, blockNumber uint64, bundles []uuidBundle) (map[uuid.UUID]uint64, error) {
 	bundleIdsMap, err := ds.getBundleIds(ctx, blockNumber, bundles)
 	if err != nil {
 		return nil, err
 	}
 
-	toRetry := []types.SimulatedBundle{}
+	toRetry := make([]uuidBundle, 0)
 	for _, bundle := range bundles {
-		bundleHashString := bundle.OriginalBundle.Hash.String()
-		if _, found := bundleIdsMap[bundleHashString]; found {
+		if _, found := bundleIdsMap[bundle.UUID]; found {
 			continue
 		}
 
 		var bundleId uint64
-		missingBundleData := SimulatedBundleToDbBundle(&bundle)                        // nolint: gosec
+		missingBundleData := SimulatedBundleToDbBundle(&bundle.SimulatedBundle)        // nolint: gosec
 		err = ds.insertMissingBundleStmt.GetContext(ctx, &bundleId, missingBundleData) // not using the tx as it relies on the unique constraint!
 		if err == nil {
-			bundleIdsMap[bundleHashString] = bundleId
+			bundleIdsMap[bundle.UUID] = bundleId
 		} else if err == sql.ErrNoRows /* conflict, someone else inserted the bundle before we could */ {
 			toRetry = append(toRetry, bundle)
 		} else {
@@ -215,7 +225,7 @@ func (ds *DatabaseService) insertBuildBlockBundleIds(tx *sqlx.Tx, ctx context.Co
 	return err
 }
 
-func (ds *DatabaseService) insertAllBlockBundleIds(tx *sqlx.Tx, ctx context.Context, blockId uint64, bundleIdsMap map[string]uint64) error {
+func (ds *DatabaseService) insertAllBlockBundleIds(tx *sqlx.Tx, ctx context.Context, blockId uint64, bundleIdsMap map[uuid.UUID]uint64) error {
 	if len(bundleIdsMap) == 0 {
 		return nil
 	}
@@ -246,14 +256,30 @@ func (ds *DatabaseService) insertUsedSBundleIds(tx *sqlx.Tx, ctx context.Context
 	return err
 }
 
+type uuidBundle struct {
+	SimulatedBundle types.SimulatedBundle
+	UUID            uuid.UUID
+}
+
 func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time,
 	commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle,
 	usedSbundles []types.UsedSBundle,
 	bidTrace *apiv1.BidTrace) {
+
+	var allUUIDBundles = make([]uuidBundle, 0, len(allBundles))
+	for _, bundle := range allBundles {
+		allUUIDBundles = append(allUUIDBundles, uuidBundle{bundle, bundle.OriginalBundle.ComputeUUID()})
+	}
+
+	var commitedUUIDBundles = make([]uuidBundle, 0, len(commitedBundles))
+	for _, bundle := range commitedBundles {
+		commitedUUIDBundles = append(commitedUUIDBundles, uuidBundle{bundle, bundle.OriginalBundle.ComputeUUID()})
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
-	
-	bundleIdsMap, err := ds.getBundleIdsAndInsertMissingBundles(ctx, block.NumberU64(), allBundles)
+
+	bundleIdsMap, err := ds.getBundleIdsAndInsertMissingBundles(ctx, block.NumberU64(), allUUIDBundles)
 	if err != nil {
 		log.Error("could not insert bundles", "err", err)
 	}
@@ -272,8 +298,8 @@ func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, blockValue *big
 	}
 
 	commitedBundlesIds := make([]uint64, 0, len(commitedBundles))
-	for _, bundle := range commitedBundles {
-		if id, found := bundleIdsMap[bundle.OriginalBundle.Hash.String()]; found {
+	for _, bundle := range commitedUUIDBundles {
+		if id, found := bundleIdsMap[bundle.UUID]; found {
 			commitedBundlesIds = append(commitedBundlesIds, id)
 		}
 	}
