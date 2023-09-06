@@ -256,8 +256,9 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	blockRequest.ExecutionPayload.GasLimit += 1
 	updatePayloadHashV2(t, blockRequest)
 
-	_, err = api.ValidateBuilderSubmissionV2(blockRequest)
-	require.ErrorContains(t, err, "incorrect gas limit set")
+	// // Test removed as the API now overwrites the gas limit
+	// _, err = api.ValidateBuilderSubmissionV2(blockRequest)
+	// require.ErrorContains(t, err, "incorrect gas limit set")
 
 	blockRequest.Message.GasLimit -= 1
 	blockRequest.ExecutionPayload.GasLimit -= 1
