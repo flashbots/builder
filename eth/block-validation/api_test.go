@@ -246,15 +246,18 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 		WithdrawalsRoot:    withdrawalsRoot,
 	}
 
-	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "inaccurate payment")
+	_, err = api.ValidateBuilderSubmissionV2(blockRequest)
+	require.ErrorContains(t, err, "inaccurate payment")
 	blockRequest.Message.Value = uint256.NewInt(149842511727212)
-	require.NoError(t, api.ValidateBuilderSubmissionV2(blockRequest))
+	_, err = api.ValidateBuilderSubmissionV2(blockRequest)
+	require.NoError(t, err)
 
 	blockRequest.Message.GasLimit += 1
 	blockRequest.ExecutionPayload.GasLimit += 1
 	updatePayloadHashV2(t, blockRequest)
 
-	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "incorrect gas limit set")
+	_, err = api.ValidateBuilderSubmissionV2(blockRequest)
+	require.ErrorContains(t, err, "incorrect gas limit set")
 
 	blockRequest.Message.GasLimit -= 1
 	blockRequest.ExecutionPayload.GasLimit -= 1
@@ -267,7 +270,9 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 			testAddr: {},
 		},
 	}
-	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "transaction from blacklisted address 0x71562b71999873DB5b286dF957af199Ec94617F7")
+
+	_, err = api.ValidateBuilderSubmissionV2(blockRequest)
+	require.ErrorContains(t, err, "transaction from blacklisted address 0x71562b71999873DB5b286dF957af199Ec94617F7")
 
 	// Test tx to blacklisted address
 	api.accessVerifier = &AccessVerifier{
@@ -275,12 +280,15 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 			{0x16}: {},
 		},
 	}
-	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "transaction to blacklisted address 0x1600000000000000000000000000000000000000")
+
+	_, err = api.ValidateBuilderSubmissionV2(blockRequest)
+	require.ErrorContains(t, err, "transaction to blacklisted address 0x1600000000000000000000000000000000000000")
 
 	api.accessVerifier = nil
 
 	blockRequest.Message.GasUsed = 10
-	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "incorrect GasUsed 10, expected 119996")
+	_, err = api.ValidateBuilderSubmissionV2(blockRequest)
+	require.ErrorContains(t, err, "incorrect GasUsed 10, expected 119996")
 	blockRequest.Message.GasUsed = execData.GasUsed
 
 	newTestKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f290")
@@ -297,7 +305,8 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	copy(invalidPayload.ReceiptsRoot[:], hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")[:32])
 	blockRequest.ExecutionPayload = invalidPayload
 	updatePayloadHashV2(t, blockRequest)
-	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "could not apply tx 4", "insufficient funds for gas * price + value")
+	_, err = api.ValidateBuilderSubmissionV2(blockRequest)
+	require.ErrorContains(t, err, "could not apply tx 4", "insufficient funds for gas * price + value")
 }
 
 func updatePayloadHash(t *testing.T, blockRequest *BuilderBlockValidationRequest) {
@@ -703,21 +712,24 @@ func TestValidateBuilderSubmissionV2_CoinbasePaymentDefault(t *testing.T) {
 
 	req, err := executableDataToBlockValidationRequest(execData, testValidatorAddr, value, withdrawalsRoot)
 	require.NoError(t, err)
-	require.NoError(t, api.ValidateBuilderSubmissionV2(req))
+	_, err = api.ValidateBuilderSubmissionV2(req)
+	require.NoError(t, err)
 
 	// try to claim less profit than expected, should work
 	value.SetUint64(expectedProfit - 1)
 
 	req, err = executableDataToBlockValidationRequest(execData, testValidatorAddr, value, withdrawalsRoot)
 	require.NoError(t, err)
-	require.NoError(t, api.ValidateBuilderSubmissionV2(req))
+	_, err = api.ValidateBuilderSubmissionV2(req)
+	require.NoError(t, err)
 
 	// try to claim more profit than expected, should fail
 	value.SetUint64(expectedProfit + 1)
 
 	req, err = executableDataToBlockValidationRequest(execData, testValidatorAddr, value, withdrawalsRoot)
 	require.NoError(t, err)
-	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(req), "payment")
+	_, err = api.ValidateBuilderSubmissionV2(req)
+	require.ErrorContains(t, err, "payment")
 }
 
 func TestValidateBuilderSubmissionV2_Blocklist(t *testing.T) {
@@ -777,8 +789,10 @@ func TestValidateBuilderSubmissionV2_Blocklist(t *testing.T) {
 			req, err := executableDataToBlockValidationRequest(execData, testValidatorAddr, common.Big0, withdrawalsRoot)
 			require.NoError(t, err)
 
-			require.NoError(t, apiNoBlock.ValidateBuilderSubmissionV2(req))
-			require.ErrorContains(t, apiWithBlock.ValidateBuilderSubmissionV2(req), "blacklisted")
+			_, err = apiNoBlock.ValidateBuilderSubmissionV2(req)
+			require.NoError(t, err)
+			_, err = apiWithBlock.ValidateBuilderSubmissionV2(req)
+			require.ErrorContains(t, err, "blacklisted")
 		})
 	}
 }
