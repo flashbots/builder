@@ -326,7 +326,6 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 		if resp.NewGasLimit != payload.GasLimit {
 			log.Error("gas limit adjusted needed for capella", "gasLimit", payload.GasLimit, "newGasLimit", resp.NewGasLimit)
 		}
-
 	} else {
 		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
 		err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)

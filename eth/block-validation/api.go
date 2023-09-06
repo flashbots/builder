@@ -229,7 +229,7 @@ func (r *BuilderBlockValidationRequestV2) UnmarshalJSON(data []byte) error {
 }
 
 type BuilderBlockValidationResponseV2 struct {
-	NewGasLimit uint64 `json:"new_gas_limit,string"`
+	NewGasLimit  uint64 `json:"new_gas_limit,string"`
 	NewBlockHash string `json:"new_block_hash"`
 }
 
@@ -315,8 +315,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockV
 	log.Info("validated block", "hash", block.Hash(), "number", block.NumberU64(), "parentHash", block.ParentHash())
 
 	return &BuilderBlockValidationResponseV2{
-		NewGasLimit: block.GasLimit(),
+		NewGasLimit:  block.GasLimit(),
 		NewBlockHash: block.Hash().String(),
 	}, nil
 }
-

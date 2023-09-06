@@ -2494,7 +2494,8 @@ func (bc *BlockChain) SetBlockValidatorAndProcessorForTesting(v Validator, p Pro
 	bc.processor = p
 }
 
-//
+// AdjustedGasLimit calculates the gas limit for the given block and returns
+// the calculated limit.
 func (bc *BlockChain) AdjustedGasLimit(block *types.Block, registeredGasLimit uint64) (uint64, error) {
 	header := block.Header()
 	if err := bc.engine.VerifyHeader(bc, header, true); err != nil {
