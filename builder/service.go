@@ -214,7 +214,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg *Config) error {
 				return fmt.Errorf("failed to load validation blocklist %w", err)
 			}
 		}
-		validator = blockvalidation.NewBlockValidationAPI(backend, accessVerifier, cfg.ValidationForceLastTxPayment)
+		validator = blockvalidation.NewBlockValidationAPI(backend, accessVerifier, cfg.ValidationUseCoinbaseDiff)
 	}
 
 	// Set up builder rate limiter based on environment variables or CLI flags.

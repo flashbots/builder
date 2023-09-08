@@ -662,10 +662,10 @@ var (
 		Aliases:  []string{"builder.validation_blacklist"},
 		Category: flags.BuilderCategory,
 	}
-	BuilderBlockValidationForceLastTxPayment = &cli.BoolFlag{
-		Name:     "builder.validation_force_last_tx_payment",
-		Usage:    "Block validation API will enforce that the last tx in the block is payment to the proposer.",
-		Value:    true,
+	BuilderBlockValidationUseBalanceDiff = &cli.BoolFlag{
+		Name:     "builder.validation_use_balance_diff",
+		Usage:    "Block validation API will use fee recipient balance difference for profit calculation.",
+		Value:    false,
 		Category: flags.BuilderCategory,
 	}
 	BuilderEnableLocalRelay = &cli.BoolFlag{
@@ -1657,7 +1657,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	if ctx.IsSet(BuilderBlockValidationBlacklistSourceFilePath.Name) {
 		cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
 	}
-	cfg.ValidationForceLastTxPayment = ctx.Bool(BuilderBlockValidationForceLastTxPayment.Name)
+	cfg.ValidationUseCoinbaseDiff = ctx.Bool(BuilderBlockValidationUseBalanceDiff.Name)
 	cfg.BuilderRateLimitDuration = ctx.String(BuilderRateLimitDuration.Name)
 	cfg.BuilderRateLimitMaxBurst = ctx.Int(BuilderRateLimitMaxBurst.Name)
 	cfg.BuilderSubmissionOffset = ctx.Duration(BuilderSubmissionOffset.Name)
