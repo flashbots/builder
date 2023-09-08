@@ -3,12 +3,14 @@ package miner
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"math/big"
 	mathrand "math/rand"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
@@ -24,19 +26,26 @@ import (
 
 // NOTE(wazzymandias): Below is a FuzzTest contract written in Solidity and shown here as reference code
 // for the generated abi and bytecode used for testing.
-// The generated abi can be found in the `testdata` directory.
+// The generated abi can be found in the `testdata` directory in `state_fuzz_test.abi`.
 // The abi, bytecode, and Go bindings were generated using the following commands:
 //   - docker run -v ${STATE_FUZZ_TEST_CONTRACT_DIRECTORY}:/sources
 //     ethereum/solc:0.8.19 -o /sources/output --abi --bin /sources/StateFuzzTest.sol
 //   - go run ./cmd/abigen/ --bin ${TARGET_STATE_FUZZ_TEST_BIN_PATH} --abi ${TARGET_STATE_FUZZ_TEST_ABI_PATH}
 //     --pkg statefuzztest --out=state_fuzz_test_abigen_bindings.go
 const StateFuzzTestSolidity = `	
+// SPDX-License-Identifier: MIT
 pragma solidity 0.8.19;
 
 contract StateFuzzTest {
     mapping(address => uint256) public balances;
     mapping(bytes32 => bytes) public storageData;
     mapping(address => bool) public isSelfDestructed;
+    mapping(address => uint256) private refunds;
+
+	function addThenWithdrawRefund(uint256 amount) external payable {
+    	refunds[msg.sender] += amount;
+    	payable(msg.sender).transfer(amount);
+	}
 
     function createObject(bytes32 key, bytes memory value) public {
         storageData[key] = value;
@@ -59,9 +68,12 @@ contract StateFuzzTest {
         storageData[key] = newValue;
     }
 	
-	function touchContract(address contractAddress) public view returns (bytes32) {
-		return extcodehash(contractAddress);
-	}
+    function touchContract(address contractAddress) public view returns (bytes32 codeHash) {
+        assembly {
+            codeHash := extcodehash(contractAddress)
+        }
+        return codeHash;
+    }
 }
 `
 
@@ -169,6 +181,50 @@ func selfDestructFuzzTestContract(chainID *big.Int, nonce uint64, to common.Addr
 		GasFeeCap: big.NewInt(1),
 		To:        (*common.Address)(to[:]),
 		Value:     big.NewInt(0),
+		Data:      data,
+	}, nil
+}
+
+func touchAccountFuzzTestContract(chainID *big.Int, nonce uint64, address common.Address) (types.TxData, error) {
+	abi, err := StatefuzztestMetaData.GetAbi()
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := abi.Pack("touchContract", address)
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		Gas:       100_000,
+		GasFeeCap: big.NewInt(1),
+		To:        (*common.Address)(address[:]),
+		Value:     big.NewInt(0),
+		Data:      data,
+	}, nil
+}
+
+func addThenWithdrawRefundFuzzTestContract(chainID *big.Int, nonce uint64, to common.Address, value *big.Int) (types.TxData, error) {
+	abi, err := StatefuzztestMetaData.GetAbi()
+	if err != nil {
+		return nil, err
+	}
+
+	data, err := abi.Pack("addThenWithdrawRefund", value)
+	if err != nil {
+		return nil, err
+	}
+
+	return &types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		Gas:       400_000,
+		GasFeeCap: big.NewInt(1),
+		To:        (*common.Address)(to[:]),
+		Value:     value,
 		Data:      data,
 	}, nil
 }
@@ -437,7 +493,8 @@ func TestStateComparisons(t *testing.T) {
 				BlockNumber: header.Number,
 			}
 
-			simBundle, err := simulateBundle(env, mevBundle, chData, nil)
+			envCopy := env.copy()
+			simBundle, err := simulateBundle(envCopy, mevBundle, chData, nil)
 			require.NoError(t, err, "can't simulate bundle: %v", err)
 
 			switch i {
@@ -654,6 +711,7 @@ func TestBundles(t *testing.T) {
 	for tcIdx, tc := range testContexts {
 		backend := simulations[tcIdx]
 
+		// deploy fuzz test smart contract across all the account addresses we wish to test
 		t.Run(fmt.Sprintf("%s-create-object", tc.Name), func(t *testing.T) {
 			signers := tc.signers
 			for signerIdx, pk := range signers.signers {
@@ -707,14 +765,41 @@ func TestBundles(t *testing.T) {
 					case Baseline:
 						actualReceipt, _, err = tc.envDiff.commitTx(actualTx, tc.chainData)
 						tc.envDiff.applyToBaseEnv()
+						signer := tc.envDiff.baseEnvironment.signer
+						from, senderErr := types.Sender(signer, actualTx)
+						require.NoError(t, senderErr)
+
+						if err == nil {
+							expectedNonce := actualTx.Nonce() + 1
+							actualNonce := tc.envDiff.baseEnvironment.state.GetNonce(from)
+							require.Equal(t, expectedNonce, actualNonce)
+						} else {
+							expectedNonce := actualTx.Nonce() - 1
+							actualNonce := tc.envDiff.baseEnvironment.state.GetNonce(from)
+							require.Equal(t, expectedNonce, actualNonce)
+						}
 					case SingleSnapshot:
 						err = tc.changes.env.state.NewMultiTxSnapshot()
 						require.NoError(t, err)
 
-						actualReceipt, _, err = tc.changes.commitTx(actualTx, tc.chainData)
+						var commitErr error
+						actualReceipt, _, commitErr = tc.changes.commitTx(actualTx, tc.chainData)
 						require.NoError(t, err)
 
 						err = tc.changes.apply()
+
+						signer := tc.changes.env.signer
+						from, senderErr := types.Sender(signer, actualTx)
+						require.NoError(t, senderErr)
+						if commitErr == nil {
+							expectedNonce := actualTx.Nonce() + 1
+							actualNonce := tc.changes.env.state.GetNonce(from)
+							require.Equal(t, expectedNonce, actualNonce)
+						} else {
+							expectedNonce := actualTx.Nonce() - 1
+							actualNonce := tc.changes.env.state.GetNonce(from)
+							require.Equal(t, expectedNonce, actualNonce)
+						}
 					case MultiSnapshot:
 						err = tc.changes.env.state.NewMultiTxSnapshot()
 						require.NoError(t, err)
@@ -722,13 +807,27 @@ func TestBundles(t *testing.T) {
 						err = tc.changes.env.state.NewMultiTxSnapshot()
 						require.NoError(t, err)
 
-						actualReceipt, _, err = tc.changes.commitTx(actualTx, tc.chainData)
-						require.NoError(t, err)
+						var commitErr error
+						actualReceipt, _, commitErr = tc.changes.commitTx(actualTx, tc.chainData)
+						require.NoError(t, commitErr)
 
 						err = tc.changes.apply()
 						require.NoError(t, err)
 
 						err = tc.changes.env.state.MultiTxSnapshotCommit()
+
+						signer := tc.changes.env.signer
+						from, senderErr := types.Sender(signer, actualTx)
+						require.NoError(t, senderErr)
+						if commitErr == nil {
+							expectedNonce := actualTx.Nonce() + 1
+							actualNonce := tc.changes.env.state.GetNonce(from)
+							require.Equal(t, expectedNonce, actualNonce)
+						} else {
+							expectedNonce := actualTx.Nonce() - 1
+							actualNonce := tc.changes.env.state.GetNonce(from)
+							require.Equal(t, expectedNonce, actualNonce)
+						}
 					}
 
 					require.NoError(t, err)
@@ -751,6 +850,8 @@ func TestBundles(t *testing.T) {
 	//   - self-destruct
 	//   - reset object
 	//   - change storage
+	//   - change transient storage
+	//   - touch account
 	type TransactionOperation int
 	const (
 		ChangeBalance TransactionOperation = iota
@@ -758,21 +859,46 @@ func TestBundles(t *testing.T) {
 		SelfDestruct
 		ResetObject
 		ChangeStorage
+		ChangeTransientStorage
+		TouchAccount
 	)
+	operations := []TransactionOperation{
+		ChangeBalance,
+		CreateObject,
+		SelfDestruct,
+		ResetObject,
+		ChangeStorage,
+		ChangeTransientStorage,
+		TouchAccount,
+	}
 	const (
-		bundleCount = 3
-		bundleSize  = 10
+		bundleCount = 10
+		bundleSize  = 100
 	)
+
+	// NOTE(wazzymandias): We make a copy of the signer list before we craft the bundles of transactions.
+	// The reason is that the pre-bundle signer list will be used to simulate the bundles.
+	// Using the actual signer list will cause nonce mismatch errors, since we increment nonce
+	// as we craft the bundles of transactions.
+	var preBundleSigners = signerList{
+		config:    testContexts[0].signers.config,
+		addresses: make([]common.Address, len(testContexts[0].signers.addresses)),
+		signers:   make([]*ecdsa.PrivateKey, len(testContexts[0].signers.signers)),
+		nonces:    make([]uint64, len(testContexts[0].signers.nonces)),
+	}
+	copy(preBundleSigners.addresses, testContexts[0].signers.addresses)
+	copy(preBundleSigners.signers, testContexts[0].signers.signers)
+	copy(preBundleSigners.nonces, testContexts[0].signers.nonces)
 
 	bundles := [bundleCount]types.MevBundle{}
 	for bundleIdx := 0; bundleIdx < bundleCount; bundleIdx++ {
 		transactions := [bundleSize]*types.Transaction{}
 		for txIdx := 0; txIdx < bundleSize; txIdx++ {
 			var (
-				// pick a random integer that represents one of the transactions we will create
-				n       = mathrand.Intn(5)
-				s       = testContexts[0].signers
-				chainID = s.config.ChainID
+				// pick a random operation that represents one of the transactions we will create
+				randomOperation = operations[mathrand.Intn(len(operations))]
+				s               = testContexts[0].signers
+				chainID         = s.config.ChainID
 				// choose a random To Address index
 				toAddressRandomIdx = mathrand.Intn(len(s.signers))
 				// reference the correct nonce for the associated To Address
@@ -782,7 +908,7 @@ func TestBundles(t *testing.T) {
 				txData types.TxData
 				err    error
 			)
-			switch TransactionOperation(n) {
+			switch randomOperation {
 			case ChangeBalance: // change balance
 				balanceAddressRandomIdx := mathrand.Intn(len(s.signers))
 				balanceAddress := s.addresses[balanceAddressRandomIdx]
@@ -826,6 +952,18 @@ func TestBundles(t *testing.T) {
 				require.NoError(t, err)
 
 				txData, err = changeStorageFuzzTestContract(chainID, nonce, fuzzContractAddress, changeStorageObjectKey, value[:])
+
+			case ChangeTransientStorage: // change transient storage
+				value := new(big.Int).Rand(
+					mathrand.New(mathrand.NewSource(time.Now().UnixNano())), big.NewInt(1000000),
+				)
+				require.NoError(t, err)
+
+				txData, err = addThenWithdrawRefundFuzzTestContract(chainID, nonce, toAddress, value)
+			case TouchAccount: // touch random account
+				fuzzContractAddress := variantFuzzTestAddresses[0][toAddressRandomIdx]
+
+				txData, err = touchAccountFuzzTestContract(chainID, nonce, fuzzContractAddress)
 			}
 			require.NotNilf(t, txData, "txData is nil for bundle %d, tx %d", bundleIdx, txIdx)
 			require.NoError(t, err)
@@ -839,8 +977,13 @@ func TestBundles(t *testing.T) {
 			multi := testContexts[MultiSnapshot]
 
 			base.signers.nonces[toAddressRandomIdx]++
+			testContexts[Baseline].signers = base.signers
+
 			single.signers.nonces[toAddressRandomIdx]++
+			testContexts[SingleSnapshot].signers = single.signers
+
 			multi.signers.nonces[toAddressRandomIdx]++
+			testContexts[MultiSnapshot].signers = multi.signers
 		}
 
 		bundles[bundleIdx] = types.MevBundle{
@@ -859,36 +1002,44 @@ func TestBundles(t *testing.T) {
 		}
 	}
 
+	// commit bundles to each test context, with intermittent bundle failures
+	const bundleFailEveryN = 2
 	var (
+		base         = testContexts[0]
 		commitErrMap = map[int]error{
 			Baseline:       nil,
 			SingleSnapshot: nil,
 			MultiSnapshot:  nil,
 		}
+		genesisAlloc = genGenesisAlloc(preBundleSigners,
+			[]common.Address{payProxyAddress, logContractAddress}, [][]byte{payProxyCode, logContractCode})
 	)
-
-	base := testContexts[0]
-	genesisAlloc := genGenesisAlloc(base.signers,
-		[]common.Address{payProxyAddress, logContractAddress}, [][]byte{payProxyCode, logContractCode})
 	simulatedBundleList, err := simulateBundles(base.chainData.chainConfig,
 		types.CopyHeader(base.env.header), genesisAlloc, bundles[:])
 	require.NoError(t, err)
+	require.Len(t, simulatedBundleList, len(bundles))
 
 	// commit bundles one by one to each test context to make sure each bundle result is deterministic
 	// apply all to the underlying environment at the end
-	for _, b := range simulatedBundleList {
+	for bundleIdx, b := range simulatedBundleList {
 		algoConf := defaultAlgorithmConfig
 		algoConf.EnforceProfit = true
+		shouldRevert := bundleFailEveryN != 0 && bundleIdx%bundleFailEveryN == 0
 		for tcIdx, tc := range testContexts {
 			var commitErr error
 
 			switch tcIdx {
 			case Baseline:
+				// We don't commit bundle to Baseline if it's meant to fail, in order to ensure that the state
+				// for SingleSnapshot and MultiSnapshot matches on revert to the baseline state
+				if shouldRevert {
+					break
+				}
 				commitErr = tc.envDiff.commitBundle(&b, tc.chainData, nil, algoConf)
 			case SingleSnapshot, MultiSnapshot:
 				commitErr = tc.changes.commitBundle(&b, tc.chainData, algoConf)
 
-				if commitErrMap[Baseline] != nil {
+				if commitErrMap[Baseline] != nil || shouldRevert {
 					require.NoError(t, tc.changes.env.state.MultiTxSnapshotRevert())
 				} else {
 					require.NoError(t, tc.changes.env.state.MultiTxSnapshotCommit())
