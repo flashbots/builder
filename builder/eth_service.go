@@ -15,7 +15,7 @@ import (
 )
 
 type IEthereumService interface {
-	BuildBlock(attrs *types.BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn, sealedTobBlockCallback miner.TobBlockHookFn) error
+	BuildBlock(attrs *types.BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error
 	GetBlockByHash(hash common.Hash) *types.Block
 	Config() *params.ChainConfig
 	Synced() bool
@@ -31,10 +31,7 @@ type testEthereumService struct {
 	testUsedSbundles   []types.UsedSBundle
 }
 
-func (t *testEthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn, sealedTobBlockCallback miner.TobBlockHookFn) error {
-	if attrs.ProposerCommitment > 0 {
-		return errors.New("proposeCommitment is not supported in test ethereum service")
-	}
+func (t *testEthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error {
 	sealedBlockCallback(t.testBlock, t.testBlockValue, time.Now(), t.testBundlesMerged, t.testAllBundles, t.testUsedSbundles)
 	return nil
 }
@@ -54,36 +51,20 @@ func NewEthereumService(eth *eth.Ethereum) *EthereumService {
 }
 
 // TODO: we should move to a setup similar to catalyst local blocks & payload ids
-func (s *EthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn, sealedTobBlockCallback miner.TobBlockHookFn) error {
+func (s *EthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error {
 	// Send a request to generate a full block in the background.
 	// The result can be obtained via the returned channel.
 	log.Info("DEBUG: In build block!!")
 	args := &miner.BuildPayloadArgs{
-		Parent:             attrs.HeadHash,
-		Timestamp:          uint64(attrs.Timestamp),
-		FeeRecipient:       attrs.SuggestedFeeRecipient,
-		GasLimit:           attrs.GasLimit,
-		Random:             attrs.Random,
-		Withdrawals:        attrs.Withdrawals,
-		BlockHook:          sealedBlockCallback,
-		TobBlockHook:       sealedTobBlockCallback,
-		ProposerCommitment: attrs.ProposerCommitment,
+		Parent:       attrs.HeadHash,
+		Timestamp:    uint64(attrs.Timestamp),
+		FeeRecipient: attrs.SuggestedFeeRecipient,
+		GasLimit:     attrs.GasLimit,
+		Random:       attrs.Random,
+		Withdrawals:  attrs.Withdrawals,
+		BlockHook:    sealedBlockCallback,
 	}
 	log.Info("DEBUG: Args for build block!!", "args", args)
-
-	tobResCh := make(chan *engine.ExecutionPayloadEnvelope, 1)
-	if attrs.ProposerCommitment == 2 {
-		log.Info("DEBUG: Starting to Build TOB Payload!!!")
-		tobPayload, err := s.eth.Miner().BuildTobPayload(args)
-		if err != nil {
-			log.Error("Failed to build tob payload", "err", err)
-			return err
-		}
-
-		go func() {
-			tobResCh <- tobPayload.ResolveFull()
-		}()
-	}
 
 	log.Info("DEBUG: Starting to build ROB payload!!")
 	payload, err := s.eth.Miner().BuildPayload(args)
@@ -103,10 +84,6 @@ func (s *EthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, seal
 	select {
 	case payload := <-resCh:
 		if payload == nil {
-			return errors.New("received nil tob payload from sealing work")
-		}
-	case tobPayload := <-tobResCh:
-		if tobPayload == nil {
 			return errors.New("received nil tob payload from sealing work")
 		}
 	case <-timer.C:

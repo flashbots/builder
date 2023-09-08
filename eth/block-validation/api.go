@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"math/big"
 	"os"
-	"sort"
 
 	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
 	capellaapi "github.com/attestantio/go-builder-client/api/capella"
+	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/beacon/engine"
@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
+	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
 
 type BlacklistedAddresses []common.Address
@@ -232,109 +233,148 @@ func (r *BuilderBlockValidationRequestV2) UnmarshalJSON(data []byte) error {
 }
 
 type BlockAssemblerRequest struct {
-	TobPayload         *capella.ExecutionPayload `json:"tob_payload"`
-	TobPayloadBidValue *big.Int                  `json:"tob_payload_bid_value,string"`
-	RobPayload         *capella.ExecutionPayload `json:"rob_payload"`
-	RobPayloadBidValue *big.Int                  `json:"rob_payload_bid_value,string"`
+	TobTxs             [][]byte                       `json:"tob_txs"`
+	RobPayload         *capellaapi.SubmitBlockRequest `json:"rob_payload"`
+	RegisteredGasLimit uint64                         `json:"registered_gas_limit,string"`
+	PayloadAttributes  *engine.PayloadAttributes      `json:"payload_attributes"`
 }
 
-func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*engine.ExecutionPayloadEnvelope, error) {
-	if params.TobPayload == nil {
-		return nil, errors.New("nil tob payload")
+// bchain: copied this here to avoid circular dependency
+func executableDataToCapellaExecutionPayload(data *engine.ExecutableData) (*capella.ExecutionPayload, error) {
+	transactionData := make([]bellatrix.Transaction, len(data.Transactions))
+	for i, tx := range data.Transactions {
+		transactionData[i] = tx
 	}
+
+	withdrawalData := make([]*capella.Withdrawal, len(data.Withdrawals))
+	for i, wd := range data.Withdrawals {
+		withdrawalData[i] = &capella.Withdrawal{
+			Index:          capella.WithdrawalIndex(wd.Index),
+			ValidatorIndex: phase0.ValidatorIndex(wd.Validator),
+			Address:        bellatrix.ExecutionAddress(wd.Address),
+			Amount:         phase0.Gwei(wd.Amount),
+		}
+	}
+
+	baseFeePerGas := new(boostTypes.U256Str)
+	err := baseFeePerGas.FromBig(data.BaseFeePerGas)
+	if err != nil {
+		return nil, err
+	}
+
+	return &capella.ExecutionPayload{
+		ParentHash:    [32]byte(data.ParentHash),
+		FeeRecipient:  [20]byte(data.FeeRecipient),
+		StateRoot:     data.StateRoot,
+		ReceiptsRoot:  data.ReceiptsRoot,
+		LogsBloom:     types.BytesToBloom(data.LogsBloom),
+		PrevRandao:    data.Random,
+		BlockNumber:   data.Number,
+		GasLimit:      data.GasLimit,
+		GasUsed:       data.GasUsed,
+		Timestamp:     data.Timestamp,
+		ExtraData:     data.ExtraData,
+		BaseFeePerGas: *baseFeePerGas,
+		BlockHash:     [32]byte(data.BlockHash),
+		Transactions:  transactionData,
+		Withdrawals:   withdrawalData,
+	}, nil
+}
+
+func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*capella.ExecutionPayload, error) {
 	if params.RobPayload == nil {
 		return nil, errors.New("nil rob payload")
 	}
-	if params.TobPayload.ParentHash != params.RobPayload.ParentHash {
-		return nil, errors.New("tob and rob payloads have different parent hashes")
-	}
 
-	tobBlock, err := engine.ExecutionPayloadV2ToBlock(params.TobPayload)
+	log.Info("DEBUG: Entered the BlockAssembler!!")
+	log.Info("BlockAssembler", "tobTxs", len(params.TobTxs), "robPayload", params.RobPayload)
+	transactionBytes := make([][]byte, len(params.TobTxs))
+	for i, txHexBytes := range params.TobTxs {
+		transactionBytes[i] = txHexBytes[:]
+	}
+	txs, err := engine.DecodeTransactions(transactionBytes)
 	if err != nil {
 		return nil, err
 	}
-	robBlock, err := engine.ExecutionPayloadV2ToBlock(params.RobPayload)
+
+	robBlock, err := engine.ExecutionPayloadV2ToBlock(params.RobPayload.ExecutionPayload)
 	if err != nil {
 		return nil, err
-	}
-
-	if params.TobPayload.ParentHash != phase0.Hash32(tobBlock.ParentHash()) {
-		return nil, fmt.Errorf("incorrect ParentHash %s, expected %s", params.TobPayload.ParentHash.String(), tobBlock.ParentHash().String())
-	}
-	if params.TobPayload.BlockHash != phase0.Hash32(tobBlock.Hash()) {
-		return nil, fmt.Errorf("incorrect BlockHash %s, expected %s", params.TobPayload.BlockHash.String(), tobBlock.Hash().String())
-	}
-	if params.RobPayload.ParentHash != phase0.Hash32(robBlock.Hash()) {
-		return nil, fmt.Errorf("incorrect ParentHash %s, expected %s", params.RobPayload.BlockHash.String(), robBlock.Hash().String())
-	}
-	if params.RobPayload.BlockHash != phase0.Hash32(robBlock.Hash()) {
-		return nil, fmt.Errorf("incorrect BlockHash %s, expected %s", params.RobPayload.BlockHash.String(), robBlock.Hash().String())
 	}
 
 	// TODO - check for gas limits
-	// TODO - we still need to support validator payments
+	// TODO - support for payouts
 
-	// txs sorted by nonce per address
-	txMap := make(map[common.Address]types.Transactions)
-	seenTxs := make(map[common.Hash]struct{})
-	assemblerSigner := types.LatestSigner(api.eth.BlockChain().Config())
-	for _, tx := range tobBlock.Transactions() {
-		from, err := types.Sender(assemblerSigner, tx)
-		if err != nil {
-			return nil, err
+	// check if there are any duplicate txs
+	// we can error out if there is a nonce gap
+	// TODO - don't error out, but drop the duplicate tx in the ROB block
+	log.Info("DEBUG: Checking for duplicate txs")
+	seenTxMap := make(map[common.Hash]struct{})
+	for _, tx := range txs {
+		// If we see nonce reuse in TOB then fail
+		if _, ok := seenTxMap[tx.Hash()]; ok {
+			return nil, errors.New("duplicate tx")
 		}
-		txMap[from] = txMap[from].Append(tx)
-		// check for duplicate txs
-		// if we see duplicate tx just ignore it, its already added
-		if _, ok := seenTxs[tx.Hash()]; ok {
-			continue
-		} else {
-			seenTxs[tx.Hash()] = struct{}{}
-		}
+		seenTxMap[tx.Hash()] = struct{}{}
 	}
 	for _, tx := range robBlock.Transactions() {
-		from, err := types.Sender(assemblerSigner, tx)
-		if err != nil {
-			return nil, err
+		// if we see nonce re-use in TOB vs ROB then drop txs the txs in ROB
+		if _, ok := seenTxMap[tx.Hash()]; ok {
+			return nil, errors.New("duplicate tx")
 		}
-
-		txMap[from] = txMap[from].Append(tx)
-		// check for duplicate txs
-		// if we see duplicate tx just ignore it, its already added
-		if _, ok := seenTxs[tx.Hash()]; ok {
-			continue
-		} else {
-			seenTxs[tx.Hash()] = struct{}{}
-		}
+		seenTxMap[tx.Hash()] = struct{}{}
 	}
-	// sort each address's txs by nonce
-	for _, txs := range txMap {
-		sort.Slice(txs, func(i, j int) bool {
-			return txs.Index(i).Nonce() < txs.Index(j).Nonce()
+	log.Info("Done Checking for duplicate txs!")
+
+	withdrawals := make(types.Withdrawals, len(params.RobPayload.ExecutionPayload.Withdrawals))
+	for _, withdrawal := range params.RobPayload.ExecutionPayload.Withdrawals {
+		withdrawals = withdrawals.Append(types.Withdrawal{
+			Index:     uint64(withdrawal.Index),
+			Validator: uint64(withdrawal.ValidatorIndex),
+			Address:   common.Address(withdrawal.Address),
+			Amount:    uint64(withdrawal.Amount),
 		})
 	}
 
-	log.Info("DEBUG PAYLOAD ASSEMBLER: Txmap is ", "txmap", txMap)
+	log.Info("DEBUG: Built the final set of withdrawals")
+	log.Info("DEBUG: Withdrawals are ", "withdrawals", withdrawals)
 	// assemble the txs in map[sender]txs format and pass it in the BuildPayload call
+
+	robTxs := robBlock.Transactions()
+	log.Info("DEBUG: Rob txs are ", "robTxs", robTxs)
+	log.Info("DEBUG: Tob txs are ", "tobTxs", txs)
+	log.Info("DEBUG: Assembling the block!!")
 	block, err := api.eth.Miner().PayloadAssembler(&miner.BuildPayloadArgs{
-		Parent:    common.Hash(params.TobPayload.ParentHash),
-		Timestamp: params.TobPayload.Timestamp,
-		// TODO - this should be relayer fee recipient
-		FeeRecipient:       common.Address(params.TobPayload.FeeRecipient),
-		GasLimit:           params.RobPayload.GasLimit,
-		Random:             params.TobPayload.PrevRandao,
-		Withdrawals:        nil,
-		BlockHook:          nil,
-		TobBlockHook:       nil,
-		ProposerCommitment: 2,
-		AssemblerTxs:       txMap,
+		Parent:    common.Hash(params.RobPayload.ExecutionPayload.ParentHash),
+		Timestamp: params.RobPayload.ExecutionPayload.Timestamp,
+		// TODO - this should be relayer fee recipient. We will implement payouts later
+		FeeRecipient: common.Address(params.RobPayload.ExecutionPayload.FeeRecipient),
+		GasLimit:     params.RegisteredGasLimit,
+		Random:       params.PayloadAttributes.Random,
+		Withdrawals:  withdrawals,
+		BlockHook:    nil,
+		AssemblerTxs: miner.AssemblerTxLists{
+			TobTxs: txs,
+			RobTxs: &robTxs,
+		},
 	})
+	log.Info("DEBUG: Assembled the block!!")
 	if err != nil {
 		return nil, err
 	}
 	resolvedBlock := block.ResolveFull()
+	if resolvedBlock == nil {
+		return nil, errors.New("unable to resolve block")
+	}
+	if resolvedBlock.ExecutionPayload == nil {
+		return nil, errors.New("nil execution payload")
+	}
 
-	return resolvedBlock, nil
+	finalPayload, err := executableDataToCapellaExecutionPayload(resolvedBlock.ExecutionPayload)
+	log.Info("DEBUG: Final payload", "finalPayload", finalPayload)
+
+	log.Info("DEBUG: Returning the final payload!!")
+	return finalPayload, nil
 }
 
 func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockValidationRequestV2) error {

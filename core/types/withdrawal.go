@@ -45,6 +45,10 @@ type withdrawalMarshaling struct {
 // Withdrawals implements DerivableList for withdrawals.
 type Withdrawals []*Withdrawal
 
+func (s Withdrawals) Append(w Withdrawal) Withdrawals {
+	return append(s, &w)
+}
+
 // Len returns the length of s.
 func (s Withdrawals) Len() int { return len(s) }
 

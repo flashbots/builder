@@ -9,7 +9,7 @@ import (
 )
 
 // runResubmitLoop checks for update signal and calls submit respecting provided rate limiter and context
-func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal <-chan struct{}, submit func(), submitTob func(), submitTime time.Time) {
+func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal <-chan struct{}, submit func(), submitTime time.Time) {
 	if submitTime.IsZero() {
 		log.Warn("skipping resubmit loop - zero submit time found")
 		return
@@ -62,7 +62,6 @@ func runResubmitLoop(ctx context.Context, limiter *rate.Limiter, updateSignal <-
 			delay := res.Delay()
 			if delay == 0 {
 				submit()
-				submitTob()
 				continue
 			}
 

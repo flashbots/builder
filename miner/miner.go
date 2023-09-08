@@ -319,8 +319,3 @@ func (miner *Miner) PayloadAssembler(args *BuildPayloadArgs) (*Payload, error) {
 func (miner *Miner) BuildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	return miner.worker.buildPayload(args)
 }
-
-// BuildPayload builds the payload according to the provided parameters.
-func (miner *Miner) BuildTobPayload(args *BuildPayloadArgs) (*Payload, error) {
-	return miner.worker.buildTobPayload(args)
-}

@@ -48,10 +48,8 @@ type ValidatorData struct {
 
 type IRelay interface {
 	SubmitBlock(msg *bellatrixapi.SubmitBlockRequest, vd ValidatorData) error
-	SubmitTobBlock(msg *bellatrixapi.SubmitBlockRequest, vd ValidatorData) error
 	SubmitRobBlock(msg *bellatrixapi.SubmitBlockRequest, vd ValidatorData) error
 	SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
-	SubmitTobBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
 	SubmitRobBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
 	Config() RelayConfig
@@ -207,10 +205,10 @@ func (b *Builder) Stop() error {
 
 func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
 	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
-	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes, isTobBlock bool, isRobBlock bool) error {
+	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes, isRobBlock bool) error {
 	if b.eth.Config().IsShanghai(block.Time()) {
 		log.Info("DEBUG: Submitting capella block\n")
-		if err := b.submitCapellaBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, proposerPubkey, vd, attrs, isTobBlock, isRobBlock); err != nil {
+		if err := b.submitCapellaBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, proposerPubkey, vd, attrs, isRobBlock); err != nil {
 			return err
 		}
 	} else {
@@ -286,7 +284,7 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, 
 
 func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
 	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
-	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes, isTobBlock bool, isRobBlock bool) error {
+	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes, isRobBlock bool) error {
 	executableData := engine.BlockToExecutableData(block, blockValue)
 	payload, err := executableDataToCapellaExecutionPayload(executableData.ExecutionPayload)
 	if err != nil {
@@ -331,14 +329,7 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 		}
 	} else {
 		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
-		if isTobBlock {
-			log.Info("DEBUG: submitting tob capella block")
-			err = b.relay.SubmitTobBlockCapella(&blockSubmitReq, vd)
-			if err != nil {
-				log.Error("could not submit tob capella block", "err", err, "#commitedBundles", len(commitedBundles))
-				return err
-			}
-		} else if isRobBlock {
+		if isRobBlock {
 			log.Info("DEBUG: submitting rob capella block")
 			err = b.relay.SubmitRobBlockCapella(&blockSubmitReq, vd)
 			if err != nil {
@@ -346,6 +337,7 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 				return err
 			}
 		} else {
+			log.Info("DEBUG: Submitting regular FULL_BLOCK capella block")
 			err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
 			if err != nil {
 				log.Error("could not submit capella block", "err", err, "#commitedBundles", len(commitedBundles))
@@ -371,7 +363,6 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 	log.Info("DEBUG: validator info is", "vd", vd)
 	attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
 	attrs.GasLimit = vd.GasLimit
-	attrs.ProposerCommitment = vd.ProposerCommitment
 
 	proposerPubkey, err := utils.HexToPubkey(string(vd.Pubkey))
 	if err != nil {
@@ -432,27 +423,20 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 	var (
 		queueSignal = make(chan struct{}, 1)
 
-		tobQueueMu                sync.Mutex
-		queueMu                   sync.Mutex
-		queueLastSubmittedTobHash common.Hash
-		queueLastSubmittedHash    common.Hash
-		queueBestTobEntry         blockQueueEntry
-		queueBestEntry            blockQueueEntry
+		queueMu                sync.Mutex
+		queueLastSubmittedHash common.Hash
+		queueBestEntry         blockQueueEntry
 	)
 
-	log.Debug("runBuildingJob", "slot", attrs.Slot, "parent", attrs.HeadHash, "payloadTimestamp", uint64(attrs.Timestamp), "proposerCommitment", attrs.ProposerCommitment, "gasLimit", attrs.GasLimit)
+	log.Debug("runBuildingJob", "slot", attrs.Slot, "parent", attrs.HeadHash, "payloadTimestamp", uint64(attrs.Timestamp), "gasLimit", attrs.GasLimit)
 
 	submitBestBlock := func() {
 		log.Info("DEBUG: In submit best block!")
-		isRobBlock := false
-		if attrs.ProposerCommitment == 2 {
-			isRobBlock = true
-		}
-		log.Info("DEBUG: Submitting ROB block!!", "isRobBlock", isRobBlock)
+		log.Info("DEBUG: Submitting ROB block!!", "isRobBlock", true)
 		queueMu.Lock()
 		if queueBestEntry.block != nil && queueBestEntry.block.Hash() != queueLastSubmittedHash {
 			err := b.onSealedBlock(queueBestEntry.block, queueBestEntry.blockValue, queueBestEntry.ordersCloseTime, queueBestEntry.sealedAt,
-				queueBestEntry.commitedBundles, queueBestEntry.allBundles, queueBestEntry.usedSbundles, proposerPubkey, vd, attrs, false, isRobBlock)
+				queueBestEntry.commitedBundles, queueBestEntry.allBundles, queueBestEntry.usedSbundles, proposerPubkey, vd, attrs, true)
 
 			if err != nil {
 				log.Error("could not run sealed block hook", "err", err)
@@ -463,30 +447,13 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 		queueMu.Unlock()
 	}
 
-	submitBestTobBlock := func() {
-		log.Info("DEBUG: In submitBestTobBlock\n")
-		tobQueueMu.Lock()
-		if queueBestTobEntry.block != nil && queueBestTobEntry.block.Hash() != queueLastSubmittedTobHash {
-			log.Info("DEBUG: Running onSealedBlock in submitBestTobBlock!!\n")
-			err := b.onSealedBlock(queueBestTobEntry.block, queueBestTobEntry.blockValue, queueBestTobEntry.ordersCloseTime, queueBestTobEntry.sealedAt,
-				queueBestTobEntry.commitedBundles, queueBestTobEntry.allBundles, queueBestTobEntry.usedSbundles, proposerPubkey, vd, attrs, true, false)
-
-			if err != nil {
-				log.Error("could not run sealed tob block hook", "err", err)
-			} else {
-				queueLastSubmittedTobHash = queueBestTobEntry.block.Hash()
-			}
-		}
-		tobQueueMu.Unlock()
-	}
-
 	// Avoid submitting early into a given slot. For example if slots have 12 second interval, submissions should
 	// not begin until 8 seconds into the slot.
 	slotTime := time.Unix(int64(attrs.Timestamp), 0).UTC()
 	slotSubmitStartTime := slotTime.Add(-b.submissionOffsetFromEndOfSlot)
 
 	// Empties queue, submits the best block for current job with rate limit (global for all jobs)
-	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock, submitBestTobBlock, slotSubmitStartTime)
+	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock, slotSubmitStartTime)
 
 	// Populates queue with submissions that increase block profit
 	blockHook := func(block *types.Block, blockValue *big.Int, ordersCloseTime time.Time,
@@ -519,42 +486,13 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 		}
 	}
 
-	// Populates queue with submissions that increase block profit
-	tobBlockHook := func(block *types.Block, blockValue *big.Int) {
-		if ctx.Err() != nil {
-			return
-		}
-
-		log.Info("DEBUG: Running TOB Block hook!!!!\n")
-		sealedAt := time.Now()
-
-		tobQueueMu.Lock()
-		defer tobQueueMu.Unlock()
-		if block.Hash() != queueLastSubmittedTobHash {
-			queueBestTobEntry = blockQueueEntry{
-				block:           block,
-				blockValue:      new(big.Int).Set(blockValue),
-				ordersCloseTime: time.Time{},
-				sealedAt:        sealedAt,
-				commitedBundles: []types.SimulatedBundle{},
-				allBundles:      []types.SimulatedBundle{},
-				usedSbundles:    []types.UsedSBundle{},
-			}
-
-			select {
-			case queueSignal <- struct{}{}:
-			default:
-			}
-		}
-	}
-
 	// resubmits block builder requests every builderBlockResubmitInterval
 	runRetryLoop(ctx, b.builderResubmitInterval, func() {
 		log.Debug("retrying BuildBlock",
 			"slot", attrs.Slot,
 			"parent", attrs.HeadHash,
 			"resubmit-interval", b.builderResubmitInterval.String())
-		err := b.eth.BuildBlock(attrs, blockHook, tobBlockHook)
+		err := b.eth.BuildBlock(attrs, blockHook)
 		if err != nil {
 			log.Warn("Failed to build block", "err", err)
 		}
@@ -594,7 +532,7 @@ func executableDataToExecutionPayload(data *engine.ExecutableData) (*bellatrix.E
 func executableDataToCapellaExecutionPayload(data *engine.ExecutableData) (*capella.ExecutionPayload, error) {
 	transactionData := make([]bellatrix.Transaction, len(data.Transactions))
 	for i, tx := range data.Transactions {
-		transactionData[i] = bellatrix.Transaction(tx)
+		transactionData[i] = tx
 	}
 
 	withdrawalData := make([]*capella.Withdrawal, len(data.Withdrawals))
@@ -616,10 +554,10 @@ func executableDataToCapellaExecutionPayload(data *engine.ExecutableData) (*cape
 	return &capella.ExecutionPayload{
 		ParentHash:    [32]byte(data.ParentHash),
 		FeeRecipient:  [20]byte(data.FeeRecipient),
-		StateRoot:     [32]byte(data.StateRoot),
-		ReceiptsRoot:  [32]byte(data.ReceiptsRoot),
+		StateRoot:     data.StateRoot,
+		ReceiptsRoot:  data.ReceiptsRoot,
 		LogsBloom:     types.BytesToBloom(data.LogsBloom),
-		PrevRandao:    [32]byte(data.Random),
+		PrevRandao:    data.Random,
 		BlockNumber:   data.Number,
 		GasLimit:      data.GasLimit,
 		GasUsed:       data.GasUsed,

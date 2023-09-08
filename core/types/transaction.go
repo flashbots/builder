@@ -599,6 +599,15 @@ func NewSBundleWithMinerFee(sbundle *SimSBundle, _ *big.Int) (*TxWithMinerFee, e
 	}, nil
 }
 
+// Used only to assemble txs. During tx assembly, we need to have txs in the sequence specified by assembly request
+//type AssemblerTxList []*TxWithMinerFee
+//
+//func (s AssemblerTxList) Len() int           { return len(s) }
+//func (s AssemblerTxList) Less(i, j int) bool { return i < j }
+//func (s AssemblerTxList) Swap(i, j int) {
+//	s[i], s[j] = s[j], s[i]
+//}
+
 // TxByPriceAndTime implements both the sort and the heap interface, making it useful
 // for all at once sorting as well as individually adding and removing elements.
 type TxByPriceAndTime []*TxWithMinerFee

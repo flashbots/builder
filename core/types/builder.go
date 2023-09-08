@@ -14,7 +14,6 @@ type BuilderPayloadAttributes struct {
 	HeadHash              common.Hash    `json:"blockHash"`
 	Withdrawals           Withdrawals    `json:"withdrawals"`
 	GasLimit              uint64
-	ProposerCommitment    uint64 `json:"proposerCommitment"`
 }
 
 func (attrs *BuilderPayloadAttributes) Equal(other *BuilderPayloadAttributes) bool {
@@ -23,8 +22,7 @@ func (attrs *BuilderPayloadAttributes) Equal(other *BuilderPayloadAttributes) bo
 		attrs.SuggestedFeeRecipient != other.SuggestedFeeRecipient ||
 		attrs.Slot != other.Slot ||
 		attrs.HeadHash != other.HeadHash ||
-		attrs.GasLimit != other.GasLimit ||
-		attrs.ProposerCommitment != other.ProposerCommitment {
+		attrs.GasLimit != other.GasLimit {
 		return false
 	}
 

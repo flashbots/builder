@@ -89,7 +89,6 @@ func TestBuildBlockUnsupportedProposerCommitment(t *testing.T) {
 		SuggestedFeeRecipient: common.Address{0x04, 0x10},
 		GasLimit:              uint64(4800000),
 		Slot:                  uint64(25),
-		ProposerCommitment:    1,
 	}
 
 	service := NewEthereumService(ethservice)
@@ -114,7 +113,6 @@ func TestBuildBlock(t *testing.T) {
 		SuggestedFeeRecipient: common.Address{0x04, 0x10},
 		GasLimit:              uint64(4800000),
 		Slot:                  uint64(25),
-		ProposerCommitment:    0,
 	}
 
 	service := NewEthereumService(ethservice)

@@ -170,6 +170,36 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV1(blockRequest), "could not apply tx 4", "insufficient funds for gas * price + value")
 }
 
+//
+//func TestBlockAssembler(t *testing.T) {
+//	genesis, preMergeBlocks := generatePreMergeChain(20)
+//	os.Setenv("BUILDER_TX_SIGNING_KEY", testBuilderKeyHex)
+//	time := preMergeBlocks[len(preMergeBlocks)-1].Time() + 5
+//	genesis.Config.ShanghaiTime = &time
+//	n, ethservice := startEthService(t, genesis, preMergeBlocks)
+//	ethservice.Merger().ReachTTD()
+//	defer n.Close()
+//
+//	api := NewBlockValidationAPI(ethservice, nil, false)
+//	parent := preMergeBlocks[len(preMergeBlocks)-1]
+//
+//	api.eth.APIBackend.Miner().SetEtherbase(testBuilderAddr)
+//
+//	statedb, _ := ethservice.BlockChain().StateAt(parent.Root())
+//	nonce := statedb.GetNonce(testAddr)
+//
+//	signer := types.LatestSigner(ethservice.BlockChain().Config())
+//
+//	tobTx1, _ := types.SignTx(types.NewTransaction(nonce, common.Address{0x16}, big.NewInt(10), 21000, big.NewInt(2*params.InitialBaseFee), nil), signer, testKey)
+//	tobTx2, _ := types.SignTx(types.NewTransaction(nonce, common.Address{0x17}, big.NewInt(20), 21000, big.NewInt(2*params.InitialBaseFee), nil), signer, testKey)
+//
+//	cc, _ := types.SignTx(types.NewContractCreation(nonce+1, new(big.Int), 1000000, big.NewInt(2*params.InitialBaseFee), logCode), signer, testKey)
+//
+//	baseFee := misc.CalcBaseFee(params.AllEthashProtocolChanges, preMergeBlocks[len(preMergeBlocks)-1].Header())
+//	tx2, _ := types.SignTx(types.NewTransaction(nonce+2, testAddr, big.NewInt(10), 21000, baseFee, nil), signer, testKey)
+//
+//}
+
 func TestValidateBuilderSubmissionV2(t *testing.T) {
 	genesis, preMergeBlocks := generatePreMergeChain(20)
 	os.Setenv("BUILDER_TX_SIGNING_KEY", testBuilderKeyHex)

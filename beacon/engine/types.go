@@ -141,7 +141,7 @@ func encodeTransactions(txs []*types.Transaction) [][]byte {
 	return enc
 }
 
-func decodeTransactions(enc [][]byte) ([]*types.Transaction, error) {
+func DecodeTransactions(enc [][]byte) ([]*types.Transaction, error) {
 	var txs = make([]*types.Transaction, len(enc))
 	for i, encTx := range enc {
 		var tx types.Transaction
@@ -164,7 +164,7 @@ func decodeTransactions(enc [][]byte) ([]*types.Transaction, error) {
 // Withdrawals value will propagate through the returned block. Empty
 // Withdrawals value must be passed via non-nil, length 0 value in params.
 func ExecutableDataToBlock(params ExecutableData) (*types.Block, error) {
-	txs, err := decodeTransactions(params.Transactions)
+	txs, err := DecodeTransactions(params.Transactions)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +246,7 @@ func ExecutionPayloadToBlock(payload *bellatrix.ExecutionPayload) (*types.Block,
 	for i, txHexBytes := range payload.Transactions {
 		transactionBytes[i] = txHexBytes[:]
 	}
-	txs, err := decodeTransactions(transactionBytes)
+	txs, err := DecodeTransactions(transactionBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -286,7 +286,7 @@ func ExecutionPayloadV2ToBlock(payload *capella.ExecutionPayload) (*types.Block,
 	for i, txHexBytes := range payload.Transactions {
 		transactionBytes[i] = txHexBytes[:]
 	}
-	txs, err := decodeTransactions(transactionBytes)
+	txs, err := DecodeTransactions(transactionBytes)
 	if err != nil {
 		return nil, err
 	}
