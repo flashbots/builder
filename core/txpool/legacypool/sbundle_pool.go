@@ -56,7 +56,7 @@ func (p *SBundlePool) ResetPoolData(pool *LegacyPool) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.currentHead = pool.currentHead
+	p.currentHead.Store(pool.currentHead.Load())
 }
 
 func (p *SBundlePool) Add(bundle *types.SBundle) error {

@@ -864,7 +864,7 @@ func (s *StateDB) Copy() *StateDB {
 	if metrics.EnabledBuilder {
 		stateCopyMeter.Mark(1)
 	}
-	
+
 	return state
 }
 

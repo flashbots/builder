@@ -265,7 +265,7 @@ func BenchmarkAlgo(b *testing.B) {
 							for addr, txs := range txPool {
 								for _, tx := range txs {
 									txPoolCopy[addr] = append(txPoolCopy[addr], &txpool.LazyTransaction{
-										Pool: 	tx.Pool,
+										Pool:      tx.Pool,
 										Hash:      tx.Hash,
 										Tx:        tx.Tx,
 										Time:      tx.Time,

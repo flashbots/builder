@@ -36,7 +36,7 @@ type _TxOrder struct {
 	tx *txpool.LazyTransaction
 }
 
-func (o _TxOrder) AsTx() *txpool.LazyTransaction         { return o.tx }
+func (o _TxOrder) AsTx() *txpool.LazyTransaction    { return o.tx }
 func (o _TxOrder) AsBundle() *types.SimulatedBundle { return nil }
 func (o _TxOrder) AsSBundle() *types.SimSBundle     { return nil }
 
@@ -44,7 +44,7 @@ type _BundleOrder struct {
 	bundle *types.SimulatedBundle
 }
 
-func (o _BundleOrder) AsTx() *txpool.LazyTransaction         { return nil }
+func (o _BundleOrder) AsTx() *txpool.LazyTransaction    { return nil }
 func (o _BundleOrder) AsBundle() *types.SimulatedBundle { return o.bundle }
 func (o _BundleOrder) AsSBundle() *types.SimSBundle     { return nil }
 
@@ -52,15 +52,15 @@ type _SBundleOrder struct {
 	sbundle *types.SimSBundle
 }
 
-func (o _SBundleOrder) AsTx() *txpool.LazyTransaction         { return nil }
+func (o _SBundleOrder) AsTx() *txpool.LazyTransaction    { return nil }
 func (o _SBundleOrder) AsBundle() *types.SimulatedBundle { return nil }
 func (o _SBundleOrder) AsSBundle() *types.SimSBundle     { return o.sbundle }
 
 // txWithMinerFee wraps a transaction with its gas price or effective miner gasTipCap
 type txWithMinerFee struct {
-	order   _Order
-	from common.Address
-	fees *big.Int
+	order _Order
+	from  common.Address
+	fees  *big.Int
 }
 
 func (t *txWithMinerFee) Tx() *txpool.LazyTransaction {
@@ -117,8 +117,8 @@ func (t *txWithMinerFee) SetProfit(profit *big.Int) {
 func newBundleWithMinerFee(bundle *types.SimulatedBundle) (*txWithMinerFee, error) {
 	minerFee := bundle.MevGasPrice
 	return &txWithMinerFee{
-		order:    _BundleOrder{bundle},
-		fees: minerFee,
+		order: _BundleOrder{bundle},
+		fees:  minerFee,
 	}, nil
 }
 
@@ -126,8 +126,8 @@ func newBundleWithMinerFee(bundle *types.SimulatedBundle) (*txWithMinerFee, erro
 func newSBundleWithMinerFee(sbundle *types.SimSBundle) (*txWithMinerFee, error) {
 	minerFee := sbundle.MevGasPrice
 	return &txWithMinerFee{
-		order:    _SBundleOrder{sbundle},
-		fees: minerFee,
+		order: _SBundleOrder{sbundle},
+		fees:  minerFee,
 	}, nil
 }
 
@@ -144,8 +144,8 @@ func newTxWithMinerFee(tx *txpool.LazyTransaction, from common.Address, baseFee 
 	}
 	return &txWithMinerFee{
 		order: _TxOrder{tx},
-		from: from,
-		fees: tip,
+		from:  from,
+		fees:  tip,
 	}, nil
 }
 
@@ -196,7 +196,7 @@ type transactionsByPriceAndNonce struct {
 func newTransactionsByPriceAndNonce(signer types.Signer, txs map[common.Address][]*txpool.LazyTransaction, bundles []types.SimulatedBundle, sbundles []*types.SimSBundle, baseFee *big.Int) *transactionsByPriceAndNonce {
 	// Initialize a price and received time based heap with the head transactions
 	heads := make(txByPriceAndTime, 0, len(txs))
-	
+
 	for i := range sbundles {
 		wrapped, err := newSBundleWithMinerFee(sbundles[i])
 		if err != nil {

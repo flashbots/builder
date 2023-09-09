@@ -107,7 +107,7 @@ type SubPool interface {
 	Add(txs []*Transaction, local bool, sync bool, private bool) []error
 
 	// AddMevBundle adds a mev bundle to the pool.
-    AddMevBundle(bundle types.MevBundle) error
+	AddMevBundle(bundle types.MevBundle) error
 
 	AddMevBundles(bundles []types.MevBundle) error
 
@@ -126,7 +126,6 @@ type SubPool interface {
 	IsPrivateTxHash(hash common.Hash) bool
 
 	RegisterBundleFetcher(fetcher IFetcher)
-
 
 	// Pending retrieves all currently processable transactions, grouped by origin
 	// account and sorted by nonce.
