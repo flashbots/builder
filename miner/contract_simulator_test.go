@@ -132,12 +132,15 @@ func TestSimulatorState(t *testing.T) {
 	deployerKey, err := crypto.ToECDSA(hexutil.MustDecode("0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"))
 	deployerAddress := crypto.PubkeyToAddress(deployerKey.PublicKey)
 	deployerTestAddress := common.HexToAddress("0x70997970C51812dc3A010C7d01b50e0d17dc79C8")
-	alloc := core.GenesisAlloc{deployerAddress: {Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}, deployerTestAddress: {Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}}
+	alloc := core.GenesisAlloc{deployerAddress: {
+		Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)},
+		deployerTestAddress: {Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)},
+	}
 
 	testParticipants := NewTestParticipants(5, 5)
 	alloc = testParticipants.AppendToGenesisAlloc(alloc)
 
-	w, b := newTestWorker(t, &chainConfig, engine, db, 0)
+	w, b := newTestWorker(t, &chainConfig, engine, db, alloc, 0)
 	w.setEtherbase(crypto.PubkeyToAddress(testConfig.BuilderTxSigningKey.PublicKey))
 
 	simBackend := backends.NewSimulatedBackendChain(db, b.chain)
@@ -194,8 +197,19 @@ func TestSimulatorState(t *testing.T) {
 		// TODO: deneb support
 		txpoolTxs := make([]*txpool.Transaction, len(txs))
 		for i, tx := range txs {
+			signer := types.LatestSigner(b.chain.Config())
+			from, err := signer.Sender(tx)
+			require.NoError(t, err)
+
+			sdb, err := b.chain.State()
+			require.NoError(t, err)
+
+			balance := sdb.GetBalance(from)
+			require.Greater(t, balance.Cmp(tx.Cost()), 0)
+
 			txpoolTxs[i] = &txpool.Transaction{Tx: tx}
 		}
+
 		errs := b.txPool.Add(txpoolTxs, true, true, false)
 		for _, err := range errs {
 			require.NoError(t, err)

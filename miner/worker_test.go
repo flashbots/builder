@@ -125,10 +125,14 @@ type testWorkerBackend struct {
 	genesis *core.Genesis
 }
 
-func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, n int) *testWorkerBackend {
+func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, alloc core.GenesisAlloc, n int, gasLimit uint64) *testWorkerBackend {
+	if alloc == nil {
+		alloc = defaultGenesisAlloc
+	}
 	var gspec = &core.Genesis{
-		Config: chainConfig,
-		Alloc:  core.GenesisAlloc{testBankAddress: {Balance: testBankFunds}},
+		GasLimit: gasLimit,
+		Config:   chainConfig,
+		Alloc:    alloc,
 	}
 	switch e := engine.(type) {
 	case *clique.Clique:
@@ -169,8 +173,9 @@ func (b *testWorkerBackend) newRandomTx(creation bool, to common.Address, amt in
 	return tx
 }
 
-func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, blocks int) (*worker, *testWorkerBackend) {
-	backend := newTestWorkerBackend(t, chainConfig, engine, db, blocks)
+func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, alloc core.GenesisAlloc, blocks int) (*worker, *testWorkerBackend) {
+	const GasLimit = 1_000_000_000_000_000_000
+	backend := newTestWorkerBackend(t, chainConfig, engine, db, alloc, blocks, GasLimit)
 	backend.txPool.Add(pendingTxs, true, false, false)
 	w := newWorker(testConfig, chainConfig, engine, backend, new(event.TypeMux), nil, false, &flashbotsData{
 		isFlashbots: testConfig.AlgoType != ALGO_MEV_GETH,
@@ -193,7 +198,7 @@ func TestGenerateAndImportBlock(t *testing.T) {
 	config.Clique = &params.CliqueConfig{Period: 1, Epoch: 30000}
 	engine := clique.New(config.Clique, db)
 
-	w, b := newTestWorker(t, &config, engine, db, 0)
+	w, b := newTestWorker(t, &config, engine, db, nil, 0)
 	defer w.close()
 
 	// This test chain imports the mined blocks.
@@ -238,7 +243,7 @@ func TestEmptyWorkClique(t *testing.T) {
 func testEmptyWork(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine) {
 	defer engine.Close()
 
-	w, _ := newTestWorker(t, chainConfig, engine, rawdb.NewMemoryDatabase(), 0)
+	w, _ := newTestWorker(t, chainConfig, engine, rawdb.NewMemoryDatabase(), nil, 0)
 	defer w.close()
 
 	taskCh := make(chan struct{}, 2)
@@ -281,7 +286,7 @@ func TestAdjustIntervalClique(t *testing.T) {
 func testAdjustInterval(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine) {
 	defer engine.Close()
 
-	w, _ := newTestWorker(t, chainConfig, engine, rawdb.NewMemoryDatabase(), 0)
+	w, _ := newTestWorker(t, chainConfig, engine, rawdb.NewMemoryDatabase(), nil, 0)
 	defer w.close()
 
 	w.skipSealHook = func(task *task) bool {
@@ -381,7 +386,7 @@ func TestGetSealingWorkPostMerge(t *testing.T) {
 
 func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine) {
 	defer engine.Close()
-	w, b := newTestWorker(t, chainConfig, engine, rawdb.NewMemoryDatabase(), 0)
+	w, b := newTestWorker(t, chainConfig, engine, rawdb.NewMemoryDatabase(), nil, 0)
 	defer w.close()
 
 	w.setExtra([]byte{0x01, 0x02})
@@ -501,7 +506,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 }
 
 func TestSimulateBundles(t *testing.T) {
-	w, _ := newTestWorker(t, ethashChainConfig, ethash.NewFaker(), rawdb.NewMemoryDatabase(), 0)
+	w, _ := newTestWorker(t, ethashChainConfig, ethash.NewFaker(), rawdb.NewMemoryDatabase(), nil, 0)
 	defer w.close()
 
 	env, err := w.prepareWork(&generateParams{gasLimit: 30000000})
@@ -582,7 +587,7 @@ func testBundles(t *testing.T) {
 		genesisAlloc[address] = core.GenesisAccount{Balance: testBankFunds}
 	}
 
-	w, b := newTestWorker(t, chainConfig, engine, db, 0)
+	w, b := newTestWorker(t, chainConfig, engine, db, nil, 0)
 	w.setEtherbase(crypto.PubkeyToAddress(testConfig.BuilderTxSigningKey.PublicKey))
 	defer w.close()
 

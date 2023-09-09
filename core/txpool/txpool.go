@@ -354,12 +354,17 @@ func (p *TxPool) AddMevBundles(bundles []types.MevBundle) error {
 // Returns regular bundles and a function resolving to current cancellable bundles
 func (pool *TxPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]types.MevBundle, chan []types.MevBundle) {
 	for _, subpool := range pool.subpools {
+		// TODO: Add support for MevBundles from 4844 blob pool
 		bundles, resolver := subpool.MevBundles(blockNumber, blockTimestamp)
 		if len(bundles) > 0 {
 			return bundles, resolver
 		}
 	}
-	return []types.MevBundle{}, nil
+
+	var ret [0]types.MevBundle
+	ch := make(chan []types.MevBundle, 1)
+	close(ch)
+	return ret[:0], ch
 }
 
 func (p *TxPool) AddSBundle(sbundle *types.SBundle) error {
