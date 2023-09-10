@@ -57,7 +57,29 @@ func (r *testRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, registration 
 	return r.sbError
 }
 
+func (r *testRelay) SubmitRobBlock(msg *bellatrix.SubmitBlockRequest, registration ValidatorData) error {
+	if r.submittedMsgCh != nil {
+		select {
+		case r.submittedMsgCh <- msg:
+		default:
+		}
+	}
+	r.submittedMsg = msg
+	return r.sbError
+}
+
 func (r *testRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, registration ValidatorData) error {
+	if r.submittedMsgCh != nil {
+		select {
+		case r.submittedMsgChCapella <- msg:
+		default:
+		}
+	}
+	r.submittedMsgCapella = msg
+	return r.sbError
+}
+
+func (r *testRelay) SubmitRobBlockCapella(msg *capella.SubmitBlockRequest, registration ValidatorData) error {
 	if r.submittedMsgCh != nil {
 		select {
 		case r.submittedMsgChCapella <- msg:

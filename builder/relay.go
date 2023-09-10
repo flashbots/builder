@@ -53,11 +53,10 @@ type GetValidatorRelayResponse []struct {
 	Slot  uint64 `json:"slot,string"`
 	Entry struct {
 		Message struct {
-			FeeRecipient       string `json:"fee_recipient"`
-			GasLimit           uint64 `json:"gas_limit,string"`
-			Timestamp          uint64 `json:"timestamp,string"`
-			Pubkey             string `json:"pubkey"`
-			ProposerCommitment uint64 `json:"proposer_commitment,string"`
+			FeeRecipient string `json:"fee_recipient"`
+			GasLimit     uint64 `json:"gas_limit,string"`
+			Timestamp    uint64 `json:"timestamp,string"`
+			Pubkey       string `json:"pubkey"`
 		} `json:"message"`
 		Signature string `json:"signature"`
 	} `json:"entry"`
@@ -324,10 +323,9 @@ func (r *RemoteRelay) getSlotValidatorMapFromRelay() (map[uint64]ValidatorData, 
 		pubkeyHex := PubkeyHex(strings.ToLower(data.Entry.Message.Pubkey))
 
 		res[data.Slot] = ValidatorData{
-			Pubkey:             pubkeyHex,
-			FeeRecipient:       feeRecipient,
-			GasLimit:           data.Entry.Message.GasLimit,
-			ProposerCommitment: data.Entry.Message.ProposerCommitment,
+			Pubkey:       pubkeyHex,
+			FeeRecipient: feeRecipient,
+			GasLimit:     data.Entry.Message.GasLimit,
 		}
 	}
 

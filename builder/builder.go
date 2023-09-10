@@ -40,10 +40,9 @@ const (
 type PubkeyHex string
 
 type ValidatorData struct {
-	Pubkey             PubkeyHex
-	FeeRecipient       bellatrix.ExecutionAddress
-	GasLimit           uint64
-	ProposerCommitment uint64
+	Pubkey       PubkeyHex
+	FeeRecipient bellatrix.ExecutionAddress
+	GasLimit     uint64
 }
 
 type IRelay interface {
@@ -434,7 +433,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 		log.Info("DEBUG: In submit best block!")
 		log.Info("DEBUG: Submitting ROB block!!", "isRobBlock", true)
 		queueMu.Lock()
-		if queueBestEntry.block != nil && queueBestEntry.block.Hash() != queueLastSubmittedHash {
+		if queueBestEntry.block.Hash() != queueLastSubmittedHash {
 			err := b.onSealedBlock(queueBestEntry.block, queueBestEntry.blockValue, queueBestEntry.ordersCloseTime, queueBestEntry.sealedAt,
 				queueBestEntry.commitedBundles, queueBestEntry.allBundles, queueBestEntry.usedSbundles, proposerPubkey, vd, attrs, true)
 
