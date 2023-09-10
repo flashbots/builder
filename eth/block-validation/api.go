@@ -12,6 +12,7 @@ import (
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	bellatrixUtil "github.com/attestantio/go-eth2-client/util/bellatrix"
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -233,10 +234,34 @@ func (r *BuilderBlockValidationRequestV2) UnmarshalJSON(data []byte) error {
 }
 
 type BlockAssemblerRequest struct {
-	TobTxs             [][]byte                       `json:"tob_txs"`
+	TobTxs             bellatrixUtil.ExecutionPayloadTransactions
+	RobPayload         *capellaapi.SubmitBlockRequest
+	RegisteredGasLimit uint64
+	PayloadAttributes  *engine.PayloadAttributes
+}
+
+type IntermediateBlockAssemblerRequest struct {
+	TobTxs             []byte                         `json:"tob_txs"`
 	RobPayload         *capellaapi.SubmitBlockRequest `json:"rob_payload"`
 	RegisteredGasLimit uint64                         `json:"registered_gas_limit,string"`
 	PayloadAttributes  *engine.PayloadAttributes      `json:"payload_attributes"`
+}
+
+func (b *BlockAssemblerRequest) UnmarshalJSON(data []byte) error {
+	var intermediateJson IntermediateBlockAssemblerRequest
+	err := json.Unmarshal(data, &intermediateJson)
+	if err != nil {
+		return err
+	}
+	err = b.TobTxs.UnmarshalSSZ(intermediateJson.TobTxs)
+	if err != nil {
+		return err
+	}
+	b.RegisteredGasLimit = intermediateJson.RegisteredGasLimit
+	b.PayloadAttributes = intermediateJson.PayloadAttributes
+	b.RobPayload = intermediateJson.RobPayload
+
+	return nil
 }
 
 // bchain: copied this here to avoid circular dependency
@@ -287,9 +312,9 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 	}
 
 	log.Info("DEBUG: Entered the BlockAssembler!!")
-	log.Info("BlockAssembler", "tobTxs", len(params.TobTxs), "robPayload", params.RobPayload)
-	transactionBytes := make([][]byte, len(params.TobTxs))
-	for i, txHexBytes := range params.TobTxs {
+	log.Info("BlockAssembler", "tobTxs", len(params.TobTxs.Transactions), "robPayload", params.RobPayload)
+	transactionBytes := make([][]byte, len(params.TobTxs.Transactions))
+	for i, txHexBytes := range params.TobTxs.Transactions {
 		transactionBytes[i] = txHexBytes[:]
 	}
 	txs, err := engine.DecodeTransactions(transactionBytes)

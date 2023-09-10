@@ -1723,12 +1723,11 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 		return finalizeFn(work, time.Now(), nil, nil, nil, true)
 	}
 
-	// TODO - Add builder payment support for TOB_ROB_SPLIT
-	//var paymentTxReserve *proposerTxReservation
-	//paymentTxReserve, err = w.proposerTxPrepare(work, &validatorCoinbase)
-	//if err != nil {
-	//	return nil, nil, err
-	//}
+	var paymentTxReserve *proposerTxReservation
+	paymentTxReserve, err = w.proposerTxPrepare(work, &validatorCoinbase)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	orderCloseTime := time.Now()
 
@@ -1760,10 +1759,10 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 		return finalizeFn(work, orderCloseTime, blockBundles, allBundles, usedSbundles, true)
 	}
 
-	//err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve)
-	//if err != nil {
-	//	return nil, nil, err
-	//}
+	err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	return finalizeFn(work, orderCloseTime, blockBundles, allBundles, usedSbundles, false)
 }
@@ -1782,12 +1781,12 @@ func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals,
 		return block, big.NewInt(0), nil
 	}
 
-	//blockProfit, err := w.checkProposerPayment(work, validatorCoinbase)
-	//if err != nil {
-	//	return nil, nil, err
-	//}
+	blockProfit, err := w.checkProposerPayment(work, validatorCoinbase)
+	if err != nil {
+		return nil, nil, err
+	}
 
-	return block, big.NewInt(10), nil
+	return block, blockProfit, nil
 }
 
 func (w *worker) checkProposerPayment(work *environment, validatorCoinbase common.Address) (*big.Int, error) {
