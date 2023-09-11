@@ -235,16 +235,14 @@ func (r *BuilderBlockValidationRequestV2) UnmarshalJSON(data []byte) error {
 
 type BlockAssemblerRequest struct {
 	TobTxs             bellatrixUtil.ExecutionPayloadTransactions
-	RobPayload         *capellaapi.SubmitBlockRequest
+	RobPayload         capellaapi.SubmitBlockRequest
 	RegisteredGasLimit uint64
-	PayloadAttributes  *engine.PayloadAttributes
 }
 
 type IntermediateBlockAssemblerRequest struct {
-	TobTxs             []byte                         `json:"tob_txs"`
-	RobPayload         *capellaapi.SubmitBlockRequest `json:"rob_payload"`
-	RegisteredGasLimit uint64                         `json:"registered_gas_limit,string"`
-	PayloadAttributes  *engine.PayloadAttributes      `json:"payload_attributes"`
+	TobTxs             []byte                        `json:"tob_txs"`
+	RobPayload         capellaapi.SubmitBlockRequest `json:"rob_payload"`
+	RegisteredGasLimit uint64                        `json:"registered_gas_limit,string"`
 }
 
 func (b *BlockAssemblerRequest) UnmarshalJSON(data []byte) error {
@@ -258,7 +256,6 @@ func (b *BlockAssemblerRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	b.RegisteredGasLimit = intermediateJson.RegisteredGasLimit
-	b.PayloadAttributes = intermediateJson.PayloadAttributes
 	b.RobPayload = intermediateJson.RobPayload
 
 	return nil
@@ -307,10 +304,6 @@ func executableDataToCapellaExecutionPayload(data *engine.ExecutableData) (*cape
 }
 
 func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*capella.ExecutionPayload, error) {
-	if params.RobPayload == nil {
-		return nil, errors.New("nil rob payload")
-	}
-
 	log.Info("DEBUG: Entered the BlockAssembler!!")
 	log.Info("BlockAssembler", "tobTxs", len(params.TobTxs.Transactions), "robPayload", params.RobPayload)
 	transactionBytes := make([][]byte, len(params.TobTxs.Transactions))
@@ -352,13 +345,15 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 	log.Info("Done Checking for duplicate txs!")
 
 	withdrawals := make(types.Withdrawals, len(params.RobPayload.ExecutionPayload.Withdrawals))
-	for _, withdrawal := range params.RobPayload.ExecutionPayload.Withdrawals {
-		withdrawals = withdrawals.Append(types.Withdrawal{
+	log.Info("DEBUG: Building the final set of withdrawals")
+	log.Info("DEBUG: Withdrawals are ", "withdrawals", params.RobPayload.ExecutionPayload.Withdrawals)
+	for i, withdrawal := range params.RobPayload.ExecutionPayload.Withdrawals {
+		withdrawals[i] = &types.Withdrawal{
 			Index:     uint64(withdrawal.Index),
 			Validator: uint64(withdrawal.ValidatorIndex),
 			Address:   common.Address(withdrawal.Address),
 			Amount:    uint64(withdrawal.Amount),
-		})
+		}
 	}
 
 	log.Info("DEBUG: Built the final set of withdrawals")
@@ -373,9 +368,9 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 		Parent:    common.Hash(params.RobPayload.ExecutionPayload.ParentHash),
 		Timestamp: params.RobPayload.ExecutionPayload.Timestamp,
 		// TODO - this should be relayer fee recipient. We will implement payouts later
-		FeeRecipient: common.Address(params.RobPayload.ExecutionPayload.FeeRecipient),
+		FeeRecipient: common.Address(params.RobPayload.Message.ProposerFeeRecipient),
 		GasLimit:     params.RegisteredGasLimit,
-		Random:       params.PayloadAttributes.Random,
+		Random:       params.RobPayload.ExecutionPayload.PrevRandao,
 		Withdrawals:  withdrawals,
 		BlockHook:    nil,
 		AssemblerTxs: miner.AssemblerTxLists{
@@ -387,6 +382,7 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 	if err != nil {
 		return nil, err
 	}
+	log.Info("DEBUG: Resolving block!!")
 	resolvedBlock := block.ResolveFull()
 	if resolvedBlock == nil {
 		return nil, errors.New("unable to resolve block")
@@ -395,6 +391,7 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 		return nil, errors.New("nil execution payload")
 	}
 
+	log.Info("DEBUG: Resolved block!!")
 	finalPayload, err := executableDataToCapellaExecutionPayload(resolvedBlock.ExecutionPayload)
 	log.Info("DEBUG: Final payload", "finalPayload", finalPayload)
 

@@ -118,19 +118,17 @@ func (w *multiWorker) payloadAssembler(args *BuildPayloadArgs) (*Payload, error)
 
 	var tobBlock *types.Block
 	var fees *big.Int
-	for _, worker := range w.workers {
-		var err error
-		start := time.Now()
-		tobBlock, fees, err = worker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook, args.AssemblerTxs)
-		if err != nil {
-			log.Error("could not start async block construction", "isFlashbotsWorker", worker.flashbots.isFlashbots, "#bundles", worker.flashbots.maxMergedBundles)
-			continue
-		}
-		log.Info("DEBUG: Got assembler payload!!\n")
-		log.Info("DEBUG: assembler Payload details", "tobBlock", tobBlock, "fees", fees, "time", time.Since(start), "\n")
-		payload.update(tobBlock, fees, time.Since(start))
-		break
+	var err error
+	start := time.Now()
+	log.Info("DEBUG: Get assembled sealing block!")
+	tobBlock, fees, err = w.regularWorker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook, args.AssemblerTxs)
+	if err != nil {
+		log.Error("could not start async block construction", "err", err)
+		return nil, err
 	}
+	log.Info("DEBUG: Got assembler payload!!\n")
+	log.Info("DEBUG: assembler Payload details", "tobBlock", tobBlock, "fees", fees, "time", time.Since(start), "\n")
+	payload.update(tobBlock, fees, time.Since(start))
 
 	return payload, nil
 }

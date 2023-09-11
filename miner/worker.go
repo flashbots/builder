@@ -906,6 +906,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		profit:       new(big.Int),
 		assemblerTxs: assemblerTxs,
 	}
+	log.Info("DEBUG: assemblerTxs in makeEnv", "assemblerTxs", assemblerTxs)
 	if len(assemblerTxs.TobTxs) > 0 || (assemblerTxs.RobTxs != nil && assemblerTxs.RobTxs.Len() > 0) {
 		env.isAssembler = true
 	}
@@ -1109,7 +1110,9 @@ func (w *worker) commitAssemblyTransactions(env *environment, assemblerTxs Assem
 	var coalescedLogs []*types.Log
 
 	// first go thru TOB txs
-	for _, tx := range assemblerTxs.TobTxs {
+	log.Info("DEBUG: Commiting TOB txs!!")
+	for i, tx := range assemblerTxs.TobTxs {
+		log.Info("DEBUG: Commiting TOB tx ", "number", i)
 		// Check interruption signal and abort building if it's fired.
 		if interrupt != nil {
 			if signal := atomic.LoadInt32(interrupt); signal != commitInterruptNone {
@@ -1126,6 +1129,7 @@ func (w *worker) commitAssemblyTransactions(env *environment, assemblerTxs Assem
 		// during transaction acceptance is the transaction pool.
 		from, _ := types.Sender(env.signer, tx)
 		logs, err := w.commitTransaction(env, tx)
+		log.Info("DEBUG: Tob tx commit failed with err", "err", err)
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):
 			// Pop the current out-of-gas transaction without shifting in the next from the account
@@ -1158,6 +1162,7 @@ func (w *worker) commitAssemblyTransactions(env *environment, assemblerTxs Assem
 	// commit the ROB txs
 	i := 0
 	for {
+		log.Info("DEBUG: Commiting ROB tx ", "number", i)
 		// Check interruption signal and abort building if it's fired.
 		if interrupt != nil {
 			if signal := atomic.LoadInt32(interrupt); signal != commitInterruptNone {
@@ -1180,6 +1185,7 @@ func (w *worker) commitAssemblyTransactions(env *environment, assemblerTxs Assem
 		// during transaction acceptance is the transaction pool.
 		from, _ := types.Sender(env.signer, tx)
 		logs, err := w.commitTransaction(env, tx)
+		log.Info("DEBUG: ROB tx commit failed with err", "err", err)
 		switch {
 		case errors.Is(err, core.ErrGasLimitReached):
 			// Pop the current out-of-gas transaction without shifting in the next from the account
@@ -1335,7 +1341,6 @@ type generateParams struct {
 	noUncle      bool              // Flag whether the uncle block inclusion is allowed
 	noTxs        bool              // Flag whether an empty block without any transaction is expected
 	onBlock      BlockHookFn       // Callback to call for each produced block
-	isAssembler  bool              // Are we generating a block as an assembler
 	assemblerTxs AssemblerTxLists  // The transactions that the assembler wants to make a block out of
 }
 
@@ -1489,6 +1494,8 @@ func (w *worker) fillAssemblerTransactions(interrupt *int32, env *environment) (
 
 		i += 1
 	}
+	log.Info("DEBUG: mempoolHashes length is ", "len", len(mempoolHashes))
+	log.Info("DEBUG: mempoolHashes is ", "mempoolHashes", mempoolHashes)
 
 	if totalTxsToAssemble > 0 {
 		log.Info("DEBUG: Commiting assembler txs!!!\n")
@@ -1709,7 +1716,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 			gasUsedGauge.Update(int64(block.GasUsed()))
 			transactionNumGauge.Update(int64(len(env.txs)))
 		}
-		if !params.isAssembler {
+		if !work.isAssembler {
 			if params.onBlock != nil {
 				log.Info("DEBUG: Running ROB block hook!!\n")
 				go params.onBlock(block, profit, orderCloseTime, blockBundles, allBundles, usedSbundles)
@@ -1723,9 +1730,10 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 		return finalizeFn(work, time.Now(), nil, nil, nil, true)
 	}
 
+	log.Info("DEBUG: is assembler", "isAssembler", work.isAssembler)
 	var paymentTxReserve *proposerTxReservation
 	// there won't be any additional payments for a block assembled by the assembler
-	if !params.isAssembler {
+	if !work.isAssembler {
 		paymentTxReserve, err = w.proposerTxPrepare(work, &validatorCoinbase)
 		if err != nil {
 			return nil, nil, err
@@ -1766,7 +1774,7 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 	// log out no of bundles
 	log.Info("DEBUG: Got bundles from the mempool!", "bundles", len(blockBundles))
 
-	if !params.isAssembler {
+	if !work.isAssembler {
 		err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve)
 		if err != nil {
 			return nil, nil, err
