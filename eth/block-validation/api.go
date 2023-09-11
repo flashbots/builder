@@ -228,6 +228,10 @@ func (r *BuilderBlockValidationRequestV2) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// Response object for the block validation v2 request. Contains a gas limit
+// and a block hash that are valid for the `RegisteredGasLimit` property of the
+// request. This is to allow post-building adjustment of the gas limit in the
+// built block.
 type BuilderBlockValidationResponseV2 struct {
 	NewGasLimit  uint64 `json:"new_gas_limit,string"`
 	NewBlockHash string `json:"new_block_hash"`
