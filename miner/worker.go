@@ -1759,6 +1759,8 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 		}
 	}
 
+	// TODO - bchain - maybe we can avoid this check for the assembler since we can assume that the ROB block
+	// should be valid
 	err = VerifyBundlesAtomicity(work, blockBundles, allBundles, usedSbundles, mempoolTxHashes)
 	if err != nil {
 		log.Error("Bundle invariant is violated for built block", "block", work.header.Number, "err", err)
