@@ -9,7 +9,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/consensus/misc"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -235,7 +235,7 @@ func (api *MevAPI) SimBundle(ctx context.Context, args SendMevBundleArgs, aux Si
 		Time:       parentHeader.Time + 12,
 		Difficulty: new(big.Int).Set(parentHeader.Difficulty),
 		Coinbase:   parentHeader.Coinbase,
-		BaseFee:    misc.CalcBaseFee(api.b.ChainConfig(), parentHeader),
+		BaseFee:    eip1559.CalcBaseFee(api.b.ChainConfig(), parentHeader),
 	}
 
 	if aux.BlockNumber != nil {

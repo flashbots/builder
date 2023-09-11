@@ -86,8 +86,8 @@ func (odr *testOdr) Retrieve(ctx context.Context, req OdrRequest) error {
 			err error
 			t   state.Trie
 		)
-		if len(req.Id.AccKey) > 0 {
-			t, err = odr.serverState.OpenStorageTrie(req.Id.StateRoot, common.BytesToHash(req.Id.AccKey), req.Id.Root)
+		if len(req.Id.AccountAddress) > 0 {
+			t, err = odr.serverState.OpenStorageTrie(req.Id.StateRoot, common.BytesToAddress(req.Id.AccountAddress), req.Id.Root)
 		} else {
 			t, err = odr.serverState.OpenTrie(req.Id.Root)
 		}
@@ -95,7 +95,7 @@ func (odr *testOdr) Retrieve(ctx context.Context, req OdrRequest) error {
 			panic(err)
 		}
 		nodes := NewNodeSet()
-		t.Prove(req.Key, 0, nodes)
+		t.Prove(req.Key, nodes)
 		req.Proof = nodes
 	case *CodeRequest:
 		req.Data = rawdb.ReadCode(odr.sdb, req.Hash)
@@ -131,9 +131,10 @@ func TestOdrGetReceiptsLes2(t *testing.T) { testChainOdr(t, 1, odrGetReceipts) }
 func odrGetReceipts(ctx context.Context, db ethdb.Database, bc *core.BlockChain, lc *LightChain, bhash common.Hash) ([]byte, error) {
 	var receipts types.Receipts
 	if bc != nil {
-		number := rawdb.ReadHeaderNumber(db, bhash)
-		if number != nil {
-			receipts = rawdb.ReadReceipts(db, bhash, *number, bc.Config())
+		if number := rawdb.ReadHeaderNumber(db, bhash); number != nil {
+			if header := rawdb.ReadHeader(db, bhash, *number); header != nil {
+				receipts = rawdb.ReadReceipts(db, bhash, *number, header.Time, bc.Config())
+			}
 		}
 	} else {
 		number := rawdb.ReadHeaderNumber(db, bhash)
@@ -283,7 +284,7 @@ func testChainOdr(t *testing.T, protocol int, fn odrTestFn) {
 
 	gspec.MustCommit(ldb)
 	odr := &testOdr{sdb: sdb, ldb: ldb, serverState: blockchain.StateCache(), indexerConfig: TestClientIndexerConfig}
-	lightchain, err := NewLightChain(odr, gspec.Config, ethash.NewFullFaker(), nil)
+	lightchain, err := NewLightChain(odr, gspec.Config, ethash.NewFullFaker())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -291,7 +292,7 @@ func testChainOdr(t *testing.T, protocol int, fn odrTestFn) {
 	for i, block := range gchain {
 		headers[i] = block.Header()
 	}
-	if _, err := lightchain.InsertHeaderChain(headers, 1); err != nil {
+	if _, err := lightchain.InsertHeaderChain(headers); err != nil {
 		t.Fatal(err)
 	}
 

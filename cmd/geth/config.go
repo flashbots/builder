@@ -24,6 +24,7 @@ import (
 	"reflect"
 	"unicode"
 
+	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/accounts/external"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/accounts/scwallet"
@@ -31,6 +32,7 @@ import (
 	"github.com/ethereum/go-ethereum/builder"
 	"github.com/ethereum/go-ethereum/cmd/utils"
 	blockvalidationapi "github.com/ethereum/go-ethereum/eth/block-validation"
+	"github.com/ethereum/go-ethereum/eth/catalyst"
 	"github.com/ethereum/go-ethereum/eth/downloader"
 	"github.com/ethereum/go-ethereum/eth/ethconfig"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
@@ -121,8 +123,9 @@ func defaultNodeConfig() node.Config {
 	return cfg
 }
 
-// makeConfigNode loads geth configuration and creates a blank node instance.
-func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
+// loadBaseConfig loads the gethConfig based on the given command line
+// parameters and config file.
+func loadBaseConfig(ctx *cli.Context) gethConfig {
 	// Load defaults.
 	cfg := gethConfig{
 		Eth:     ethconfig.Defaults,
@@ -140,12 +143,18 @@ func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
 
 	// Apply flags.
 	utils.SetNodeConfig(ctx, &cfg.Node)
+	return cfg
+}
+
+// makeConfigNode loads geth configuration and creates a blank node instance.
+func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
+	cfg := loadBaseConfig(ctx)
 	stack, err := node.New(&cfg.Node)
 	if err != nil {
 		utils.Fatalf("Failed to create the protocol stack: %v", err)
 	}
 	// Node doesn't by default populate account manager backends
-	if err := setAccountManagerBackends(stack); err != nil {
+	if err := setAccountManagerBackends(stack.Config(), stack.AccountManager(), stack.KeyStoreDir()); err != nil {
 		utils.Fatalf("Failed to set account manager backends: %v", err)
 	}
 
@@ -164,9 +173,13 @@ func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
 // makeFullNode loads geth configuration and creates the Ethereum backend.
 func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	stack, cfg := makeConfigNode(ctx)
-	if ctx.IsSet(utils.OverrideShanghai.Name) {
-		v := ctx.Uint64(utils.OverrideShanghai.Name)
-		cfg.Eth.OverrideShanghai = &v
+	if ctx.IsSet(utils.OverrideCancun.Name) {
+		v := ctx.Uint64(utils.OverrideCancun.Name)
+		cfg.Eth.OverrideCancun = &v
+	}
+	if ctx.IsSet(utils.OverrideVerkle.Name) {
+		v := ctx.Uint64(utils.OverrideVerkle.Name)
+		cfg.Eth.OverrideVerkle = &v
 	}
 	backend, eth := utils.RegisterEthService(stack, &cfg.Eth, &cfg.Builder)
 
@@ -198,6 +211,22 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	// Configure full-sync tester service if requested
 	if ctx.IsSet(utils.SyncTargetFlag.Name) && cfg.Eth.SyncMode == downloader.FullSync {
 		utils.RegisterFullSyncTester(stack, eth, ctx.Path(utils.SyncTargetFlag.Name))
+	}
+
+	// Start the dev mode if requested, or launch the engine API for
+	// interacting with external consensus client.
+	if ctx.IsSet(utils.DeveloperFlag.Name) {
+		simBeacon, err := catalyst.NewSimulatedBeacon(ctx.Uint64(utils.DeveloperPeriodFlag.Name), eth)
+		if err != nil {
+			utils.Fatalf("failed to register dev mode catalyst service: %v", err)
+		}
+		catalyst.RegisterSimulatedBeaconAPIs(stack, simBeacon)
+		stack.RegisterLifecycle(simBeacon)
+	} else if cfg.Eth.SyncMode != downloader.LightSync {
+		err := catalyst.Register(stack, eth)
+		if err != nil {
+			utils.Fatalf("failed to register catalyst service: %v", err)
+		}
 	}
 	return stack, backend
 }
@@ -285,15 +314,16 @@ func deprecated(field string) bool {
 		return true
 	case "ethconfig.Config.EWASMInterpreter":
 		return true
+	case "ethconfig.Config.TrieCleanCacheJournal":
+		return true
+	case "ethconfig.Config.TrieCleanCacheRejournal":
+		return true
 	default:
 		return false
 	}
 }
 
-func setAccountManagerBackends(stack *node.Node) error {
-	conf := stack.Config()
-	am := stack.AccountManager()
-	keydir := stack.KeyStoreDir()
+func setAccountManagerBackends(conf *node.Config, am *accounts.Manager, keydir string) error {
 	scryptN := keystore.StandardScryptN
 	scryptP := keystore.StandardScryptP
 	if conf.UseLightweightKDF {
@@ -304,8 +334,8 @@ func setAccountManagerBackends(stack *node.Node) error {
 	// Assemble the supported backends
 	if len(conf.ExternalSigner) > 0 {
 		log.Info("Using external signer", "url", conf.ExternalSigner)
-		if extapi, err := external.NewExternalBackend(conf.ExternalSigner); err == nil {
-			am.AddBackend(extapi)
+		if extBackend, err := external.NewExternalBackend(conf.ExternalSigner); err == nil {
+			am.AddBackend(extBackend)
 			return nil
 		} else {
 			return fmt.Errorf("error connecting to external signer: %v", err)

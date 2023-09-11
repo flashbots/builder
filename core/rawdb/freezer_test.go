@@ -192,7 +192,7 @@ func TestFreezerConcurrentModifyTruncate(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		// First reset and write 100 items.
-		if err := f.TruncateHead(0); err != nil {
+		if _, err := f.TruncateHead(0); err != nil {
 			t.Fatal("truncate failed:", err)
 		}
 		_, err := f.ModifyAncients(func(op ethdb.AncientWriteOp) error {
@@ -227,7 +227,7 @@ func TestFreezerConcurrentModifyTruncate(t *testing.T) {
 			wg.Done()
 		}()
 		go func() {
-			truncateErr = f.TruncateHead(10)
+			_, truncateErr = f.TruncateHead(10)
 			wg.Done()
 		}()
 		go func() {
@@ -267,10 +267,10 @@ func TestFreezerReadonlyValidate(t *testing.T) {
 	bBatch := f.tables["b"].newBatch()
 	require.NoError(t, bBatch.AppendRaw(0, item))
 	require.NoError(t, bBatch.commit())
-	if f.tables["a"].items != 3 {
+	if f.tables["a"].items.Load() != 3 {
 		t.Fatalf("unexpected number of items in table")
 	}
-	if f.tables["b"].items != 1 {
+	if f.tables["b"].items.Load() != 1 {
 		t.Fatalf("unexpected number of items in table")
 	}
 	require.NoError(t, f.Close())

@@ -182,7 +182,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockV
 		timestamp := params.SubmitBlockRequest.ExecutionPayload.Timestamp
 		precompiles := vm.ActivePrecompiles(api.eth.APIBackend.ChainConfig().Rules(new(big.Int).SetUint64(params.ExecutionPayload.BlockNumber), isPostMerge, timestamp))
 		tracer = logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, precompiles)
-		vmconfig = vm.Config{Tracer: tracer, Debug: true}
+		vmconfig = vm.Config{Tracer: tracer}
 	}
 
 	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig, api.useBalanceDiffProfit)
@@ -274,7 +274,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockV
 		isPostMerge := true // the call is PoS-native
 		precompiles := vm.ActivePrecompiles(api.eth.APIBackend.ChainConfig().Rules(new(big.Int).SetUint64(params.ExecutionPayload.BlockNumber), isPostMerge, params.ExecutionPayload.Timestamp))
 		tracer = logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, precompiles)
-		vmconfig = vm.Config{Tracer: tracer, Debug: true}
+		vmconfig = vm.Config{Tracer: tracer}
 	}
 
 	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig, api.useBalanceDiffProfit)

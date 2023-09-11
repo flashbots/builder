@@ -33,7 +33,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
-	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
@@ -449,10 +448,10 @@ type Syncer struct {
 	trienodeHealReqs map[uint64]*trienodeHealRequest // Trie node requests currently running
 	bytecodeHealReqs map[uint64]*bytecodeHealRequest // Bytecode requests currently running
 
-	trienodeHealRate      float64   // Average heal rate for processing trie node data
-	trienodeHealPend      uint64    // Number of trie nodes currently pending for processing
-	trienodeHealThrottle  float64   // Divisor for throttling the amount of trienode heal data requested
-	trienodeHealThrottled time.Time // Timestamp the last time the throttle was updated
+	trienodeHealRate      float64       // Average heal rate for processing trie node data
+	trienodeHealPend      atomic.Uint64 // Number of trie nodes currently pending for processing
+	trienodeHealThrottle  float64       // Divisor for throttling the amount of trienode heal data requested
+	trienodeHealThrottled time.Time     // Timestamp the last time the throttle was updated
 
 	trienodeHealSynced uint64             // Number of state trie nodes downloaded
 	trienodeHealBytes  common.StorageSize // Number of state trie bytes persisted to disk
@@ -731,6 +730,8 @@ func (s *Syncer) loadSyncStatus() {
 			}
 			s.tasks = progress.Tasks
 			for _, task := range s.tasks {
+				task := task // closure for task.genBatch in the stacktrie writer callback
+
 				task.genBatch = ethdb.HookedBatch{
 					Batch: s.db.NewBatch(),
 					OnPut: func(key []byte, value []byte) {
@@ -742,6 +743,8 @@ func (s *Syncer) loadSyncStatus() {
 				})
 				for accountHash, subtasks := range task.SubTasks {
 					for _, subtask := range subtasks {
+						subtask := subtask // closure for subtask.genBatch in the stacktrie writer callback
+
 						subtask.genBatch = ethdb.HookedBatch{
 							Batch: s.db.NewBatch(),
 							OnPut: func(key []byte, value []byte) {
@@ -2189,7 +2192,7 @@ func (s *Syncer) processTrienodeHealResponse(res *trienodeHealResponse) {
 	//   HR(N) = (1-MI)^N*(OR-NR) + NR
 	s.trienodeHealRate = gomath.Pow(1-trienodeHealRateMeasurementImpact, float64(fills))*(s.trienodeHealRate-rate) + rate
 
-	pending := atomic.LoadUint64(&s.trienodeHealPend)
+	pending := s.trienodeHealPend.Load()
 	if time.Since(s.trienodeHealThrottled) > time.Second {
 		// Periodically adjust the trie node throttler
 		if float64(pending) > 2*s.trienodeHealRate {
@@ -2277,13 +2280,13 @@ func (s *Syncer) forwardAccountTask(task *accountTask) {
 		if task.needCode[i] || task.needState[i] {
 			break
 		}
-		slim := snapshot.SlimAccountRLP(res.accounts[i].Nonce, res.accounts[i].Balance, res.accounts[i].Root, res.accounts[i].CodeHash)
+		slim := types.SlimAccountRLP(*res.accounts[i])
 		rawdb.WriteAccountSnapshot(batch, hash, slim)
 
 		// If the task is complete, drop it into the stack trie to generate
 		// account trie nodes for it
 		if !task.needHeal[i] {
-			full, err := snapshot.FullAccountRLP(slim) // TODO(karalabe): Slim parsing can be omitted
+			full, err := types.FullAccountRLP(slim) // TODO(karalabe): Slim parsing can be omitted
 			if err != nil {
 				panic(err) // Really shouldn't ever happen
 			}
@@ -2776,9 +2779,9 @@ func (s *Syncer) OnTrieNodes(peer SyncPeer, id uint64, trienodes [][]byte) error
 		return errors.New("unexpected healing trienode")
 	}
 	// Response validated, send it to the scheduler for filling
-	atomic.AddUint64(&s.trienodeHealPend, fills)
+	s.trienodeHealPend.Add(fills)
 	defer func() {
-		atomic.AddUint64(&s.trienodeHealPend, ^(fills - 1))
+		s.trienodeHealPend.Add(^(fills - 1))
 	}()
 	response := &trienodeHealResponse{
 		paths:  req.paths,
@@ -2902,7 +2905,7 @@ func (s *Syncer) onHealState(paths [][]byte, value []byte) error {
 		if err := rlp.DecodeBytes(value, &account); err != nil {
 			return nil // Returning the error here would drop the remote peer
 		}
-		blob := snapshot.SlimAccountRLP(account.Nonce, account.Balance, account.Root, account.CodeHash)
+		blob := types.SlimAccountRLP(account)
 		rawdb.WriteAccountSnapshot(s.stateWriter, common.BytesToHash(paths[0]), blob)
 		s.accountHealed += 1
 		s.accountHealedBytes += common.StorageSize(1 + common.HashLength + len(blob))

@@ -322,12 +322,12 @@ func ServiceGetAccountRangeQuery(chain *core.BlockChain, req *GetAccountRangePac
 
 	// Generate the Merkle proofs for the first and last account
 	proof := light.NewNodeSet()
-	if err := tr.Prove(req.Origin[:], 0, proof); err != nil {
+	if err := tr.Prove(req.Origin[:], proof); err != nil {
 		log.Warn("Failed to prove account range", "origin", req.Origin, "err", err)
 		return nil, nil
 	}
 	if last != (common.Hash{}) {
-		if err := tr.Prove(last[:], 0, proof); err != nil {
+		if err := tr.Prove(last[:], proof); err != nil {
 			log.Warn("Failed to prove account range", "last", last, "err", err)
 			return nil, nil
 		}
@@ -418,7 +418,7 @@ func ServiceGetStorageRangesQuery(chain *core.BlockChain, req *GetStorageRangesP
 			if err != nil {
 				return nil, nil
 			}
-			acc, err := accTrie.TryGetAccountByHash(account)
+			acc, err := accTrie.GetAccountByHash(account)
 			if err != nil || acc == nil {
 				return nil, nil
 			}
@@ -428,12 +428,12 @@ func ServiceGetStorageRangesQuery(chain *core.BlockChain, req *GetStorageRangesP
 				return nil, nil
 			}
 			proof := light.NewNodeSet()
-			if err := stTrie.Prove(origin[:], 0, proof); err != nil {
+			if err := stTrie.Prove(origin[:], proof); err != nil {
 				log.Warn("Failed to prove storage range", "origin", req.Origin, "err", err)
 				return nil, nil
 			}
 			if last != (common.Hash{}) {
-				if err := stTrie.Prove(last[:], 0, proof); err != nil {
+				if err := stTrie.Prove(last[:], proof); err != nil {
 					log.Warn("Failed to prove storage range", "last", last, "err", err)
 					return nil, nil
 				}
@@ -510,7 +510,7 @@ func ServiceGetTrieNodesQuery(chain *core.BlockChain, req *GetTrieNodesPacket, s
 
 		case 1:
 			// If we're only retrieving an account trie node, fetch it directly
-			blob, resolved, err := accTrie.TryGetNode(pathset[0])
+			blob, resolved, err := accTrie.GetNode(pathset[0])
 			loads += resolved // always account database reads, even for failures
 			if err != nil {
 				break
@@ -524,7 +524,7 @@ func ServiceGetTrieNodesQuery(chain *core.BlockChain, req *GetTrieNodesPacket, s
 			if snap == nil {
 				// We don't have the requested state snapshotted yet (or it is stale),
 				// but can look up the account via the trie instead.
-				account, err := accTrie.TryGetAccountByHash(common.BytesToHash(pathset[0]))
+				account, err := accTrie.GetAccountByHash(common.BytesToHash(pathset[0]))
 				loads += 8 // We don't know the exact cost of lookup, this is an estimate
 				if err != nil || account == nil {
 					break
@@ -545,7 +545,7 @@ func ServiceGetTrieNodesQuery(chain *core.BlockChain, req *GetTrieNodesPacket, s
 				break
 			}
 			for _, path := range pathset[1:] {
-				blob, resolved, err := stTrie.TryGetNode(path)
+				blob, resolved, err := stTrie.GetNode(path)
 				loads += resolved // always account database reads, even for failures
 				if err != nil {
 					break

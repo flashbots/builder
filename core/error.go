@@ -101,7 +101,7 @@ var (
 	// ErrSenderNoEOA is returned if the sender of a transaction is a contract.
 	ErrSenderNoEOA = errors.New("sender not an eoa")
 
-	// ErrNegativeValue is a sanity error to ensure no one is able to specify a
-	// transaction with a negative value.
-	ErrNegativeValue = errors.New("negative value")
+	// ErrBlobFeeCapTooLow is returned if the transaction fee cap is less than the
+	// blob gas fee of the block.
+	ErrBlobFeeCapTooLow = errors.New("max fee per blob gas less than block blob gas fee")
 )

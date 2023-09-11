@@ -58,7 +58,7 @@ func startEthService(t *testing.T, genesis *core.Genesis, blocks []*types.Block)
 		t.Fatal("can't create node:", err)
 	}
 
-	ethcfg := &ethconfig.Config{Genesis: genesis, Ethash: ethash.Config{PowMode: ethash.ModeFake}, SyncMode: downloader.SnapSync, TrieTimeout: time.Minute, TrieDirtyCache: 256, TrieCleanCache: 256}
+	ethcfg := &ethconfig.Config{Genesis: genesis, SyncMode: downloader.SnapSync, TrieTimeout: time.Minute, TrieDirtyCache: 256, TrieCleanCache: 256}
 	ethservice, err := eth.New(n, ethcfg)
 	if err != nil {
 		t.Fatal("can't create eth service:", err)
@@ -95,7 +95,7 @@ func TestBuildBlock(t *testing.T) {
 	service.eth.APIBackend.Miner().SetEtherbase(common.Address{0x05, 0x11})
 
 	err := service.BuildBlock(testPayloadAttributes, func(block *types.Block, blockValue *big.Int, _ time.Time, _, _ []types.SimulatedBundle, _ []types.UsedSBundle) {
-		executableData := engine.BlockToExecutableData(block, blockValue)
+		executableData := engine.BlockToExecutableData(block, blockValue, nil, nil, nil)
 		require.Equal(t, common.Address{0x05, 0x11}, executableData.ExecutionPayload.FeeRecipient)
 		require.Equal(t, common.Hash{0x05, 0x10}, executableData.ExecutionPayload.Random)
 		require.Equal(t, parent.Hash(), executableData.ExecutionPayload.ParentHash)

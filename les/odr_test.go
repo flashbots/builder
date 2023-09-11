@@ -16,6 +16,10 @@
 
 package les
 
+// Note: these tests are disabled now because they cannot work with the old sync
+// mechanism removed but will be useful again once the PoS ultralight mode is implemented
+
+/*
 import (
 	"bytes"
 	"context"
@@ -68,7 +72,9 @@ func odrGetReceipts(ctx context.Context, db ethdb.Database, config *params.Chain
 	var receipts types.Receipts
 	if bc != nil {
 		if number := rawdb.ReadHeaderNumber(db, bhash); number != nil {
-			receipts = rawdb.ReadReceipts(db, bhash, *number, config)
+			if header := rawdb.ReadHeader(db, bhash, *number); header != nil {
+				receipts = rawdb.ReadReceipts(db, bhash, *number, header.Time, config)
+			}
 		}
 	} else {
 		if number := rawdb.ReadHeaderNumber(db, bhash); number != nil {
@@ -449,3 +455,4 @@ func randomHash() common.Hash {
 	}
 	return hash
 }
+*/
