@@ -157,24 +157,6 @@ func (r *RemoteRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, _ Validator
 	return nil
 }
 
-func (r *RemoteRelay) SubmitTobBlock(msg *bellatrix.SubmitBlockRequest, _ ValidatorData) error {
-	log.Info("submitting tob block to remote relay", "endpoint", r.config.Endpoint)
-	endpoint := r.config.Endpoint + "/relay/v1/builder/tob_blocks"
-	code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg, nil)
-	if err != nil {
-		return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
-	}
-	if code > 299 {
-		return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
-	}
-
-	if r.localRelay != nil {
-		r.localRelay.submitBlock(msg)
-	}
-
-	return nil
-}
-
 func (r *RemoteRelay) SubmitRobBlock(msg *bellatrix.SubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting rob block to remote relay", "endpoint", r.config.Endpoint)
 	endpoint := r.config.Endpoint + "/relay/v1/builder/rob_blocks"
@@ -200,41 +182,6 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 	if r.cancellationsEnabled {
 		endpoint = endpoint + "?cancellations=true"
 	}
-
-	if r.config.SszEnabled {
-		bodyBytes, err := msg.MarshalSSZ()
-		if err != nil {
-			return fmt.Errorf("error marshaling ssz: %w", err)
-		}
-		log.Debug("submitting block to remote relay", "endpoint", r.config.Endpoint)
-		code, err := SendSSZRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, bodyBytes, r.config.GzipEnabled)
-		if err != nil {
-			return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
-		}
-		if code > 299 {
-			return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
-		}
-	} else {
-		code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg, nil)
-		if err != nil {
-			return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
-		}
-		if code > 299 {
-			return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
-		}
-	}
-
-	if r.localRelay != nil {
-		r.localRelay.submitBlockCapella(msg)
-	}
-
-	return nil
-}
-
-func (r *RemoteRelay) SubmitTobBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData) error {
-	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
-
-	endpoint := r.config.Endpoint + "/relay/v1/builder/tob_blocks"
 
 	if r.config.SszEnabled {
 		bodyBytes, err := msg.MarshalSSZ()

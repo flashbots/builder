@@ -66,17 +66,7 @@ type LocalRelay struct {
 	fd            ForkData
 }
 
-func (r *LocalRelay) SubmitTobBlock(msg *bellatrixapi.SubmitBlockRequest, vd ValidatorData) error {
-	//TODO implement me
-	panic("implement me")
-}
-
 func (r *LocalRelay) SubmitRobBlock(msg *bellatrixapi.SubmitBlockRequest, vd ValidatorData) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (r *LocalRelay) SubmitTobBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error {
 	//TODO implement me
 	panic("implement me")
 }

@@ -84,15 +84,14 @@ func (s *EthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, seal
 	select {
 	case payload := <-resCh:
 		if payload == nil {
-			return errors.New("received nil tob payload from sealing work")
+			return errors.New("received nil payload from sealing work")
 		}
+		return nil
 	case <-timer.C:
 		payload.Cancel()
 		log.Error("timeout waiting for block", "parent hash", attrs.HeadHash, "slot", attrs.Slot)
 		return errors.New("timeout waiting for block result")
 	}
-
-	return nil
 }
 
 func (s *EthereumService) GetBlockByHash(hash common.Hash) *types.Block {
