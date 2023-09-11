@@ -1724,9 +1724,12 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 	}
 
 	var paymentTxReserve *proposerTxReservation
-	paymentTxReserve, err = w.proposerTxPrepare(work, &validatorCoinbase)
-	if err != nil {
-		return nil, nil, err
+	// there won't be any additional payments for a block assembled by the assembler
+	if !params.isAssembler {
+		paymentTxReserve, err = w.proposerTxPrepare(work, &validatorCoinbase)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	orderCloseTime := time.Now()
@@ -1756,12 +1759,18 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 
 	// no bundles or tx from mempool
 	if len(work.txs) == 0 {
+		log.Info("DEBUG: Got no txs from the mempool!")
 		return finalizeFn(work, orderCloseTime, blockBundles, allBundles, usedSbundles, true)
 	}
 
-	err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve)
-	if err != nil {
-		return nil, nil, err
+	// log out no of bundles
+	log.Info("DEBUG: Got bundles from the mempool!", "bundles", len(blockBundles))
+
+	if !params.isAssembler {
+		err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	return finalizeFn(work, orderCloseTime, blockBundles, allBundles, usedSbundles, false)
@@ -1781,9 +1790,12 @@ func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals,
 		return block, big.NewInt(0), nil
 	}
 
-	blockProfit, err := w.checkProposerPayment(work, validatorCoinbase)
-	if err != nil {
-		return nil, nil, err
+	blockProfit := big.NewInt(0)
+	if !work.isAssembler {
+		blockProfit, err = w.checkProposerPayment(work, validatorCoinbase)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	return block, blockProfit, nil
@@ -2342,6 +2354,9 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 	sender := w.coinbase
 	w.mu.Unlock()
 	builderBalance := env.state.GetBalance(sender)
+
+	log.Info("DEBUG: builder current balance is \n", "builderBalance", builderBalance)
+	log.Info("DEBUG: builder reserved balance is \n", "reserveBalance", reserve.builderBalance)
 
 	availableFunds := new(big.Int).Sub(builderBalance, reserve.builderBalance)
 	if availableFunds.Sign() <= 0 {
