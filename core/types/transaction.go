@@ -19,6 +19,7 @@ package types
 import (
 	"bytes"
 	"container/heap"
+	"crypto/sha256"
 	"encoding/binary"
 	"errors"
 	"io"
@@ -32,7 +33,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/google/uuid"
-	"golang.org/x/crypto/sha3"
 )
 
 var (
@@ -801,7 +801,7 @@ func (b *MevBundle) UniquePayload() []byte {
 }
 
 func (b *MevBundle) ComputeUUID() uuid.UUID {
-	return uuid.NewHash(sha3.NewLegacyKeccak256(), uuid.Nil, b.UniquePayload(), 5)
+	return uuid.NewHash(sha256.New(), uuid.Nil, b.UniquePayload(), 5)
 }
 
 func (b *MevBundle) RevertingHash(hash common.Hash) bool {
