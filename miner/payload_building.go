@@ -31,6 +31,13 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
+// AssemblerTxLists contains the lists of the ToB and RoB txs which are to be
+// used to build a final payload
+type AssemblerTxLists struct {
+	TobTxs *types.Transactions
+	RobTxs *types.Transactions
+}
+
 // BuildPayloadArgs contains the provided parameters for building payload.
 // Check engine-api specification for more details.
 // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#payloadattributesv1
