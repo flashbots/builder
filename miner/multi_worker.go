@@ -88,7 +88,6 @@ func (w *multiWorker) disablePreseal() {
 }
 
 func (w *multiWorker) payloadAssembler(args *BuildPayloadArgs) (*Payload, error) {
-	log.Info("DEBUG: Starting to assemble payload!!!!\n")
 	// Build the initial version with no transaction included. It should be fast
 	// enough to run. The empty payload can at least make sure there is something
 	// to deliver for not missing slot.
@@ -107,8 +106,6 @@ func (w *multiWorker) payloadAssembler(args *BuildPayloadArgs) (*Payload, error)
 		return nil, errors.New("no worker could build an empty block")
 	}
 
-	log.Info("DEBUG: Got empty assembler payload!!\n")
-
 	// Construct a payload object for return.
 	payload := newPayload(empty, args.Id())
 
@@ -120,21 +117,17 @@ func (w *multiWorker) payloadAssembler(args *BuildPayloadArgs) (*Payload, error)
 	var fees *big.Int
 	var err error
 	start := time.Now()
-	log.Info("DEBUG: Get assembled sealing block!")
 	tobBlock, fees, err = w.regularWorker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook, args.AssemblerTxs)
 	if err != nil {
 		log.Error("could not start async block construction", "err", err)
 		return nil, err
 	}
-	log.Info("DEBUG: Got assembler payload!!\n")
-	log.Info("DEBUG: assembler Payload details", "tobBlock", tobBlock, "fees", fees, "time", time.Since(start), "\n")
 	payload.update(tobBlock, fees, time.Since(start))
 
 	return payload, nil
 }
 
 func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
-	log.Info("DEBUG: In ROB payload building!!\n")
 	// Build the initial version with no transaction included. It should be fast
 	// enough to run. The empty payload can at least make sure there is something
 	// to deliver for not missing slot.

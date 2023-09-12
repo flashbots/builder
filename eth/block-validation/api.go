@@ -304,7 +304,6 @@ func executableDataToCapellaExecutionPayload(data *engine.ExecutableData) (*cape
 }
 
 func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*capella.ExecutionPayload, error) {
-	log.Info("DEBUG: Entered the BlockAssembler!!")
 	log.Info("BlockAssembler", "tobTxs", len(params.TobTxs.Transactions), "robPayload", params.RobPayload)
 	transactionBytes := make([][]byte, len(params.TobTxs.Transactions))
 	for i, txHexBytes := range params.TobTxs.Transactions {
@@ -328,7 +327,6 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 	// check if there are any duplicate txs
 	// we can error out if there is a nonce gap
 	// TODO - don't error out, but drop the duplicate tx in the ROB block
-	log.Info("DEBUG: Checking for duplicate txs")
 	seenTxMap := make(map[common.Hash]struct{})
 	for _, tx := range txs {
 		// If we see nonce reuse in TOB then fail
@@ -344,11 +342,8 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 		}
 		seenTxMap[tx.Hash()] = struct{}{}
 	}
-	log.Info("DEBUG: Done Checking for duplicate txs!")
 
 	withdrawals := make(types.Withdrawals, len(params.RobPayload.ExecutionPayload.Withdrawals))
-	log.Info("DEBUG: Building the final set of withdrawals")
-	log.Info("DEBUG: Withdrawals are ", "withdrawals", params.RobPayload.ExecutionPayload.Withdrawals)
 	for i, withdrawal := range params.RobPayload.ExecutionPayload.Withdrawals {
 		withdrawals[i] = &types.Withdrawal{
 			Index:     uint64(withdrawal.Index),
@@ -358,14 +353,9 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 		}
 	}
 
-	log.Info("DEBUG: Built the final set of withdrawals")
-	log.Info("DEBUG: Withdrawals are ", "withdrawals", withdrawals)
 	// assemble the txs in map[sender]txs format and pass it in the BuildPayload call
 
 	robTxs := robBlock.Transactions()
-	log.Info("DEBUG: Rob txs are ", "robTxs", robTxs)
-	log.Info("DEBUG: Tob txs are ", "tobTxs", txs)
-	log.Info("DEBUG: Assembling the block!!")
 	block, err := api.eth.Miner().PayloadAssembler(&miner.BuildPayloadArgs{
 		Parent:    common.Hash(params.RobPayload.ExecutionPayload.ParentHash),
 		Timestamp: params.RobPayload.ExecutionPayload.Timestamp,
@@ -380,11 +370,9 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 			RobTxs: &robTxs,
 		},
 	})
-	log.Info("DEBUG: Assembled the block!!")
 	if err != nil {
 		return nil, err
 	}
-	log.Info("DEBUG: Resolving block!!")
 	resolvedBlock := block.ResolveFull()
 	if resolvedBlock == nil {
 		return nil, errors.New("unable to resolve block")
@@ -393,11 +381,8 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 		return nil, errors.New("nil execution payload")
 	}
 
-	log.Info("DEBUG: Resolved block!!")
 	finalPayload, err := executableDataToCapellaExecutionPayload(resolvedBlock.ExecutionPayload)
-	log.Info("DEBUG: Final payload", "finalPayload", finalPayload)
 
-	log.Info("DEBUG: Returning the final payload!!")
 	return finalPayload, nil
 }
 

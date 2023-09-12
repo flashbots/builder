@@ -54,7 +54,6 @@ func NewEthereumService(eth *eth.Ethereum) *EthereumService {
 func (s *EthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, sealedBlockCallback miner.BlockHookFn) error {
 	// Send a request to generate a full block in the background.
 	// The result can be obtained via the returned channel.
-	log.Info("DEBUG: In build block!!")
 	args := &miner.BuildPayloadArgs{
 		Parent:       attrs.HeadHash,
 		Timestamp:    uint64(attrs.Timestamp),
@@ -64,9 +63,7 @@ func (s *EthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, seal
 		Withdrawals:  attrs.Withdrawals,
 		BlockHook:    sealedBlockCallback,
 	}
-	log.Info("DEBUG: Args for build block!!", "args", args)
 
-	log.Info("DEBUG: Starting to build ROB payload!!")
 	payload, err := s.eth.Miner().BuildPayload(args)
 	if err != nil {
 		log.Error("Failed to build payload", "err", err)

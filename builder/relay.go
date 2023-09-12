@@ -71,7 +71,6 @@ func (r *RemoteRelay) updateValidatorsMap(currentSlot uint64, retries int) error
 	r.validatorSyncOngoing = true
 	r.validatorsLock.Unlock()
 
-	//log.Info("DEBUG: requesting from relayer", "currentSlot", currentSlot)
 	newMap, err := r.getSlotValidatorMapFromRelay()
 	for err != nil && retries > 0 {
 		log.Error("could not get validators map from relay, retrying", "err", err)
@@ -99,12 +98,10 @@ func (r *RemoteRelay) GetValidatorForSlot(nextSlot uint64) (ValidatorData, error
 	// next slot is expected to be the actual chain's next slot, not something requested by the user!
 	// if not sanitized it will force resync of validator data and possibly is a DoS vector
 
-	//log.Info("DEBUG: Getting validator for slot", "slot", nextSlot)
 	r.validatorsLock.RLock()
 	if r.lastRequestedSlot == 0 || nextSlot/32 > r.lastRequestedSlot/32 {
 		// Every epoch request validators map
 		go func() {
-			//log.Info("DEBUG: Updating validators map", "slot", nextSlot)
 			err := r.updateValidatorsMap(nextSlot, 1)
 			if err != nil {
 				log.Error("could not update validators map", "err", err)

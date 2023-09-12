@@ -206,7 +206,6 @@ func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersC
 	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
 	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
 	if b.eth.Config().IsShanghai(block.Time()) {
-		log.Info("DEBUG: Submitting capella block\n")
 		if err := b.submitCapellaBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, proposerPubkey, vd, attrs); err != nil {
 			return err
 		}
@@ -328,7 +327,6 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 		}
 	} else {
 		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
-		log.Info("DEBUG: Submitting regular FULL_BLOCK capella block")
 		err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
 		if err != nil {
 			log.Error("could not submit capella block", "err", err, "#commitedBundles", len(commitedBundles))
@@ -349,7 +347,6 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 	if err != nil {
 		return fmt.Errorf("could not get validator while submitting block for slot %d - %w", attrs.Slot, err)
 	}
-	log.Info("DEBUG: validator info is", "vd", vd)
 	attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
 	attrs.GasLimit = vd.GasLimit
 	attrs.IsPepcRelayer = true
@@ -421,8 +418,6 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 	log.Debug("runBuildingJob", "slot", attrs.Slot, "parent", attrs.HeadHash, "payloadTimestamp", uint64(attrs.Timestamp), "gasLimit", attrs.GasLimit)
 
 	submitBestBlock := func() {
-		log.Info("DEBUG: In submit best block!")
-		log.Info("DEBUG: Submitting ROB block!!", "isRobBlock", true)
 		queueMu.Lock()
 		if queueBestEntry.block.Hash() != queueLastSubmittedHash {
 			err := b.onSealedBlock(queueBestEntry.block, queueBestEntry.blockValue, queueBestEntry.ordersCloseTime, queueBestEntry.sealedAt,
@@ -453,7 +448,6 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 			return
 		}
 
-		log.Info("DEBUG: Running ROB block hook\n")
 		sealedAt := time.Now()
 
 		queueMu.Lock()
