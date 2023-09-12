@@ -1871,16 +1871,17 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 func (w *worker) getSealingBlock(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, withdrawals types.Withdrawals, noTxs bool, blockHook BlockHookFn, AssemblerTxs AssemblerTxLists) (*types.Block, *big.Int, error) {
 	req := &getWorkReq{
 		params: &generateParams{
-			timestamp:   timestamp,
-			forceTime:   true,
-			parentHash:  parent,
-			coinbase:    coinbase,
-			gasLimit:    gasLimit,
-			random:      random,
-			withdrawals: withdrawals,
-			noUncle:     true,
-			noTxs:       noTxs,
-			onBlock:     blockHook,
+			timestamp:    timestamp,
+			forceTime:    true,
+			parentHash:   parent,
+			coinbase:     coinbase,
+			gasLimit:     gasLimit,
+			random:       random,
+			withdrawals:  withdrawals,
+			noUncle:      true,
+			noTxs:        noTxs,
+			onBlock:      blockHook,
+			assemblerTxs: AssemblerTxs,
 		},
 		result: make(chan *newPayloadResult, 1),
 	}
