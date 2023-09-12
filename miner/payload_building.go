@@ -31,6 +31,11 @@ import (
 	"github.com/ethereum/go-ethereum/rlp"
 )
 
+type AssemblerTxLists struct {
+	TobTxs []*types.Transaction
+	RobTxs *types.Transactions
+}
+
 // BuildPayloadArgs contains the provided parameters for building payload.
 // Check engine-api specification for more details.
 // https://github.com/ethereum/execution-apis/blob/main/src/engine/specification.md#payloadattributesv1
@@ -42,6 +47,7 @@ type BuildPayloadArgs struct {
 	Random       common.Hash       // The provided randomness value
 	Withdrawals  types.Withdrawals // The provided withdrawals
 	BlockHook    BlockHookFn
+	AssemblerTxs AssemblerTxLists // The txs to be assembled
 }
 
 // Id computes an 8-byte identifier by hashing the components of the payload arguments.
@@ -221,7 +227,7 @@ func (w *worker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	// Build the initial version with no transaction included. It should be fast
 	// enough to run. The empty payload can at least make sure there is something
 	// to deliver for not missing slot.
-	empty, _, err := w.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, true, args.BlockHook)
+	empty, _, err := w.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, true, args.BlockHook, AssemblerTxLists{})
 	if err != nil {
 		return nil, err
 	}
@@ -245,7 +251,7 @@ func (w *worker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 			select {
 			case <-timer.C:
 				start := time.Now()
-				block, fees, err := w.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook)
+				block, fees, err := w.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook, AssemblerTxLists{})
 				if err == nil {
 					payload.update(block, fees, time.Since(start))
 				}

@@ -658,7 +658,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 
 	// This API should work even when the automatic sealing is not enabled
 	for _, c := range cases {
-		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, nil, true, nil)
+		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, nil, true, nil, AssemblerTxLists{})
 		if c.expectErr {
 			if err == nil {
 				t.Error("Expect error but get nil")
@@ -674,7 +674,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 	// This API should work even when the automatic sealing is enabled
 	w.start()
 	for _, c := range cases {
-		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, nil, false, nil)
+		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, nil, false, nil, AssemblerTxLists{})
 		if c.expectErr {
 			if err == nil {
 				t.Error("Expect error but get nil")
@@ -822,7 +822,7 @@ func testBundles(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		block, _, err := w.getSealingBlock(w.chain.CurrentBlock().Hash(), w.chain.CurrentHeader().Time+12, testUserAddress, 0, common.Hash{}, nil, false, nil)
+		block, _, err := w.getSealingBlock(w.chain.CurrentBlock().Hash(), w.chain.CurrentHeader().Time+12, testUserAddress, 0, common.Hash{}, nil, false, nil, AssemblerTxLists{})
 		require.NoError(t, err)
 
 		state, err := w.chain.State()
@@ -836,4 +836,121 @@ func testBundles(t *testing.T) {
 		balancePost := state.GetBalance(testUserAddress)
 		t.Log("Balances", balancePre, balancePost)
 	}
+}
+
+func TestBlockAssembly(t *testing.T) {
+	db := rawdb.NewMemoryDatabase()
+	chainConfig := params.AllEthashProtocolChanges
+	engine := ethash.NewFaker()
+
+	chainConfig.LondonBlock = big.NewInt(0)
+
+	genesisAlloc := core.GenesisAlloc{testBankAddress: {Balance: testBankFunds}}
+
+	nExtraKeys := 5
+	extraKeys := make([]*ecdsa.PrivateKey, nExtraKeys)
+	for i := 0; i < nExtraKeys; i++ {
+		pk, _ := crypto.GenerateKey()
+		address := crypto.PubkeyToAddress(pk.PublicKey)
+		extraKeys[i] = pk
+		genesisAlloc[address] = core.GenesisAccount{Balance: testBankFunds}
+	}
+
+	nSearchers := 5
+	searcherPrivateKeys := make([]*ecdsa.PrivateKey, nSearchers)
+	for i := 0; i < nSearchers; i++ {
+		pk, _ := crypto.GenerateKey()
+		address := crypto.PubkeyToAddress(pk.PublicKey)
+		searcherPrivateKeys[i] = pk
+		genesisAlloc[address] = core.GenesisAccount{Balance: testBankFunds}
+	}
+
+	for _, address := range []common.Address{testAddress1, testAddress2, testAddress3} {
+		genesisAlloc[address] = core.GenesisAccount{Balance: testBankFunds}
+	}
+
+	w, b := newTestWorker(t, chainConfig, engine, db, genesisAlloc, 0)
+	defer w.close()
+
+	// Ignore empty commit here for less noise.
+	w.skipSealHook = func(task *task) bool {
+		return len(task.receipts) == 0
+	}
+
+	// Test 1
+	tobTxs := []*types.Transaction{
+		b.newRandomTx(false, testBankAddress, 1e15, testAddress1Key, 0, big.NewInt(100*params.InitialBaseFee)),
+		b.newRandomTx(false, testBankAddress, 1e15, testAddress2Key, 0, big.NewInt(110*params.InitialBaseFee)),
+		b.newRandomTx(false, testBankAddress, 1e15, testAddress3Key, 0, big.NewInt(120*params.InitialBaseFee)),
+	}
+
+	robTxs := make([]*types.Transaction, len(searcherPrivateKeys))
+	for _, pk := range searcherPrivateKeys {
+		robTxs = append(robTxs, b.newRandomTx(false, testBankAddress, 1, pk, 0, big.NewInt(150*params.InitialBaseFee)))
+	}
+	finalRobTxs := types.Transactions{}
+	for _, tx := range robTxs {
+		if tx != nil {
+			finalRobTxs = append(finalRobTxs, tx)
+		}
+	}
+
+	aTxs := AssemblerTxLists{
+		TobTxs: tobTxs,
+		RobTxs: &finalRobTxs,
+	}
+
+	block, _, err := w.getSealingBlock(w.chain.CurrentBlock().Hash(), w.chain.CurrentHeader().Time+12, testUserAddress, 0, common.Hash{}, nil, false, nil, aTxs)
+	require.NoError(t, err)
+	txs := block.Transactions()
+	mergedTobAndRobTxs := types.Transactions{}
+	for _, tx := range aTxs.TobTxs {
+		mergedTobAndRobTxs = append(mergedTobAndRobTxs, tx)
+	}
+	for _, tx := range *aTxs.RobTxs {
+		mergedTobAndRobTxs = append(mergedTobAndRobTxs, tx)
+	}
+	require.Equal(t, txs, mergedTobAndRobTxs)
+
+	// Test 2 - No TOB txs but only ROB txs
+	robTxs = make([]*types.Transaction, len(searcherPrivateKeys))
+	for _, pk := range searcherPrivateKeys {
+		robTxs = append(robTxs, b.newRandomTx(false, testBankAddress, 1, pk, 0, big.NewInt(150*params.InitialBaseFee)))
+	}
+	finalRobTxs = types.Transactions{}
+	for _, tx := range robTxs {
+		if tx != nil {
+			finalRobTxs = append(finalRobTxs, tx)
+		}
+	}
+
+	aTxs = AssemblerTxLists{
+		TobTxs: []*types.Transaction{},
+		RobTxs: &finalRobTxs,
+	}
+	block, _, err = w.getSealingBlock(w.chain.CurrentBlock().Hash(), w.chain.CurrentHeader().Time+12, testUserAddress, 0, common.Hash{}, nil, false, nil, aTxs)
+	require.NoError(t, err)
+	txs = block.Transactions()
+	require.Equal(t, txs, finalRobTxs)
+
+	// Test 3 - no ROB txs but only TOB txs
+	tobTxs = []*types.Transaction{
+		b.newRandomTx(false, testBankAddress, 1e15, testAddress1Key, 0, big.NewInt(100*params.InitialBaseFee)),
+		b.newRandomTx(false, testBankAddress, 1e15, testAddress2Key, 0, big.NewInt(110*params.InitialBaseFee)),
+		b.newRandomTx(false, testBankAddress, 1e15, testAddress3Key, 0, big.NewInt(120*params.InitialBaseFee)),
+	}
+
+	aTxs = AssemblerTxLists{
+		TobTxs: tobTxs,
+		RobTxs: &types.Transactions{},
+	}
+	block, _, err = w.getSealingBlock(w.chain.CurrentBlock().Hash(), w.chain.CurrentHeader().Time+12, testUserAddress, 0, common.Hash{}, nil, false, nil, aTxs)
+	require.NoError(t, err)
+	txs = block.Transactions()
+	mergedTobTxs := types.Transactions{}
+	for _, tx := range aTxs.TobTxs {
+		mergedTobTxs = append(mergedTobTxs, tx)
+	}
+	require.Equal(t, txs, mergedTobTxs)
+
 }

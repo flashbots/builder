@@ -95,13 +95,15 @@ var (
 type environment struct {
 	signer types.Signer
 
-	state     *state.StateDB          // apply state changes here
-	ancestors mapset.Set[common.Hash] // ancestor set (used for checking uncle parent validity)
-	family    mapset.Set[common.Hash] // family set (used for checking uncle invalidity)
-	tcount    int                     // tx count in cycle
-	gasPool   *core.GasPool           // available gas used to pack transactions
-	coinbase  common.Address
-	profit    *big.Int
+	state        *state.StateDB          // apply state changes here
+	ancestors    mapset.Set[common.Hash] // ancestor set (used for checking uncle parent validity)
+	family       mapset.Set[common.Hash] // family set (used for checking uncle invalidity)
+	tcount       int                     // tx count in cycle
+	gasPool      *core.GasPool           // available gas used to pack transactions
+	coinbase     common.Address
+	profit       *big.Int
+	isAssembler  bool
+	assemblerTxs AssemblerTxLists
 
 	header   *types.Header
 	txs      []*types.Transaction
@@ -883,7 +885,7 @@ func (w *worker) resultLoop() {
 }
 
 // makeEnv creates a new environment for the sealing block.
-func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase common.Address) (*environment, error) {
+func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase common.Address, assemblerTxs AssemblerTxLists) (*environment, error) {
 	// Retrieve the parent state to execute on top and start a prefetcher for
 	// the miner to speed block sealing up a bit.
 	state, err := w.chain.StateAt(parent.Root)
@@ -894,14 +896,18 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 
 	// Note the passed coinbase may be different with header.Coinbase.
 	env := &environment{
-		signer:    types.MakeSigner(w.chainConfig, header.Number),
-		state:     state,
-		coinbase:  coinbase,
-		ancestors: mapset.NewSet[common.Hash](),
-		family:    mapset.NewSet[common.Hash](),
-		header:    header,
-		uncles:    make(map[common.Hash]*types.Header),
-		profit:    new(big.Int),
+		signer:       types.MakeSigner(w.chainConfig, header.Number),
+		state:        state,
+		coinbase:     coinbase,
+		ancestors:    mapset.NewSet[common.Hash](),
+		family:       mapset.NewSet[common.Hash](),
+		header:       header,
+		uncles:       make(map[common.Hash]*types.Header),
+		profit:       new(big.Int),
+		assemblerTxs: assemblerTxs,
+	}
+	if len(assemblerTxs.TobTxs) > 0 || (assemblerTxs.RobTxs != nil && assemblerTxs.RobTxs.Len() > 0) {
+		env.isAssembler = true
 	}
 	// when 08 is processed ancestors contain 07 (quick block)
 	for _, ancestor := range w.chain.GetBlocksFromHash(parent.Hash(), 7) {
@@ -1095,6 +1101,134 @@ func (w *worker) commitBundle(env *environment, txs types.Transactions, interrup
 	return nil
 }
 
+func (w *worker) commitAssemblyTransactions(env *environment, assemblerTxs AssemblerTxLists, interrupt *int32) error {
+	gasLimit := env.header.GasLimit
+	if env.gasPool == nil {
+		env.gasPool = new(core.GasPool).AddGas(gasLimit)
+	}
+	var coalescedLogs []*types.Log
+
+	// first go thru TOB txs
+	for i, tx := range assemblerTxs.TobTxs {
+		// Check interruption signal and abort building if it's fired.
+		if interrupt != nil {
+			if signal := atomic.LoadInt32(interrupt); signal != commitInterruptNone {
+				return signalToErr(signal)
+			}
+		}
+		// If we don't have enough gas for any further transactions then we're done.
+		if env.gasPool.Gas() < params.TxGas {
+			log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", params.TxGas)
+			break
+		}
+
+		// Error may be ignored here. The error has already been checked
+		// during transaction acceptance is the transaction pool.
+		from, _ := types.Sender(env.signer, tx)
+		logs, err := w.commitTransaction(env, tx)
+		switch {
+		case errors.Is(err, core.ErrGasLimitReached):
+			// Pop the current out-of-gas transaction without shifting in the next from the account
+			log.Trace("Gas limit exceeded for current block", "sender", from)
+
+		case errors.Is(err, core.ErrNonceTooLow):
+			// New head notification data race between the transaction pool and miner, shift
+			log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
+
+		case errors.Is(err, core.ErrNonceTooHigh):
+			// Reorg notification data race between the transaction pool and miner, skip account =
+			log.Trace("Skipping account with hight nonce", "sender", from, "nonce", tx.Nonce())
+
+		case errors.Is(err, nil):
+			// Everything ok, collect the logs and shift in the next transaction from the same account
+			coalescedLogs = append(coalescedLogs, logs...)
+			env.tcount++
+
+		case errors.Is(err, types.ErrTxTypeNotSupported):
+			// Pop the unsupported transaction without shifting in the next from the account
+			log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
+
+		default:
+			// Strange error, discard the transaction and get the next in line (note, the
+			// nonce-too-high clause will prevent us from executing in vain).
+			log.Debug("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
+		}
+	}
+
+	// commit the ROB txs
+	i := 0
+	for {
+		// Check interruption signal and abort building if it's fired.
+		if interrupt != nil {
+			if signal := atomic.LoadInt32(interrupt); signal != commitInterruptNone {
+				return signalToErr(signal)
+			}
+		}
+		// If we don't have enough gas for any further transactions then we're done.
+		if env.gasPool.Gas() < params.TxGas {
+			log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", params.TxGas)
+			break
+		}
+
+		if i >= assemblerTxs.RobTxs.Len() {
+			break
+		}
+
+		tx := assemblerTxs.RobTxs.Index(i)
+
+		// Error may be ignored here. The error has already been checked
+		// during transaction acceptance is the transaction pool.
+		from, _ := types.Sender(env.signer, tx)
+		logs, err := w.commitTransaction(env, tx)
+		switch {
+		case errors.Is(err, core.ErrGasLimitReached):
+			// Pop the current out-of-gas transaction without shifting in the next from the account
+			log.Trace("Gas limit exceeded for current block", "sender", from)
+
+		case errors.Is(err, core.ErrNonceTooLow):
+			// New head notification data race between the transaction pool and miner, shift
+			log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
+
+		case errors.Is(err, core.ErrNonceTooHigh):
+			// Reorg notification data race between the transaction pool and miner, skip account =
+			log.Trace("Skipping account with hight nonce", "sender", from, "nonce", tx.Nonce())
+
+		case errors.Is(err, nil):
+			// Everything ok, collect the logs and shift in the next transaction from the same account
+			coalescedLogs = append(coalescedLogs, logs...)
+			env.tcount++
+
+		case errors.Is(err, types.ErrTxTypeNotSupported):
+			// Pop the unsupported transaction without shifting in the next from the account
+			log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
+
+		default:
+			// Strange error, discard the transaction and get the next in line (note, the
+			// nonce-too-high clause will prevent us from executing in vain).
+			log.Debug("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
+		}
+
+		i += 1
+	}
+
+	if !w.isRunning() && len(coalescedLogs) > 0 {
+		// We don't push the pendingLogsEvent while we are sealing. The reason is that
+		// when we are sealing, the worker will regenerate a sealing block every 3 seconds.
+		// In order to avoid pushing the repeated pendingLog, we disable the pending log pushing.
+
+		// make a copy, the state caches the logs and these logs get "upgraded" from pending to mined
+		// logs by filling in the block hash when the block was mined by the local miner. This can
+		// cause a race condition if a log was "upgraded" before the PendingLogsEvent is processed.
+		cpy := make([]*types.Log, len(coalescedLogs))
+		for i, l := range coalescedLogs {
+			cpy[i] = new(types.Log)
+			*cpy[i] = *l
+		}
+		w.pendingLogsFeed.Send(cpy)
+	}
+	return nil
+}
+
 func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByPriceAndNonce, interrupt *int32) error {
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
@@ -1191,16 +1325,17 @@ func (w *worker) commitTransactions(env *environment, txs *types.TransactionsByP
 
 // generateParams wraps various of settings for generating sealing task.
 type generateParams struct {
-	timestamp   uint64            // The timstamp for sealing task
-	forceTime   bool              // Flag whether the given timestamp is immutable or not
-	parentHash  common.Hash       // Parent block hash, empty means the latest chain head
-	coinbase    common.Address    // The fee recipient address for including transaction
-	gasLimit    uint64            // The validator's requested gas limit target
-	random      common.Hash       // The randomness generated by beacon chain, empty before the merge
-	withdrawals types.Withdrawals // List of withdrawals to include in block.
-	noUncle     bool              // Flag whether the uncle block inclusion is allowed
-	noTxs       bool              // Flag whether an empty block without any transaction is expected
-	onBlock     BlockHookFn       // Callback to call for each produced block
+	timestamp    uint64            // The timstamp for sealing task
+	forceTime    bool              // Flag whether the given timestamp is immutable or not
+	parentHash   common.Hash       // Parent block hash, empty means the latest chain head
+	coinbase     common.Address    // The fee recipient address for including transaction
+	gasLimit     uint64            // The validator's requested gas limit target
+	random       common.Hash       // The randomness generated by beacon chain, empty before the merge
+	withdrawals  types.Withdrawals // List of withdrawals to include in block.
+	noUncle      bool              // Flag whether the uncle block inclusion is allowed
+	noTxs        bool              // Flag whether an empty block without any transaction is expected
+	onBlock      BlockHookFn       // Callback to call for each produced block
+	assemblerTxs AssemblerTxLists  // The transactions that the assembler wants to make a block out of
 }
 
 func doPrepareHeader(genParams *generateParams, chain *core.BlockChain, config *Config, chainConfig *params.ChainConfig, extra []byte, engine consensus.Engine) (*types.Header, *types.Header, error) {
@@ -1277,7 +1412,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	// Could potentially happen if starting to mine in an odd state.
 	// Note genParams.coinbase can be different with header.Coinbase
 	// since clique algorithm can modify the coinbase field in header.
-	env, err := w.makeEnv(parent, header, genParams.coinbase)
+	env, err := w.makeEnv(parent, header, genParams.coinbase, genParams.assemblerTxs)
 	if err != nil {
 		log.Error("Failed to create sealing context", "err", err)
 		return nil, err
@@ -1311,6 +1446,10 @@ func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) 
 		mempoolTxHashes map[common.Hash]struct{}
 		err             error
 	)
+	if env.isAssembler {
+		blockBundles, allBundles, mempoolTxHashes, err = w.fillAssemblerTransactions(interrupt, env)
+		return blockBundles, allBundles, usedSbundles, mempoolTxHashes, err
+	}
 	switch w.flashbots.algoType {
 	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS:
 		blockBundles, allBundles, usedSbundles, mempoolTxHashes, err = w.fillTransactionsAlgoWorker(interrupt, env)
@@ -1320,6 +1459,40 @@ func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) 
 		blockBundles, allBundles, mempoolTxHashes, err = w.fillTransactions(interrupt, env)
 	}
 	return blockBundles, allBundles, usedSbundles, mempoolTxHashes, err
+}
+
+// fillTransactions retrieves the pending transactions from the txpool and fills them
+// into the given sealing block. The transaction selection and ordering strategy can
+// be customized with the plugin in the future.
+// Returns error if any, otherwise the bundles that made it into the block and all bundles that passed simulation
+func (w *worker) fillAssemblerTransactions(interrupt *int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, map[common.Hash]struct{}, error) {
+
+	assemblerTxs := env.assemblerTxs
+	totalTxsToAssemble := assemblerTxs.RobTxs.Len() + len(assemblerTxs.TobTxs)
+
+	mempoolHashes := make(map[common.Hash]struct{}, totalTxsToAssemble)
+	for _, tx := range assemblerTxs.TobTxs {
+		mempoolHashes[tx.Hash()] = struct{}{}
+	}
+	i := 0
+	for {
+		if i >= assemblerTxs.RobTxs.Len() {
+			break
+		}
+
+		robTx := assemblerTxs.RobTxs.Index(i)
+		mempoolHashes[robTx.Hash()] = struct{}{}
+
+		i += 1
+	}
+
+	if totalTxsToAssemble > 0 {
+		if err := w.commitAssemblyTransactions(env, env.assemblerTxs, interrupt); err != nil {
+			return nil, nil, nil, err
+		}
+	}
+
+	return []types.SimulatedBundle{}, []types.SimulatedBundle{}, mempoolHashes, nil
 }
 
 // fillTransactions retrieves the pending transactions from the txpool and fills them
@@ -1346,6 +1519,7 @@ func (w *worker) fillTransactions(interrupt *int32, env *environment) ([]types.S
 
 	var blockBundles []types.SimulatedBundle
 	var allBundles []types.SimulatedBundle
+
 	if w.flashbots.isFlashbots {
 		bundles, ccBundleCh := w.eth.TxPool().MevBundles(env.header.Number, env.header.Time)
 		bundles = append(bundles, <-ccBundleCh...)
@@ -1528,8 +1702,10 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 			gasUsedGauge.Update(int64(block.GasUsed()))
 			transactionNumGauge.Update(int64(len(env.txs)))
 		}
-		if params.onBlock != nil {
-			go params.onBlock(block, profit, orderCloseTime, blockBundles, allBundles, usedSbundles)
+		if !work.isAssembler {
+			if params.onBlock != nil {
+				go params.onBlock(block, profit, orderCloseTime, blockBundles, allBundles, usedSbundles)
+			}
 		}
 
 		return block, profit, nil
@@ -1539,9 +1715,13 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 		return finalizeFn(work, time.Now(), nil, nil, nil, true)
 	}
 
-	paymentTxReserve, err := w.proposerTxPrepare(work, &validatorCoinbase)
-	if err != nil {
-		return nil, nil, err
+	var paymentTxReserve *proposerTxReservation
+	// there won't be any additional payments for a block assembled by the assembler
+	if !work.isAssembler {
+		paymentTxReserve, err = w.proposerTxPrepare(work, &validatorCoinbase)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	orderCloseTime := time.Now()
@@ -1563,6 +1743,8 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 		}
 	}
 
+	// TODO - bchain - maybe we can avoid this check for the assembler since we can assume that the ROB block
+	// should be valid
 	err = VerifyBundlesAtomicity(work, blockBundles, allBundles, usedSbundles, mempoolTxHashes)
 	if err != nil {
 		log.Error("Bundle invariant is violated for built block", "block", work.header.Number, "err", err)
@@ -1574,9 +1756,11 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 		return finalizeFn(work, orderCloseTime, blockBundles, allBundles, usedSbundles, true)
 	}
 
-	err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve)
-	if err != nil {
-		return nil, nil, err
+	if !work.isAssembler {
+		err = w.proposerTxCommit(work, &validatorCoinbase, paymentTxReserve)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	return finalizeFn(work, orderCloseTime, blockBundles, allBundles, usedSbundles, false)
@@ -1596,9 +1780,12 @@ func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals,
 		return block, big.NewInt(0), nil
 	}
 
-	blockProfit, err := w.checkProposerPayment(work, validatorCoinbase)
-	if err != nil {
-		return nil, nil, err
+	blockProfit := big.NewInt(0)
+	if !work.isAssembler {
+		blockProfit, err = w.checkProposerPayment(work, validatorCoinbase)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	return block, blockProfit, nil
@@ -1731,19 +1918,20 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 // getSealingBlock generates the sealing block based on the given parameters.
 // The generation result will be passed back via the given channel no matter
 // the generation itself succeeds or not.
-func (w *worker) getSealingBlock(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, withdrawals types.Withdrawals, noTxs bool, blockHook BlockHookFn) (*types.Block, *big.Int, error) {
+func (w *worker) getSealingBlock(parent common.Hash, timestamp uint64, coinbase common.Address, gasLimit uint64, random common.Hash, withdrawals types.Withdrawals, noTxs bool, blockHook BlockHookFn, assemblerTxs AssemblerTxLists) (*types.Block, *big.Int, error) {
 	req := &getWorkReq{
 		params: &generateParams{
-			timestamp:   timestamp,
-			forceTime:   true,
-			parentHash:  parent,
-			coinbase:    coinbase,
-			gasLimit:    gasLimit,
-			random:      random,
-			withdrawals: withdrawals,
-			noUncle:     true,
-			noTxs:       noTxs,
-			onBlock:     blockHook,
+			timestamp:    timestamp,
+			forceTime:    true,
+			parentHash:   parent,
+			coinbase:     coinbase,
+			gasLimit:     gasLimit,
+			random:       random,
+			withdrawals:  withdrawals,
+			noUncle:      true,
+			noTxs:        noTxs,
+			onBlock:      blockHook,
+			assemblerTxs: assemblerTxs,
 		},
 		result: make(chan *newPayloadResult, 1),
 	}

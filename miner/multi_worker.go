@@ -2,6 +2,7 @@ package miner
 
 import (
 	"errors"
+	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -86,6 +87,46 @@ func (w *multiWorker) disablePreseal() {
 	}
 }
 
+func (w *multiWorker) payloadAssembler(args *BuildPayloadArgs) (*Payload, error) {
+	// Build the initial version with no transaction included. It should be fast
+	// enough to run. The empty payload can at least make sure there is something
+	// to deliver for not missing slot.
+	var empty *types.Block
+	for _, worker := range w.workers {
+		var err error
+		empty, _, err = worker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, true, nil, AssemblerTxLists{})
+		if err != nil {
+			log.Error("could not start async block construction", "isFlashbotsWorker", worker.flashbots.isFlashbots, "#bundles", worker.flashbots.maxMergedBundles)
+			continue
+		}
+		break
+	}
+
+	if empty == nil {
+		return nil, errors.New("no worker could build an empty block")
+	}
+
+	// Construct a payload object for return.
+	payload := newPayload(empty, args.Id())
+
+	if len(w.workers) == 0 {
+		return payload, nil
+	}
+
+	var tobBlock *types.Block
+	var fees *big.Int
+	var err error
+	start := time.Now()
+	tobBlock, fees, err = w.regularWorker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook, args.AssemblerTxs)
+	if err != nil {
+		log.Error("could not start async block construction", "err", err)
+		return nil, err
+	}
+	payload.update(tobBlock, fees, time.Since(start))
+
+	return payload, nil
+}
+
 func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	// Build the initial version with no transaction included. It should be fast
 	// enough to run. The empty payload can at least make sure there is something
@@ -93,7 +134,7 @@ func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	var empty *types.Block
 	for _, worker := range w.workers {
 		var err error
-		empty, _, err = worker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, true, nil)
+		empty, _, err = worker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, true, nil, AssemblerTxLists{})
 		if err != nil {
 			log.Error("could not start async block construction", "isFlashbotsWorker", worker.flashbots.isFlashbots, "#bundles", worker.flashbots.maxMergedBundles)
 			continue
@@ -122,7 +163,7 @@ func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 		go func(w *worker) {
 			// Update routine done elsewhere!
 			start := time.Now()
-			block, fees, err := w.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook)
+			block, fees, err := w.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook, AssemblerTxLists{})
 			if err == nil {
 				workerPayload.update(block, fees, time.Since(start))
 			} else {
