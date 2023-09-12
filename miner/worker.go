@@ -1101,6 +1101,54 @@ func (w *worker) commitBundle(env *environment, txs types.Transactions, interrup
 	return nil
 }
 
+func (w *worker) commitTransactionWrapper(env *environment, interrupt *int32, tx *types.Transaction, coalescedLogs []*types.Log) error {
+	// Check interruption signal and abort building if it's fired.
+	if interrupt != nil {
+		if signal := atomic.LoadInt32(interrupt); signal != commitInterruptNone {
+			return signalToErr(signal)
+		}
+	}
+	// If we don't have enough gas for any further transactions then we're done.
+	if env.gasPool.Gas() < params.TxGas {
+		log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", params.TxGas)
+		return nil
+	}
+
+	// Error may be ignored here. The error has already been checked
+	// during transaction acceptance is the transaction pool.
+	from, _ := types.Sender(env.signer, tx)
+	logs, err := w.commitTransaction(env, tx)
+	switch {
+	case errors.Is(err, core.ErrGasLimitReached):
+		// Pop the current out-of-gas transaction without shifting in the next from the account
+		log.Trace("Gas limit exceeded for current block", "sender", from)
+
+	case errors.Is(err, core.ErrNonceTooLow):
+		// New head notification data race between the transaction pool and miner, shift
+		log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
+
+	case errors.Is(err, core.ErrNonceTooHigh):
+		// Reorg notification data race between the transaction pool and miner, skip account =
+		log.Trace("Skipping account with hight nonce", "sender", from, "nonce", tx.Nonce())
+
+	case errors.Is(err, nil):
+		// Everything ok, collect the logs and shift in the next transaction from the same account
+		coalescedLogs = append(coalescedLogs, logs...)
+		env.tcount++
+
+	case errors.Is(err, types.ErrTxTypeNotSupported):
+		// Pop the unsupported transaction without shifting in the next from the account
+		log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
+
+	default:
+		// Strange error, discard the transaction and get the next in line (note, the
+		// nonce-too-high clause will prevent us from executing in vain).
+		log.Debug("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
+	}
+
+	return nil
+}
+
 func (w *worker) commitAssemblyTransactions(env *environment, assemblerTxs AssemblerTxLists, interrupt *int32) error {
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
@@ -1110,95 +1158,17 @@ func (w *worker) commitAssemblyTransactions(env *environment, assemblerTxs Assem
 
 	// first go thru TOB txs
 	for _, tx := range *assemblerTxs.TobTxs {
-		// Check interruption signal and abort building if it's fired.
-		if interrupt != nil {
-			if signal := atomic.LoadInt32(interrupt); signal != commitInterruptNone {
-				return signalToErr(signal)
-			}
-		}
-		// If we don't have enough gas for any further transactions then we're done.
-		if env.gasPool.Gas() < params.TxGas {
-			log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", params.TxGas)
-			break
-		}
-
-		// Error may be ignored here. The error has already been checked
-		// during transaction acceptance is the transaction pool.
-		from, _ := types.Sender(env.signer, tx)
-		logs, err := w.commitTransaction(env, tx)
-		switch {
-		case errors.Is(err, core.ErrGasLimitReached):
-			// Pop the current out-of-gas transaction without shifting in the next from the account
-			log.Trace("Gas limit exceeded for current block", "sender", from)
-
-		case errors.Is(err, core.ErrNonceTooLow):
-			// New head notification data race between the transaction pool and miner, shift
-			log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
-
-		case errors.Is(err, core.ErrNonceTooHigh):
-			// Reorg notification data race between the transaction pool and miner, skip account =
-			log.Trace("Skipping account with hight nonce", "sender", from, "nonce", tx.Nonce())
-
-		case errors.Is(err, nil):
-			// Everything ok, collect the logs and shift in the next transaction from the same account
-			coalescedLogs = append(coalescedLogs, logs...)
-			env.tcount++
-
-		case errors.Is(err, types.ErrTxTypeNotSupported):
-			// Pop the unsupported transaction without shifting in the next from the account
-			log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
-
-		default:
-			// Strange error, discard the transaction and get the next in line (note, the
-			// nonce-too-high clause will prevent us from executing in vain).
-			log.Debug("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
+		err := w.commitTransactionWrapper(env, interrupt, tx, coalescedLogs)
+		if err != nil {
+			return err
 		}
 	}
 
 	// now go thru ROB txs
 	for _, tx := range *assemblerTxs.RobTxs {
-		// Check interruption signal and abort building if it's fired.
-		if interrupt != nil {
-			if signal := atomic.LoadInt32(interrupt); signal != commitInterruptNone {
-				return signalToErr(signal)
-			}
-		}
-		// If we don't have enough gas for any further transactions then we're done.
-		if env.gasPool.Gas() < params.TxGas {
-			log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", params.TxGas)
-			break
-		}
-
-		// Error may be ignored here. The error has already been checked
-		// during transaction acceptance is the transaction pool.
-		from, _ := types.Sender(env.signer, tx)
-		logs, err := w.commitTransaction(env, tx)
-		switch {
-		case errors.Is(err, core.ErrGasLimitReached):
-			// Pop the current out-of-gas transaction without shifting in the next from the account
-			log.Trace("Gas limit exceeded for current block", "sender", from)
-
-		case errors.Is(err, core.ErrNonceTooLow):
-			// New head notification data race between the transaction pool and miner, shift
-			log.Trace("Skipping transaction with low nonce", "sender", from, "nonce", tx.Nonce())
-
-		case errors.Is(err, core.ErrNonceTooHigh):
-			// Reorg notification data race between the transaction pool and miner, skip account =
-			log.Trace("Skipping account with hight nonce", "sender", from, "nonce", tx.Nonce())
-
-		case errors.Is(err, nil):
-			// Everything ok, collect the logs and shift in the next transaction from the same account
-			coalescedLogs = append(coalescedLogs, logs...)
-			env.tcount++
-
-		case errors.Is(err, types.ErrTxTypeNotSupported):
-			// Pop the unsupported transaction without shifting in the next from the account
-			log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
-
-		default:
-			// Strange error, discard the transaction and get the next in line (note, the
-			// nonce-too-high clause will prevent us from executing in vain).
-			log.Debug("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
+		err := w.commitTransactionWrapper(env, interrupt, tx, coalescedLogs)
+		if err != nil {
+			return err
 		}
 	}
 
