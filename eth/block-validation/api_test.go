@@ -45,10 +45,12 @@ import (
 
 var (
 	// testKey is a private key to use for funding a tester account.
-	testKey, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	testKey, _         = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
+	testSearcherKey, _ = crypto.HexToECDSA("b61c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
 
 	// testAddr is the Ethereum address of the tester account.
-	testAddr = crypto.PubkeyToAddress(testKey.PublicKey)
+	testAddr         = crypto.PubkeyToAddress(testKey.PublicKey)
+	testSearcherAddr = crypto.PubkeyToAddress(testSearcherKey.PublicKey)
 
 	testValidatorKey, _ = crypto.HexToECDSA("28c3cd61b687fdd03488e167a5d84f50269df2a4c29a2cfb1390903aa775c5d0")
 	testValidatorAddr   = crypto.PubkeyToAddress(testValidatorKey.PublicKey)
@@ -318,7 +320,7 @@ func generatePreMergeChain(n int) (*core.Genesis, []*types.Block) {
 	config := params.AllEthashProtocolChanges
 	genesis := &core.Genesis{
 		Config:     config,
-		Alloc:      core.GenesisAlloc{testAddr: {Balance: testBalance}, testValidatorAddr: {Balance: testBalance}, testBuilderAddr: {Balance: testBalance}},
+		Alloc:      core.GenesisAlloc{testSearcherAddr: {Balance: testBalance}, testAddr: {Balance: testBalance}, testValidatorAddr: {Balance: testBalance}, testBuilderAddr: {Balance: testBalance}},
 		ExtraData:  []byte("test genesis"),
 		Timestamp:  9000,
 		BaseFee:    big.NewInt(params.InitialBaseFee),
@@ -869,4 +871,311 @@ func TestBlockAssemblerRequestJsonEncodingAndDecoding(t *testing.T) {
 	require.NoError(t, err)
 
 	require.Equal(t, assemblyRequest, *decodedAssemblyRequest)
+}
+
+func TestBlockAssemblerWithNoRobTxs(t *testing.T) {
+	genesis, preMergeBlocks := generatePreMergeChain(20)
+	os.Setenv("BUILDER_TX_SIGNING_KEY", testBuilderKeyHex)
+	time := preMergeBlocks[len(preMergeBlocks)-1].Time() + 5
+	genesis.Config.ShanghaiTime = &time
+
+	n, ethservice := startEthService(t, genesis, preMergeBlocks)
+	ethservice.Merger().ReachTTD()
+	defer n.Close()
+
+	api := NewBlockValidationAPI(ethservice, nil, false)
+	parent := preMergeBlocks[len(preMergeBlocks)-1]
+
+	api.eth.APIBackend.Miner().SetEtherbase(testBuilderAddr)
+
+	statedb, _ := ethservice.BlockChain().StateAt(parent.Root())
+	searcherNonce := statedb.GetNonce(testSearcherAddr)
+
+	signer := types.LatestSigner(ethservice.BlockChain().Config())
+
+	tobTx1, _ := types.SignTx(types.NewTransaction(searcherNonce, common.Address{0x16}, big.NewInt(10), 21000, big.NewInt(2*params.InitialBaseFee), nil), signer, testSearcherKey)
+	tobTx2, _ := types.SignTx(types.NewTransaction(searcherNonce+1, common.Address{0x17}, big.NewInt(20), 21000, big.NewInt(2*params.InitialBaseFee), nil), signer, testSearcherKey)
+
+	tobTx1Bytes, err := tobTx1.MarshalBinary()
+	require.NoError(t, err)
+	tobTx2Bytes, err := tobTx2.MarshalBinary()
+	require.NoError(t, err)
+
+	tobTxs := bellatrixUtil.ExecutionPayloadTransactions{
+		Transactions: []bellatrix.Transaction{tobTx1Bytes, tobTx2Bytes},
+	}
+
+	withdrawals := []*types.Withdrawal{
+		{
+			Index:     0,
+			Validator: 1,
+			Amount:    100,
+			Address:   testAddr,
+		},
+		{
+			Index:     1,
+			Validator: 1,
+			Amount:    100,
+			Address:   testAddr,
+		},
+	}
+	withdrawalsRoot := types.DeriveSha(types.Withdrawals(withdrawals), trie.NewStackTrie(nil))
+	execData, err := assembleBlock(api, parent.Hash(), &engine.PayloadAttributes{
+		Timestamp:             parent.Time() + 5,
+		Withdrawals:           withdrawals,
+		SuggestedFeeRecipient: testValidatorAddr,
+	})
+	fmt.Printf("DEBUG: Exec data random is %x\n", execData.Random)
+	require.NoError(t, err)
+	require.EqualValues(t, len(execData.Withdrawals), 2)
+	require.EqualValues(t, len(execData.Transactions), 0)
+
+	payload, err := ExecutableDataToExecutionPayloadV2(execData)
+	require.NoError(t, err)
+
+	proposerAddr := bellatrix.ExecutionAddress{}
+	copy(proposerAddr[:], testValidatorAddr.Bytes())
+
+	blockRequest := &BuilderBlockValidationRequestV2{
+		SubmitBlockRequest: capellaapi.SubmitBlockRequest{
+			Signature: phase0.BLSSignature{},
+			Message: &apiv1.BidTrace{
+				ParentHash:           phase0.Hash32(execData.ParentHash),
+				BlockHash:            phase0.Hash32(execData.BlockHash),
+				ProposerFeeRecipient: proposerAddr,
+				GasLimit:             execData.GasLimit,
+				GasUsed:              execData.GasUsed,
+				// This value is actual profit + 1, validation should fail
+				Value: uint256.NewInt(149842511727213),
+			},
+			ExecutionPayload: payload,
+		},
+		RegisteredGasLimit: execData.GasLimit,
+		WithdrawalsRoot:    withdrawalsRoot,
+	}
+
+	assemblyRequest := BlockAssemblerRequest{
+		TobTxs:             tobTxs,
+		RobPayload:         blockRequest.SubmitBlockRequest,
+		RegisteredGasLimit: execData.GasLimit,
+	}
+
+	block, err := api.BlockAssembler(&assemblyRequest)
+	require.NoError(t, err)
+	require.Equal(t, len(block.Transactions), 2)
+
+	// check tob txs
+	actualTobTx1 := block.Transactions[0]
+	actualTobTx2 := block.Transactions[1]
+	require.Equal(t, bellatrixUtil.ExecutionPayloadTransactions{Transactions: []bellatrix.Transaction{actualTobTx1, actualTobTx2}}, tobTxs)
+}
+
+func TestBlockAssemblerWithNoTobTxs(t *testing.T) {
+	genesis, preMergeBlocks := generatePreMergeChain(20)
+	os.Setenv("BUILDER_TX_SIGNING_KEY", testBuilderKeyHex)
+	time := preMergeBlocks[len(preMergeBlocks)-1].Time() + 5
+	genesis.Config.ShanghaiTime = &time
+
+	n, ethservice := startEthService(t, genesis, preMergeBlocks)
+	ethservice.Merger().ReachTTD()
+	defer n.Close()
+
+	api := NewBlockValidationAPI(ethservice, nil, false)
+	parent := preMergeBlocks[len(preMergeBlocks)-1]
+
+	api.eth.APIBackend.Miner().SetEtherbase(testBuilderAddr)
+
+	statedb, _ := ethservice.BlockChain().StateAt(parent.Root())
+	nonce := statedb.GetNonce(testAddr)
+
+	signer := types.LatestSigner(ethservice.BlockChain().Config())
+
+	robTx1, _ := types.SignTx(types.NewTransaction(nonce, common.Address{0x18}, big.NewInt(30), 21000, big.NewInt(2*params.InitialBaseFee), nil), signer, testKey)
+	robTx2, _ := types.SignTx(types.NewTransaction(nonce, common.Address{0x19}, big.NewInt(40), 21000, big.NewInt(2*params.InitialBaseFee), nil), signer, testKey)
+
+	ethservice.TxPool().AddLocal(robTx1)
+	ethservice.TxPool().AddLocal(robTx2)
+
+	withdrawals := []*types.Withdrawal{
+		{
+			Index:     0,
+			Validator: 1,
+			Amount:    100,
+			Address:   testAddr,
+		},
+		{
+			Index:     1,
+			Validator: 1,
+			Amount:    100,
+			Address:   testAddr,
+		},
+	}
+	withdrawalsRoot := types.DeriveSha(types.Withdrawals(withdrawals), trie.NewStackTrie(nil))
+	execData, err := assembleBlock(api, parent.Hash(), &engine.PayloadAttributes{
+		Timestamp:             parent.Time() + 5,
+		Withdrawals:           withdrawals,
+		SuggestedFeeRecipient: testValidatorAddr,
+	})
+	fmt.Printf("DEBUG: Exec data random is %x\n", execData.Random)
+	require.NoError(t, err)
+	require.EqualValues(t, len(execData.Withdrawals), 2)
+	require.EqualValues(t, len(execData.Transactions), 2)
+
+	payload, err := ExecutableDataToExecutionPayloadV2(execData)
+	require.NoError(t, err)
+
+	proposerAddr := bellatrix.ExecutionAddress{}
+	copy(proposerAddr[:], testValidatorAddr.Bytes())
+
+	blockRequest := &BuilderBlockValidationRequestV2{
+		SubmitBlockRequest: capellaapi.SubmitBlockRequest{
+			Signature: phase0.BLSSignature{},
+			Message: &apiv1.BidTrace{
+				ParentHash:           phase0.Hash32(execData.ParentHash),
+				BlockHash:            phase0.Hash32(execData.BlockHash),
+				ProposerFeeRecipient: proposerAddr,
+				GasLimit:             execData.GasLimit,
+				GasUsed:              execData.GasUsed,
+				// This value is actual profit + 1, validation should fail
+				Value: uint256.NewInt(149842511727213),
+			},
+			ExecutionPayload: payload,
+		},
+		RegisteredGasLimit: execData.GasLimit,
+		WithdrawalsRoot:    withdrawalsRoot,
+	}
+
+	assemblyRequest := BlockAssemblerRequest{
+		TobTxs: bellatrixUtil.ExecutionPayloadTransactions{
+			Transactions: []bellatrix.Transaction{},
+		},
+		RobPayload:         blockRequest.SubmitBlockRequest,
+		RegisteredGasLimit: execData.GasLimit,
+	}
+
+	block, err := api.BlockAssembler(&assemblyRequest)
+	require.NoError(t, err)
+	require.Equal(t, len(block.Transactions), 2)
+
+	// check rob txs
+	actualRobTx1 := block.Transactions[0]
+	actualRobTx2 := block.Transactions[1]
+	execDataTx1 := bellatrix.Transaction(execData.Transactions[0])
+	execDataTx2 := bellatrix.Transaction(execData.Transactions[1])
+
+	require.Equal(t, execDataTx1, actualRobTx1)
+	require.Equal(t, execDataTx2, actualRobTx2)
+}
+
+func TestBlockAssemblerWithTobAndRobTxs(t *testing.T) {
+	genesis, preMergeBlocks := generatePreMergeChain(20)
+	os.Setenv("BUILDER_TX_SIGNING_KEY", testBuilderKeyHex)
+	time := preMergeBlocks[len(preMergeBlocks)-1].Time() + 5
+	genesis.Config.ShanghaiTime = &time
+
+	n, ethservice := startEthService(t, genesis, preMergeBlocks)
+	ethservice.Merger().ReachTTD()
+	defer n.Close()
+
+	api := NewBlockValidationAPI(ethservice, nil, false)
+	parent := preMergeBlocks[len(preMergeBlocks)-1]
+
+	api.eth.APIBackend.Miner().SetEtherbase(testBuilderAddr)
+
+	statedb, _ := ethservice.BlockChain().StateAt(parent.Root())
+	nonce := statedb.GetNonce(testAddr)
+	searcherNonce := statedb.GetNonce(testSearcherAddr)
+
+	signer := types.LatestSigner(ethservice.BlockChain().Config())
+
+	tobTx1, _ := types.SignTx(types.NewTransaction(searcherNonce, common.Address{0x16}, big.NewInt(10), 21000, big.NewInt(2*params.InitialBaseFee), nil), signer, testSearcherKey)
+	tobTx2, _ := types.SignTx(types.NewTransaction(searcherNonce+1, common.Address{0x17}, big.NewInt(20), 21000, big.NewInt(2*params.InitialBaseFee), nil), signer, testSearcherKey)
+
+	tobTx1Bytes, err := tobTx1.MarshalBinary()
+	require.NoError(t, err)
+	tobTx2Bytes, err := tobTx2.MarshalBinary()
+	require.NoError(t, err)
+
+	tobTxs := bellatrixUtil.ExecutionPayloadTransactions{
+		Transactions: []bellatrix.Transaction{tobTx1Bytes, tobTx2Bytes},
+	}
+
+	robTx1, _ := types.SignTx(types.NewTransaction(nonce, common.Address{0x18}, big.NewInt(30), 21000, big.NewInt(2*params.InitialBaseFee), nil), signer, testKey)
+	robTx2, _ := types.SignTx(types.NewTransaction(nonce, common.Address{0x19}, big.NewInt(40), 21000, big.NewInt(2*params.InitialBaseFee), nil), signer, testKey)
+
+	ethservice.TxPool().AddLocal(robTx1)
+	ethservice.TxPool().AddLocal(robTx2)
+
+	withdrawals := []*types.Withdrawal{
+		{
+			Index:     0,
+			Validator: 1,
+			Amount:    100,
+			Address:   testAddr,
+		},
+		{
+			Index:     1,
+			Validator: 1,
+			Amount:    100,
+			Address:   testAddr,
+		},
+	}
+	withdrawalsRoot := types.DeriveSha(types.Withdrawals(withdrawals), trie.NewStackTrie(nil))
+	execData, err := assembleBlock(api, parent.Hash(), &engine.PayloadAttributes{
+		Timestamp:             parent.Time() + 5,
+		Withdrawals:           withdrawals,
+		SuggestedFeeRecipient: testValidatorAddr,
+	})
+	fmt.Printf("DEBUG: Exec data random is %x\n", execData.Random)
+	require.NoError(t, err)
+	require.EqualValues(t, len(execData.Withdrawals), 2)
+	require.EqualValues(t, len(execData.Transactions), 2)
+
+	payload, err := ExecutableDataToExecutionPayloadV2(execData)
+	require.NoError(t, err)
+
+	proposerAddr := bellatrix.ExecutionAddress{}
+	copy(proposerAddr[:], testValidatorAddr.Bytes())
+
+	blockRequest := &BuilderBlockValidationRequestV2{
+		SubmitBlockRequest: capellaapi.SubmitBlockRequest{
+			Signature: phase0.BLSSignature{},
+			Message: &apiv1.BidTrace{
+				ParentHash:           phase0.Hash32(execData.ParentHash),
+				BlockHash:            phase0.Hash32(execData.BlockHash),
+				ProposerFeeRecipient: proposerAddr,
+				GasLimit:             execData.GasLimit,
+				GasUsed:              execData.GasUsed,
+				// This value is actual profit + 1, validation should fail
+				Value: uint256.NewInt(149842511727213),
+			},
+			ExecutionPayload: payload,
+		},
+		RegisteredGasLimit: execData.GasLimit,
+		WithdrawalsRoot:    withdrawalsRoot,
+	}
+
+	assemblyRequest := BlockAssemblerRequest{
+		TobTxs:             tobTxs,
+		RobPayload:         blockRequest.SubmitBlockRequest,
+		RegisteredGasLimit: execData.GasLimit,
+	}
+
+	block, err := api.BlockAssembler(&assemblyRequest)
+	require.NoError(t, err)
+	require.Equal(t, len(block.Transactions), 4)
+
+	// check tob txs
+	actualTobTx1 := block.Transactions[0]
+	actualTobTx2 := block.Transactions[1]
+	require.Equal(t, bellatrixUtil.ExecutionPayloadTransactions{Transactions: []bellatrix.Transaction{actualTobTx1, actualTobTx2}}, tobTxs)
+
+	// check rob txs
+	actualRobTx1 := block.Transactions[2]
+	actualRobTx2 := block.Transactions[3]
+	execDataTx1 := bellatrix.Transaction(execData.Transactions[0])
+	execDataTx2 := bellatrix.Transaction(execData.Transactions[1])
+
+	require.Equal(t, execDataTx1, actualRobTx1)
+	require.Equal(t, execDataTx2, actualRobTx2)
 }
