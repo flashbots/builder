@@ -417,10 +417,6 @@ func (s Transactions) Index(i int) *Transaction {
 	return s[i]
 }
 
-func (s Transactions) Append(tx *Transaction) Transactions {
-	return append(s, tx)
-}
-
 // Len returns the length of s.
 func (s Transactions) Len() int { return len(s) }
 
