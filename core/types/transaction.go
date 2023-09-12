@@ -413,6 +413,10 @@ func (tx *Transaction) WithSignature(signer Signer, sig []byte) (*Transaction, e
 // Transactions implements DerivableList for transactions.
 type Transactions []*Transaction
 
+func (s Transactions) Index(i int) *Transaction {
+	return s[i]
+}
+
 // Len returns the length of s.
 func (s Transactions) Len() int { return len(s) }
 
