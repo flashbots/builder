@@ -9,6 +9,7 @@ import (
 
 	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
 	capellaapi "github.com/attestantio/go-builder-client/api/capella"
+	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	bellatrixUtil "github.com/attestantio/go-eth2-client/util/bellatrix"
 	"github.com/ethereum/go-ethereum/beacon/engine"
@@ -18,6 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
 )
@@ -343,4 +345,90 @@ func (b *BlockAssemblerRequest) UnmarshalJSON(data []byte) error {
 	b.RobPayload = *blockRequest
 
 	return nil
+}
+
+func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*capella.ExecutionPayload, error) {
+	log.Info("BlockAssembler", "tobTxs", len(params.TobTxs.Transactions), "robPayload", params.RobPayload)
+	transactionBytes := make([][]byte, len(params.TobTxs.Transactions))
+	for i, txHexBytes := range params.TobTxs.Transactions {
+		transactionBytes[i] = txHexBytes[:]
+	}
+	decodedTobTxs, err := engine.DecodeTransactions(transactionBytes)
+	if err != nil {
+		return nil, err
+	}
+
+	robBlock, err := engine.ExecutionPayloadV2ToBlock(params.RobPayload.ExecutionPayload)
+	if err != nil {
+		return nil, err
+	}
+
+	tobTxs := types.Transactions(decodedTobTxs)
+
+	// TODO - check for gas limits
+	// TODO - support for payouts
+
+	// TODO - if there are no TOB txs then we can just simulate the block rather then re-assembling it.
+	// These are TODOs for now to simplify integration testing
+
+	// check if there are any duplicate txs
+	// we can error out if there is a nonce gap
+	// TODO - don't error out, but drop the duplicate tx in the ROB block
+	seenTxMap := make(map[common.Hash]struct{})
+	for _, tx := range tobTxs {
+		// If we see nonce reuse in TOB then fail
+		if _, ok := seenTxMap[tx.Hash()]; ok {
+			return nil, errors.New("duplicate tx")
+		}
+		seenTxMap[tx.Hash()] = struct{}{}
+	}
+	for _, tx := range robBlock.Transactions() {
+		// if we see nonce re-use in TOB vs ROB then drop txs the txs in ROB
+		if _, ok := seenTxMap[tx.Hash()]; ok {
+			return nil, errors.New("duplicate tx")
+		}
+		seenTxMap[tx.Hash()] = struct{}{}
+	}
+
+	withdrawals := make(types.Withdrawals, len(params.RobPayload.ExecutionPayload.Withdrawals))
+	for i, withdrawal := range params.RobPayload.ExecutionPayload.Withdrawals {
+		withdrawals[i] = &types.Withdrawal{
+			Index:     uint64(withdrawal.Index),
+			Validator: uint64(withdrawal.ValidatorIndex),
+			Address:   common.Address(withdrawal.Address),
+			Amount:    uint64(withdrawal.Amount),
+		}
+	}
+
+	// assemble the txs in map[sender]txs format and pass it in the BuildPayload call
+
+	robTxs := robBlock.Transactions()
+	block, err := api.eth.Miner().PayloadAssembler(&miner.BuildPayloadArgs{
+		Parent:    common.Hash(params.RobPayload.ExecutionPayload.ParentHash),
+		Timestamp: params.RobPayload.ExecutionPayload.Timestamp,
+		// TODO - this should be relayer fee recipient. We will implement payouts later
+		FeeRecipient: common.Address(params.RobPayload.Message.ProposerFeeRecipient),
+		GasLimit:     params.RegisteredGasLimit,
+		Random:       params.RobPayload.ExecutionPayload.PrevRandao,
+		Withdrawals:  withdrawals,
+		BlockHook:    nil,
+		AssemblerTxs: miner.AssemblerTxLists{
+			TobTxs: &tobTxs,
+			RobTxs: &robTxs,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+	resolvedBlock := block.ResolveFull()
+	if resolvedBlock == nil {
+		return nil, errors.New("unable to resolve block")
+	}
+	if resolvedBlock.ExecutionPayload == nil {
+		return nil, errors.New("nil execution payload")
+	}
+
+	finalPayload, err := engine.ExecutableDataToCapellaExecutionPayload(resolvedBlock.ExecutionPayload)
+
+	return finalPayload, nil
 }
