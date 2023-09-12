@@ -339,7 +339,7 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 		return nil, errors.New("nil execution payload")
 	}
 
-	finalPayload, err := executableDataToCapellaExecutionPayload(resolvedBlock.ExecutionPayload)
+	finalPayload, err := engine.ExecutableDataToCapellaExecutionPayload(resolvedBlock.ExecutionPayload)
 
 	return finalPayload, nil
 }

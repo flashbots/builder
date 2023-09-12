@@ -13,7 +13,6 @@ import (
 	capellaapi "github.com/attestantio/go-builder-client/api/capella"
 	apiv1 "github.com/attestantio/go-builder-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
-	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
@@ -510,46 +509,5 @@ func executableDataToExecutionPayload(data *engine.ExecutableData) (*bellatrix.E
 		BaseFeePerGas: *baseFeePerGas,
 		BlockHash:     [32]byte(data.BlockHash),
 		Transactions:  transactionData,
-	}, nil
-}
-
-func executableDataToCapellaExecutionPayload(data *engine.ExecutableData) (*capella.ExecutionPayload, error) {
-	transactionData := make([]bellatrix.Transaction, len(data.Transactions))
-	for i, tx := range data.Transactions {
-		transactionData[i] = tx
-	}
-
-	withdrawalData := make([]*capella.Withdrawal, len(data.Withdrawals))
-	for i, wd := range data.Withdrawals {
-		withdrawalData[i] = &capella.Withdrawal{
-			Index:          capella.WithdrawalIndex(wd.Index),
-			ValidatorIndex: phase0.ValidatorIndex(wd.Validator),
-			Address:        bellatrix.ExecutionAddress(wd.Address),
-			Amount:         phase0.Gwei(wd.Amount),
-		}
-	}
-
-	baseFeePerGas := new(boostTypes.U256Str)
-	err := baseFeePerGas.FromBig(data.BaseFeePerGas)
-	if err != nil {
-		return nil, err
-	}
-
-	return &capella.ExecutionPayload{
-		ParentHash:    [32]byte(data.ParentHash),
-		FeeRecipient:  [20]byte(data.FeeRecipient),
-		StateRoot:     data.StateRoot,
-		ReceiptsRoot:  data.ReceiptsRoot,
-		LogsBloom:     types.BytesToBloom(data.LogsBloom),
-		PrevRandao:    data.Random,
-		BlockNumber:   data.Number,
-		GasLimit:      data.GasLimit,
-		GasUsed:       data.GasUsed,
-		Timestamp:     data.Timestamp,
-		ExtraData:     data.ExtraData,
-		BaseFeePerGas: *baseFeePerGas,
-		BlockHash:     [32]byte(data.BlockHash),
-		Transactions:  transactionData,
-		Withdrawals:   withdrawalData,
 	}, nil
 }
