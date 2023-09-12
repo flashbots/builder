@@ -10,6 +10,7 @@ import (
 	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
 	capellaapi "github.com/attestantio/go-builder-client/api/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
+	bellatrixUtil "github.com/attestantio/go-eth2-client/util/bellatrix"
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -290,5 +291,33 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockV
 	}
 
 	log.Info("validated block", "hash", block.Hash(), "number", block.NumberU64(), "parentHash", block.ParentHash())
+	return nil
+}
+
+type BlockAssemblerRequest struct {
+	TobTxs             bellatrixUtil.ExecutionPayloadTransactions
+	RobPayload         capellaapi.SubmitBlockRequest
+	RegisteredGasLimit uint64
+}
+
+type IntermediateBlockAssemblerRequest struct {
+	TobTxs             []byte                        `json:"tob_txs"`
+	RobPayload         capellaapi.SubmitBlockRequest `json:"rob_payload"`
+	RegisteredGasLimit uint64                        `json:"registered_gas_limit,string"`
+}
+
+func (b *BlockAssemblerRequest) UnmarshalJSON(data []byte) error {
+	var intermediateJson IntermediateBlockAssemblerRequest
+	err := json.Unmarshal(data, &intermediateJson)
+	if err != nil {
+		return err
+	}
+	err = b.TobTxs.UnmarshalSSZ(intermediateJson.TobTxs)
+	if err != nil {
+		return err
+	}
+	b.RegisteredGasLimit = intermediateJson.RegisteredGasLimit
+	b.RobPayload = intermediateJson.RobPayload
+
 	return nil
 }
