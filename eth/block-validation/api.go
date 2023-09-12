@@ -9,7 +9,6 @@ import (
 
 	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
 	capellaapi "github.com/attestantio/go-builder-client/api/capella"
-	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/capella"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	bellatrixUtil "github.com/attestantio/go-eth2-client/util/bellatrix"
@@ -23,7 +22,6 @@ import (
 	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
-	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
 
 type BlacklistedAddresses []common.Address
@@ -261,55 +259,13 @@ func (b *BlockAssemblerRequest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// bchain: copied this here to avoid circular dependency
-func executableDataToCapellaExecutionPayload(data *engine.ExecutableData) (*capella.ExecutionPayload, error) {
-	transactionData := make([]bellatrix.Transaction, len(data.Transactions))
-	for i, tx := range data.Transactions {
-		transactionData[i] = tx
-	}
-
-	withdrawalData := make([]*capella.Withdrawal, len(data.Withdrawals))
-	for i, wd := range data.Withdrawals {
-		withdrawalData[i] = &capella.Withdrawal{
-			Index:          capella.WithdrawalIndex(wd.Index),
-			ValidatorIndex: phase0.ValidatorIndex(wd.Validator),
-			Address:        bellatrix.ExecutionAddress(wd.Address),
-			Amount:         phase0.Gwei(wd.Amount),
-		}
-	}
-
-	baseFeePerGas := new(boostTypes.U256Str)
-	err := baseFeePerGas.FromBig(data.BaseFeePerGas)
-	if err != nil {
-		return nil, err
-	}
-
-	return &capella.ExecutionPayload{
-		ParentHash:    [32]byte(data.ParentHash),
-		FeeRecipient:  [20]byte(data.FeeRecipient),
-		StateRoot:     data.StateRoot,
-		ReceiptsRoot:  data.ReceiptsRoot,
-		LogsBloom:     types.BytesToBloom(data.LogsBloom),
-		PrevRandao:    data.Random,
-		BlockNumber:   data.Number,
-		GasLimit:      data.GasLimit,
-		GasUsed:       data.GasUsed,
-		Timestamp:     data.Timestamp,
-		ExtraData:     data.ExtraData,
-		BaseFeePerGas: *baseFeePerGas,
-		BlockHash:     [32]byte(data.BlockHash),
-		Transactions:  transactionData,
-		Withdrawals:   withdrawalData,
-	}, nil
-}
-
 func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*capella.ExecutionPayload, error) {
 	log.Info("BlockAssembler", "tobTxs", len(params.TobTxs.Transactions), "robPayload", params.RobPayload)
 	transactionBytes := make([][]byte, len(params.TobTxs.Transactions))
 	for i, txHexBytes := range params.TobTxs.Transactions {
 		transactionBytes[i] = txHexBytes[:]
 	}
-	txs, err := engine.DecodeTransactions(transactionBytes)
+	decodedTobTxs, err := engine.DecodeTransactions(transactionBytes)
 	if err != nil {
 		return nil, err
 	}
@@ -318,6 +274,8 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 	if err != nil {
 		return nil, err
 	}
+
+	tobTxs := types.Transactions(decodedTobTxs)
 
 	// TODO - check for gas limits
 	// TODO - support for payouts
@@ -328,7 +286,7 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 	// we can error out if there is a nonce gap
 	// TODO - don't error out, but drop the duplicate tx in the ROB block
 	seenTxMap := make(map[common.Hash]struct{})
-	for _, tx := range txs {
+	for _, tx := range tobTxs {
 		// If we see nonce reuse in TOB then fail
 		if _, ok := seenTxMap[tx.Hash()]; ok {
 			return nil, errors.New("duplicate tx")
@@ -366,7 +324,7 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 		Withdrawals:  withdrawals,
 		BlockHook:    nil,
 		AssemblerTxs: miner.AssemblerTxLists{
-			TobTxs: txs,
+			TobTxs: &tobTxs,
 			RobTxs: &robTxs,
 		},
 	})

@@ -32,7 +32,7 @@ import (
 )
 
 type AssemblerTxLists struct {
-	TobTxs []*types.Transaction
+	TobTxs *types.Transactions
 	RobTxs *types.Transactions
 }
 

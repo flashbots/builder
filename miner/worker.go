@@ -906,7 +906,7 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 		profit:       new(big.Int),
 		assemblerTxs: assemblerTxs,
 	}
-	if len(assemblerTxs.TobTxs) > 0 || (assemblerTxs.RobTxs != nil && assemblerTxs.RobTxs.Len() > 0) {
+	if (assemblerTxs.TobTxs != nil && assemblerTxs.TobTxs.Len() > 0) || (assemblerTxs.RobTxs != nil && assemblerTxs.RobTxs.Len() > 0) {
 		env.isAssembler = true
 	}
 	// when 08 is processed ancestors contain 07 (quick block)
@@ -1109,7 +1109,7 @@ func (w *worker) commitAssemblyTransactions(env *environment, assemblerTxs Assem
 	var coalescedLogs []*types.Log
 
 	// first go thru TOB txs
-	for i, tx := range assemblerTxs.TobTxs {
+	for _, tx := range *assemblerTxs.TobTxs {
 		// Check interruption signal and abort building if it's fired.
 		if interrupt != nil {
 			if signal := atomic.LoadInt32(interrupt); signal != commitInterruptNone {
@@ -1155,9 +1155,8 @@ func (w *worker) commitAssemblyTransactions(env *environment, assemblerTxs Assem
 		}
 	}
 
-	// commit the ROB txs
-	i := 0
-	for {
+	// now go thru ROB txs
+	for _, tx := range *assemblerTxs.RobTxs {
 		// Check interruption signal and abort building if it's fired.
 		if interrupt != nil {
 			if signal := atomic.LoadInt32(interrupt); signal != commitInterruptNone {
@@ -1169,12 +1168,6 @@ func (w *worker) commitAssemblyTransactions(env *environment, assemblerTxs Assem
 			log.Trace("Not enough gas for further transactions", "have", env.gasPool, "want", params.TxGas)
 			break
 		}
-
-		if i >= assemblerTxs.RobTxs.Len() {
-			break
-		}
-
-		tx := assemblerTxs.RobTxs.Index(i)
 
 		// Error may be ignored here. The error has already been checked
 		// during transaction acceptance is the transaction pool.
@@ -1207,8 +1200,6 @@ func (w *worker) commitAssemblyTransactions(env *environment, assemblerTxs Assem
 			// nonce-too-high clause will prevent us from executing in vain).
 			log.Debug("Transaction failed, account skipped", "hash", tx.Hash(), "err", err)
 		}
-
-		i += 1
 	}
 
 	if !w.isRunning() && len(coalescedLogs) > 0 {
@@ -1468,22 +1459,14 @@ func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) 
 func (w *worker) fillAssemblerTransactions(interrupt *int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, map[common.Hash]struct{}, error) {
 
 	assemblerTxs := env.assemblerTxs
-	totalTxsToAssemble := assemblerTxs.RobTxs.Len() + len(assemblerTxs.TobTxs)
+	totalTxsToAssemble := assemblerTxs.RobTxs.Len() + assemblerTxs.TobTxs.Len()
 
 	mempoolHashes := make(map[common.Hash]struct{}, totalTxsToAssemble)
-	for _, tx := range assemblerTxs.TobTxs {
+	for _, tx := range *assemblerTxs.TobTxs {
 		mempoolHashes[tx.Hash()] = struct{}{}
 	}
-	i := 0
-	for {
-		if i >= assemblerTxs.RobTxs.Len() {
-			break
-		}
-
-		robTx := assemblerTxs.RobTxs.Index(i)
-		mempoolHashes[robTx.Hash()] = struct{}{}
-
-		i += 1
+	for _, tx := range *assemblerTxs.RobTxs {
+		mempoolHashes[tx.Hash()] = struct{}{}
 	}
 
 	if totalTxsToAssemble > 0 {

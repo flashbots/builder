@@ -284,7 +284,7 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
 	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
 	executableData := engine.BlockToExecutableData(block, blockValue)
-	payload, err := executableDataToCapellaExecutionPayload(executableData.ExecutionPayload)
+	payload, err := engine.ExecutableDataToCapellaExecutionPayload(executableData.ExecutionPayload)
 	if err != nil {
 		log.Error("could not format execution payload", "err", err)
 		return err

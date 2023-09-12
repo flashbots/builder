@@ -22,10 +22,12 @@ import (
 
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/capella"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/trie"
+	boostTypes "github.com/flashbots/go-boost-utils/types"
 )
 
 //go:generate go run github.com/fjl/gencodec -type PayloadAttributes -field-override payloadAttributesMarshaling -out gen_blockparams.go
@@ -330,4 +332,46 @@ func ExecutionPayloadV2ToBlock(payload *capella.ExecutionPayload) (*types.Block,
 	}
 	block := types.NewBlockWithHeader(header).WithBody(txs, nil /* uncles */).WithWithdrawals(withdrawals)
 	return block, nil
+}
+
+// bchain: copied this here to avoid circular dependency
+func ExecutableDataToCapellaExecutionPayload(data *ExecutableData) (*capella.ExecutionPayload, error) {
+	transactionData := make([]bellatrix.Transaction, len(data.Transactions))
+	for i, tx := range data.Transactions {
+		transactionData[i] = tx
+	}
+
+	withdrawalData := make([]*capella.Withdrawal, len(data.Withdrawals))
+	for i, wd := range data.Withdrawals {
+		withdrawalData[i] = &capella.Withdrawal{
+			Index:          capella.WithdrawalIndex(wd.Index),
+			ValidatorIndex: phase0.ValidatorIndex(wd.Validator),
+			Address:        bellatrix.ExecutionAddress(wd.Address),
+			Amount:         phase0.Gwei(wd.Amount),
+		}
+	}
+
+	baseFeePerGas := new(boostTypes.U256Str)
+	err := baseFeePerGas.FromBig(data.BaseFeePerGas)
+	if err != nil {
+		return nil, err
+	}
+
+	return &capella.ExecutionPayload{
+		ParentHash:    [32]byte(data.ParentHash),
+		FeeRecipient:  [20]byte(data.FeeRecipient),
+		StateRoot:     data.StateRoot,
+		ReceiptsRoot:  data.ReceiptsRoot,
+		LogsBloom:     types.BytesToBloom(data.LogsBloom),
+		PrevRandao:    data.Random,
+		BlockNumber:   data.Number,
+		GasLimit:      data.GasLimit,
+		GasUsed:       data.GasUsed,
+		Timestamp:     data.Timestamp,
+		ExtraData:     data.ExtraData,
+		BaseFeePerGas: *baseFeePerGas,
+		BlockHash:     [32]byte(data.BlockHash),
+		Transactions:  transactionData,
+		Withdrawals:   withdrawalData,
+	}, nil
 }
