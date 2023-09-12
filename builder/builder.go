@@ -47,7 +47,10 @@ type ValidatorData struct {
 
 type IRelay interface {
 	SubmitBlock(msg *bellatrixapi.SubmitBlockRequest, vd ValidatorData) error
+	// this is for the builder to be aware of pepc boost specific features
+	IsPepcRelayer() (bool, error)
 	SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
+	SubmitRobBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
 	Config() RelayConfig
 	Start() error
@@ -325,10 +328,20 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 		}
 	} else {
 		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
-		err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
-		if err != nil {
-			log.Error("could not submit capella block", "err", err, "#commitedBundles", len(commitedBundles))
-			return err
+		// TODO - bchain - we should directly send the ROB block to relay/v1/builder/blocks api rather than the current
+		// relay/v1/builder/rob_blocks api. This is a temporary solution to for testing
+		if attrs.IsPepcRelayer {
+			err = b.relay.SubmitRobBlockCapella(&blockSubmitReq, vd)
+			if err != nil {
+				log.Error("could not submit rob capella block", "err", err, "#commitedBundles", len(commitedBundles))
+				return err
+			}
+		} else {
+			err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
+			if err != nil {
+				log.Error("could not submit capella block", "err", err, "#commitedBundles", len(commitedBundles))
+				return err
+			}
 		}
 	}
 
@@ -345,9 +358,14 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 	if err != nil {
 		return fmt.Errorf("could not get validator while submitting block for slot %d - %w", attrs.Slot, err)
 	}
+	isPepcRelayer, err := b.relay.IsPepcRelayer()
+	if err != nil {
+		return fmt.Errorf("could not get pepc relayer status - %w", err)
+	}
 
 	attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
 	attrs.GasLimit = vd.GasLimit
+	attrs.IsPepcRelayer = isPepcRelayer
 
 	proposerPubkey, err := utils.HexToPubkey(string(vd.Pubkey))
 	if err != nil {
@@ -413,7 +431,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 		queueBestEntry         blockQueueEntry
 	)
 
-	log.Debug("runBuildingJob", "slot", attrs.Slot, "parent", attrs.HeadHash, "payloadTimestamp", uint64(attrs.Timestamp))
+	log.Debug("runBuildingJob", "slot", attrs.Slot, "parent", attrs.HeadHash, "payloadTimestamp", uint64(attrs.Timestamp), "gasLimit", attrs.GasLimit)
 
 	submitBestBlock := func() {
 		queueMu.Lock()
@@ -514,7 +532,7 @@ func executableDataToExecutionPayload(data *engine.ExecutableData) (*bellatrix.E
 func executableDataToCapellaExecutionPayload(data *engine.ExecutableData) (*capella.ExecutionPayload, error) {
 	transactionData := make([]bellatrix.Transaction, len(data.Transactions))
 	for i, tx := range data.Transactions {
-		transactionData[i] = bellatrix.Transaction(tx)
+		transactionData[i] = tx
 	}
 
 	withdrawalData := make([]*capella.Withdrawal, len(data.Withdrawals))
@@ -536,10 +554,10 @@ func executableDataToCapellaExecutionPayload(data *engine.ExecutableData) (*cape
 	return &capella.ExecutionPayload{
 		ParentHash:    [32]byte(data.ParentHash),
 		FeeRecipient:  [20]byte(data.FeeRecipient),
-		StateRoot:     [32]byte(data.StateRoot),
-		ReceiptsRoot:  [32]byte(data.ReceiptsRoot),
+		StateRoot:     data.StateRoot,
+		ReceiptsRoot:  data.ReceiptsRoot,
 		LogsBloom:     types.BytesToBloom(data.LogsBloom),
-		PrevRandao:    [32]byte(data.Random),
+		PrevRandao:    data.Random,
 		BlockNumber:   data.Number,
 		GasLimit:      data.GasLimit,
 		GasUsed:       data.GasUsed,

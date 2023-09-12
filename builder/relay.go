@@ -71,7 +71,6 @@ func (r *RemoteRelay) updateValidatorsMap(currentSlot uint64, retries int) error
 	r.validatorSyncOngoing = true
 	r.validatorsLock.Unlock()
 
-	log.Info("requesting ", "currentSlot", currentSlot)
 	newMap, err := r.getSlotValidatorMapFromRelay()
 	for err != nil && retries > 0 {
 		log.Error("could not get validators map from relay, retrying", "err", err)
@@ -191,6 +190,58 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 	}
 
 	return nil
+}
+
+func (r *RemoteRelay) SubmitRobBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData) error {
+	log.Info("submitting rob block to remote relay", "endpoint", r.config.Endpoint)
+
+	endpoint := r.config.Endpoint + "/relay/v1/builder/rob_blocks"
+
+	if r.config.SszEnabled {
+		bodyBytes, err := msg.MarshalSSZ()
+		if err != nil {
+			return fmt.Errorf("error marshaling ssz: %w", err)
+		}
+		log.Debug("submitting block to remote relay", "endpoint", r.config.Endpoint)
+		code, err := SendSSZRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, bodyBytes, r.config.GzipEnabled)
+		if err != nil {
+			return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
+		}
+		if code > 299 {
+			return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
+		}
+	} else {
+		code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg, nil)
+		if err != nil {
+			return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
+		}
+		if code > 299 {
+			return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
+		}
+	}
+
+	if r.localRelay != nil {
+		r.localRelay.submitBlockCapella(msg)
+	}
+
+	return nil
+}
+
+func (r *RemoteRelay) IsPepcRelayer() (bool, error) {
+	log.Info("submitting rob block to remote relay", "endpoint", r.config.Endpoint)
+
+	endpoint := r.config.Endpoint + "/relay/v1/data/is_pepc_relayer"
+
+	var isPepcRelayer bool
+	code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, nil, isPepcRelayer)
+	if err != nil {
+		return false, fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
+	}
+	if code > 299 {
+		return false, fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
+	}
+
+	return isPepcRelayer, nil
 }
 
 func (r *RemoteRelay) getSlotValidatorMapFromRelay() (map[uint64]ValidatorData, error) {

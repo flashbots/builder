@@ -18,6 +18,10 @@ type RemoteRelayAggregator struct {
 	registrationsCache     map[ValidatorData][]IRelay
 }
 
+func (r *RemoteRelayAggregator) SubmitRobBlockCapella(msg *capella.SubmitBlockRequest, vd ValidatorData) error {
+	return fmt.Errorf("not implemented")
+}
+
 func NewRemoteRelayAggregator(primary IRelay, secondary []IRelay) *RemoteRelayAggregator {
 	relays := []IRelay{primary}
 	return &RemoteRelayAggregator{

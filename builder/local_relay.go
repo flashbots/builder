@@ -110,6 +110,14 @@ func (r *LocalRelay) Stop() {
 	r.beaconClient.Stop()
 }
 
+func (r *LocalRelay) SubmitRobBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error {
+	return fmt.Errorf("not implemented")
+}
+
+func (r *LocalRelay) IsPepcRelayer() (bool, error) {
+	return false, fmt.Errorf("not implemented")
+}
+
 func (r *LocalRelay) SubmitBlock(msg *bellatrixapi.SubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
 	return r.submitBlock(msg)
