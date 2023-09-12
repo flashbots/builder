@@ -68,17 +68,6 @@ func (r *testRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, registra
 	return r.sbError
 }
 
-func (r *testRelay) SubmitRobBlockCapella(msg *capella.SubmitBlockRequest, registration ValidatorData) error {
-	if r.submittedMsgCh != nil {
-		select {
-		case r.submittedMsgChCapella <- msg:
-		default:
-		}
-	}
-	r.submittedMsgCapella = msg
-	return r.sbError
-}
-
 func (r *testRelay) GetValidatorForSlot(nextSlot uint64) (ValidatorData, error) {
 	r.requestedSlot = nextSlot
 	return r.gvsVd, r.gvsErr

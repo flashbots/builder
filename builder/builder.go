@@ -50,7 +50,6 @@ type IRelay interface {
 	// this is for the builder to be aware of pepc boost specific features
 	IsPepcRelayer() (bool, error)
 	SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
-	SubmitRobBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
 	Config() RelayConfig
 	Start() error
@@ -329,20 +328,11 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 		}
 	} else {
 		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
-		if attrs.IsPepcRelayer {
-			log.Info("DEBUG: submitting rob capella block")
-			err = b.relay.SubmitRobBlockCapella(&blockSubmitReq, vd)
-			if err != nil {
-				log.Error("could not submit rob capella block", "err", err, "#commitedBundles", len(commitedBundles))
-				return err
-			}
-		} else {
-			log.Info("DEBUG: Submitting regular FULL_BLOCK capella block")
-			err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
-			if err != nil {
-				log.Error("could not submit capella block", "err", err, "#commitedBundles", len(commitedBundles))
-				return err
-			}
+		log.Info("DEBUG: Submitting regular FULL_BLOCK capella block")
+		err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
+		if err != nil {
+			log.Error("could not submit capella block", "err", err, "#commitedBundles", len(commitedBundles))
+			return err
 		}
 	}
 
@@ -359,15 +349,10 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 	if err != nil {
 		return fmt.Errorf("could not get validator while submitting block for slot %d - %w", attrs.Slot, err)
 	}
-	isPepcRelayer, err := b.relay.IsPepcRelayer()
-	if err != nil {
-		return fmt.Errorf("could not get pepc relayer status - %w", err)
-	}
-
 	log.Info("DEBUG: validator info is", "vd", vd)
 	attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
 	attrs.GasLimit = vd.GasLimit
-	attrs.IsPepcRelayer = isPepcRelayer
+	attrs.IsPepcRelayer = true
 
 	proposerPubkey, err := utils.HexToPubkey(string(vd.Pubkey))
 	if err != nil {

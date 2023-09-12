@@ -66,11 +66,6 @@ type LocalRelay struct {
 	fd            ForkData
 }
 
-func (r *LocalRelay) SubmitRobBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error {
-	//TODO implement me
-	panic("implement me")
-}
-
 func NewLocalRelay(sk *bls.SecretKey, beaconClient IBeaconClient, builderSigningDomain, proposerSigningDomain phase0.Domain, fd ForkData, enableBeaconChecks bool) (*LocalRelay, error) {
 	blsPk, err := bls.PublicKeyFromSecretKey(sk)
 	if err != nil {

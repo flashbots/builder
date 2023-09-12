@@ -22,11 +22,6 @@ func (r *RemoteRelayAggregator) IsPepcRelayer() (bool, error) {
 	return false, fmt.Errorf("not implemented")
 }
 
-func (r *RemoteRelayAggregator) SubmitRobBlockCapella(msg *capella.SubmitBlockRequest, vd ValidatorData) error {
-	//TODO implement me
-	return fmt.Errorf("not implemented")
-}
-
 func NewRemoteRelayAggregator(primary IRelay, secondary []IRelay) *RemoteRelayAggregator {
 	relays := []IRelay{primary}
 	return &RemoteRelayAggregator{

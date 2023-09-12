@@ -323,6 +323,8 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 	// TODO - check for gas limits
 	// TODO - support for payouts
 
+	// TODO - if there are no TOB txs then we can just simulate the block rather then re-assembling it.
+
 	// check if there are any duplicate txs
 	// we can error out if there is a nonce gap
 	// TODO - don't error out, but drop the duplicate tx in the ROB block
@@ -342,7 +344,7 @@ func (api *BlockValidationAPI) BlockAssembler(params *BlockAssemblerRequest) (*c
 		}
 		seenTxMap[tx.Hash()] = struct{}{}
 	}
-	log.Info("Done Checking for duplicate txs!")
+	log.Info("DEBUG: Done Checking for duplicate txs!")
 
 	withdrawals := make(types.Withdrawals, len(params.RobPayload.ExecutionPayload.Withdrawals))
 	log.Info("DEBUG: Building the final set of withdrawals")
