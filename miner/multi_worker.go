@@ -2,7 +2,6 @@ package miner
 
 import (
 	"errors"
-	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -87,43 +86,49 @@ func (w *multiWorker) disablePreseal() {
 	}
 }
 
+// buildPayload builds the payload according to the provided parameters.
 func (w *multiWorker) payloadAssembler(args *BuildPayloadArgs) (*Payload, error) {
 	// Build the initial version with no transaction included. It should be fast
 	// enough to run. The empty payload can at least make sure there is something
 	// to deliver for not missing slot.
-	var empty *types.Block
-	for _, worker := range w.workers {
-		var err error
-		empty, _, err = worker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, true, nil, AssemblerTxLists{})
-		if err != nil {
-			log.Error("could not start async block construction", "isFlashbotsWorker", worker.flashbots.isFlashbots, "#bundles", worker.flashbots.maxMergedBundles)
-			continue
-		}
-		break
+	empty, _, err := w.regularWorker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, true, args.BlockHook, args.AssemblerTxs)
+	if err != nil {
+		return nil, err
 	}
-
-	if empty == nil {
-		return nil, errors.New("no worker could build an empty block")
-	}
-
 	// Construct a payload object for return.
 	payload := newPayload(empty, args.Id())
 
-	if len(w.workers) == 0 {
-		return payload, nil
-	}
+	// Spin up a routine for updating the payload in background. This strategy
+	// can maximum the revenue for including transactions with highest fee.
+	go func() {
+		// Setup the timer for re-building the payload. The initial clock is kept
+		// for triggering process immediately.
+		timer := time.NewTimer(0)
+		defer timer.Stop()
 
-	var tobBlock *types.Block
-	var fees *big.Int
-	var err error
-	start := time.Now()
-	tobBlock, fees, err = w.regularWorker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook, args.AssemblerTxs)
-	if err != nil {
-		log.Error("could not start async block construction", "err", err)
-		return nil, err
-	}
-	payload.update(tobBlock, fees, time.Since(start))
+		// Setup the timer for terminating the process if SECONDS_PER_SLOT (12s in
+		// the Mainnet configuration) have passed since the point in time identified
+		// by the timestamp parameter.
+		endTimer := time.NewTimer(time.Second * 12)
 
+		for {
+			select {
+			case <-timer.C:
+				start := time.Now()
+				block, fees, err := w.regularWorker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook, args.AssemblerTxs)
+				if err == nil {
+					payload.update(block, fees, time.Since(start))
+				}
+				timer.Reset(w.regularWorker.recommit)
+			case <-payload.stop:
+				log.Info("Stopping work on payload", "id", payload.id, "reason", "delivery")
+				return
+			case <-endTimer.C:
+				log.Info("Stopping work on payload", "id", payload.id, "reason", "timeout")
+				return
+			}
+		}
+	}()
 	return payload, nil
 }
 
