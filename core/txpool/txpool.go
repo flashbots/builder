@@ -645,6 +645,7 @@ func resolveCancellableBundles(lubCh chan []types.LatestUuidBundle, errCh chan e
 	log.Trace("Processing uuid bundles", "uuidBundles", uuidBundles)
 
 	lubs := <-lubCh
+LubLoop:
 	for _, lub := range lubs {
 		ubk := uuidBundleKey{lub.Uuid, lub.SigningAddress}
 		bundles, found := uuidBundles[ubk]
@@ -652,6 +653,18 @@ func resolveCancellableBundles(lubCh chan []types.LatestUuidBundle, errCh chan e
 			log.Trace("missing uuid bundle", "ubk", ubk)
 			continue
 		}
+
+		// If lub has bundle_uuid set, and we can find corresponding bundle we prefer it, if not we fallback to bundle_hash equivalence
+		if lub.BundleUUID != types.EmptyUUID {
+			for _, bundle := range bundles {
+				if bundle.ComputeUUID() == lub.BundleUUID {
+					log.Trace("adding uuid bundle", "bundle hash", bundle.Hash.String(), "lub", lub)
+					currentCancellableBundles = append(currentCancellableBundles, bundle)
+					continue LubLoop
+				}
+			}
+		}
+
 		for _, bundle := range bundles {
 			if bundle.Hash == lub.BundleHash {
 				log.Trace("adding uuid bundle", "bundle hash", bundle.Hash.String(), "lub", lub)

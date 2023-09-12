@@ -72,7 +72,7 @@ func NewDatabaseService(postgresDSN string) (*DatabaseService, error) {
 		return nil, err
 	}
 
-	fetchGetLatestUuidBundlesStmt, err := db.PrepareNamed("select replacement_uuid, signing_address, bundle_hash from latest_uuid_bundle where target_block_number = :target_block_number")
+	fetchGetLatestUuidBundlesStmt, err := db.PrepareNamed("select replacement_uuid, signing_address, bundle_hash, bundle_uuid from latest_uuid_bundle where target_block_number = :target_block_number")
 	if err != nil {
 		return nil, err
 	}
@@ -353,6 +353,7 @@ func (ds *DatabaseService) GetLatestUuidBundles(ctx context.Context, blockNum in
 			Uuid:           dbLub.Uuid,
 			SigningAddress: common.HexToAddress(dbLub.SigningAddress),
 			BundleHash:     common.HexToHash(dbLub.BundleHash),
+			BundleUUID:     dbLub.BundleUUID,
 		})
 	}
 	return latestBundles, nil

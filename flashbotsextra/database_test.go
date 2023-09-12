@@ -17,7 +17,6 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 	if dsn == "" {
 		t.Skip()
 	}
-
 	ds, err := NewDatabaseService(dsn)
 	require.NoError(t, err)
 

@@ -59,6 +59,7 @@ type DbLatestUuidBundle struct {
 	Uuid           uuid.UUID `db:"replacement_uuid"`
 	SigningAddress string    `db:"signing_address"`
 	BundleHash     string    `db:"bundle_hash"`
+	BundleUUID     uuid.UUID `db:"bundle_uuid"`
 }
 
 type blockAndBundleId struct {

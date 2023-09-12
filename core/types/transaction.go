@@ -774,6 +774,7 @@ type LatestUuidBundle struct {
 	Uuid           uuid.UUID
 	SigningAddress common.Address
 	BundleHash     common.Hash
+	BundleUUID     uuid.UUID
 }
 
 type MevBundle struct {
