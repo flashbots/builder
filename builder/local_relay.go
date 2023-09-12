@@ -66,11 +66,6 @@ type LocalRelay struct {
 	fd            ForkData
 }
 
-func (r *LocalRelay) SubmitRobBlock(msg *bellatrixapi.SubmitBlockRequest, vd ValidatorData) error {
-	//TODO implement me
-	panic("implement me")
-}
-
 func (r *LocalRelay) SubmitRobBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error {
 	//TODO implement me
 	panic("implement me")
@@ -123,6 +118,10 @@ func (r *LocalRelay) Stop() {
 func (r *LocalRelay) SubmitBlock(msg *bellatrixapi.SubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
 	return r.submitBlock(msg)
+}
+
+func (r *LocalRelay) IsPepcRelayer() (bool, error) {
+	return true, nil
 }
 
 func (r *LocalRelay) SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, _ ValidatorData) error {

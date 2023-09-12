@@ -14,6 +14,7 @@ type BuilderPayloadAttributes struct {
 	HeadHash              common.Hash    `json:"blockHash"`
 	Withdrawals           Withdrawals    `json:"withdrawals"`
 	GasLimit              uint64
+	IsPepcRelayer         bool `json:"isPepcRelayer"`
 }
 
 func (attrs *BuilderPayloadAttributes) Equal(other *BuilderPayloadAttributes) bool {
@@ -22,7 +23,8 @@ func (attrs *BuilderPayloadAttributes) Equal(other *BuilderPayloadAttributes) bo
 		attrs.SuggestedFeeRecipient != other.SuggestedFeeRecipient ||
 		attrs.Slot != other.Slot ||
 		attrs.HeadHash != other.HeadHash ||
-		attrs.GasLimit != other.GasLimit {
+		attrs.GasLimit != other.GasLimit ||
+		attrs.IsPepcRelayer != other.IsPepcRelayer {
 		return false
 	}
 

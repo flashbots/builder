@@ -18,14 +18,13 @@ type RemoteRelayAggregator struct {
 	registrationsCache     map[ValidatorData][]IRelay
 }
 
-func (r *RemoteRelayAggregator) SubmitRobBlock(msg *bellatrix.SubmitBlockRequest, vd ValidatorData) error {
-	//TODO implement me
-	panic("implement me")
+func (r *RemoteRelayAggregator) IsPepcRelayer() (bool, error) {
+	return false, fmt.Errorf("not implemented")
 }
 
 func (r *RemoteRelayAggregator) SubmitRobBlockCapella(msg *capella.SubmitBlockRequest, vd ValidatorData) error {
 	//TODO implement me
-	panic("implement me")
+	return fmt.Errorf("not implemented")
 }
 
 func NewRemoteRelayAggregator(primary IRelay, secondary []IRelay) *RemoteRelayAggregator {
