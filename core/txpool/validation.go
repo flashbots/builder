@@ -63,8 +63,8 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if !opts.Config.IsLondon(head.Number) && tx.Type() == types.DynamicFeeTxType {
 		return fmt.Errorf("%w: type %d rejected, pool not yet in London", core.ErrTxTypeNotSupported, tx.Type())
 	}
-	if !opts.Config.IsCancun(head.Number, head.Time) && tx.Type() == types.BlobTxType {
-		return fmt.Errorf("%w: type %d rejected, pool not yet in Cancun", core.ErrTxTypeNotSupported, tx.Type())
+	if opts.Config.CancunTime == nil && tx.Type() == types.BlobTxType {
+		return fmt.Errorf("%w: type %d rejected, pool not configured for Cancun", core.ErrTxTypeNotSupported, tx.Type())
 	}
 	// Check whether the init code size has been exceeded
 	if opts.Config.IsShanghai(head.Number, head.Time) && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
