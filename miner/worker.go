@@ -1836,7 +1836,14 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, sb
 	wg.Wait()
 
 	simCache.UpdateSimulatedBundles(simResult, bundles)
-	simulatedBundles := make([]simulatedBundle, 0, len(bundles))
+	simBundleCount := 0
+	for _, bundle := range simResult {
+		if bundle != nil {
+			simBundleCount += 1
+		}
+	}
+
+	simulatedBundles := make([]simulatedBundle, 0, simBundleCount)
 	for _, bundle := range simResult {
 		if bundle != nil {
 			simulatedBundles = append(simulatedBundles, *bundle)
@@ -1844,7 +1851,14 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, sb
 	}
 
 	simCache.UpdateSimSBundle(sbSimResult, sbundles)
-	simulatedSbundle := make([]*types.SimSBundle, 0, len(sbundles))
+	simSBundleCount := 0
+	for _, sbundle := range sbSimResult {
+		if sbundle != nil {
+			simSBundleCount += 1
+		}
+	}
+
+	simulatedSbundle := make([]*types.SimSBundle, 0, simSBundleCount)
 	for _, sbundle := range sbSimResult {
 		if sbundle != nil {
 			simulatedSbundle = append(simulatedSbundle, sbundle)

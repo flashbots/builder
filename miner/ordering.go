@@ -159,7 +159,15 @@ func (s txByPriceAndTime) Less(i, j int) bool {
 	// deterministic sorting
 	cmp := s[i].fees.Cmp(s[j].fees)
 	if cmp == 0 {
-		return s[i].Tx().Time.Before(s[j].Tx().Time)
+		if s[i].Tx() != nil && s[j].Tx() != nil {
+			return s[i].Tx().Time.Before(s[j].Tx().Time)
+		} else if s[i].Bundle() != nil && s[j].Bundle() != nil {
+			return s[i].Bundle().TotalGasUsed <= s[j].Bundle().TotalGasUsed
+		} else if s[i].Bundle() != nil {
+			return false
+		}
+
+		return true
 	}
 	return cmp > 0
 }

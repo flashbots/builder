@@ -231,6 +231,11 @@ func (payload *Payload) ResolveFull() *engine.ExecutionPayloadEnvelope {
 	default:
 		close(payload.stop)
 	}
+
+	if payload.full == nil {
+		return nil
+	}
+	
 	return engine.BlockToExecutableData(payload.full, payload.fullFees, payload.sidecars)
 }
 
