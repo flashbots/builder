@@ -407,6 +407,8 @@ func ExecutionPayloadV3ToBlock(payload *deneb.ExecutionPayload, blobsBundle *den
 		BlockHash:     common.Hash(payload.BlockHash),
 		Transactions:  txs,
 		Withdrawals:   withdrawals,
+		BlobGasUsed:   &payload.BlobGasUsed,
+		ExcessBlobGas: &payload.ExcessBlobGas,
 	}
 	return ExecutableDataToBlock(executableData, versionedHashes, &parentBeaconBlockRoot)
 }

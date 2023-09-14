@@ -138,9 +138,7 @@ type BuilderBlockValidationRequest struct {
 }
 
 func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockValidationRequest) error {
-	// TODO: fuzztest, make sure the validation is sound
-	// TODO: handle context!
-
+	// no longer supported endpoint
 	if params.ExecutionPayload == nil {
 		return errors.New("nil execution payload")
 	}
@@ -199,6 +197,27 @@ type BuilderBlockValidationRequestV3 struct {
 	builderApiDeneb.SubmitBlockRequest
 	ParentBeaconBlockRoot common.Hash `json:"parent_beacon_block_root"`
 	RegisteredGasLimit    uint64      `json:"registered_gas_limit,string"`
+}
+
+func (r *BuilderBlockValidationRequestV3) UnmarshalJSON(data []byte) error {
+	params := &struct {
+		ParentBeaconBlockRoot common.Hash `json:"parent_beacon_block_root"`
+		RegisteredGasLimit    uint64      `json:"registered_gas_limit,string"`
+	}{}
+	err := json.Unmarshal(data, params)
+	if err != nil {
+		return err
+	}
+	r.RegisteredGasLimit = params.RegisteredGasLimit
+	r.ParentBeaconBlockRoot = params.ParentBeaconBlockRoot
+
+	blockRequest := new(builderApiDeneb.SubmitBlockRequest)
+	err = json.Unmarshal(data, &blockRequest)
+	if err != nil {
+		return err
+	}
+	r.SubmitBlockRequest = *blockRequest
+	return nil
 }
 
 func (api *BlockValidationAPI) ValidateBuilderSubmissionV3(params *BuilderBlockValidationRequestV3) error {
