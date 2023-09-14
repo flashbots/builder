@@ -6,7 +6,7 @@
 
 GOBIN = ./build/bin
 GO ?= latest
-GORUN = env GO111MODULE=on go run
+GORUN = go run
 
 geth:
 	$(GORUN) build/ci.go install ./cmd/geth
@@ -29,7 +29,7 @@ fmt:
 	go mod tidy
 
 clean:
-	env GO111MODULE=on go clean -cache
+	go clean -cache
 	rm -fr build/_workspace/pkg/ $(GOBIN)/*
 
 # The devtools target installs tools required for 'go generate'.

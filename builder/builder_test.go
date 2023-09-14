@@ -65,7 +65,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 		Transactions: [][]byte{},
 	}
 
-	testBlock, err := engine.ExecutableDataToBlock(*testExecutableData, nil)
+	testBlock, err := engine.ExecutableDataToBlock(*testExecutableData, nil, nil)
 	require.NoError(t, err)
 
 	testPayloadAttributes := &types.BuilderPayloadAttributes{
@@ -151,7 +151,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 	// Change the hash, expect to get the block
 	testExecutableData.ExtraData = hexutil.MustDecode("0x0042fafd")
 	testExecutableData.BlockHash = common.HexToHash("0x0579b1aaca5c079c91e5774bac72c7f9bc2ddf2b126e9c632be68a1cb8f3fc71")
-	testBlock, err = engine.ExecutableDataToBlock(*testExecutableData, nil)
+	testBlock, err = engine.ExecutableDataToBlock(*testExecutableData, nil, nil)
 	testEthService.testBlockValue = big.NewInt(10)
 	require.NoError(t, err)
 	testEthService.testBlock = testBlock

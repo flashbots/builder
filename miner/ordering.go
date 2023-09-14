@@ -81,11 +81,11 @@ func (t *txWithMinerFee) Price() *big.Int {
 
 func (t *txWithMinerFee) Profit(baseFee *big.Int, gasUsed uint64) *big.Int {
 	if tx := t.Tx(); tx != nil {
-		profit := new(big.Int).Sub(tx.Tx.Tx.GasPrice(), baseFee)
+		profit := new(big.Int).Sub(tx.Tx.GasPrice(), baseFee)
 		if gasUsed != 0 {
 			profit.Mul(profit, new(big.Int).SetUint64(gasUsed))
 		} else {
-			profit.Mul(profit, new(big.Int).SetUint64(tx.Tx.Tx.Gas()))
+			profit.Mul(profit, new(big.Int).SetUint64(tx.Tx.Gas()))
 		}
 		return profit
 	} else if bundle := t.Bundle(); bundle != nil {
@@ -272,7 +272,7 @@ func (t *transactionsByPriceAndNonce) ShiftAndPushByAccountForTx(tx *txpool.Lazy
 		return
 	}
 
-	acc, _ := types.Sender(t.signer, tx.Resolve().Tx)
+	acc, _ := types.Sender(t.signer, tx.Tx)
 	if txs, exists := t.txs[acc]; exists && len(txs) > 0 {
 		if wrapped, err := newTxWithMinerFee(txs[0], acc, t.baseFee); err == nil {
 			t.txs[acc] = txs[1:]

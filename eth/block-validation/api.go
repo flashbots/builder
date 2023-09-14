@@ -197,14 +197,15 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockV
 
 type BuilderBlockValidationRequestV3 struct {
 	builderApiDeneb.SubmitBlockRequest
-	RegisteredGasLimit uint64 `json:"registered_gas_limit,string"`
+	ParentBeaconBlockRoot common.Hash `json:"parent_beacon_block_root"`
+	RegisteredGasLimit    uint64      `json:"registered_gas_limit,string"`
 }
 
 func (api *BlockValidationAPI) ValidateBuilderSubmissionV3(params *BuilderBlockValidationRequestV3) error {
 	// TODO: fuzztest, make sure the validation is sound
 	payload := params.ExecutionPayload
 	blobsBundle := params.BlobsBundle
-	block, err := engine.ExecutionPayloadV3ToBlock(payload, blobsBundle)
+	block, err := engine.ExecutionPayloadV3ToBlock(payload, blobsBundle, params.ParentBeaconBlockRoot)
 	if err != nil {
 		return err
 	}
@@ -278,7 +279,6 @@ func validateBlobsBundle(txs types.Transactions, blobsBundle *builderApiDeneb.Bl
 	var hashes []common.Hash
 	for _, tx := range txs {
 		hashes = append(hashes, tx.BlobHashes()...)
-
 	}
 	blobs := blobsBundle.Blobs
 	commits := blobsBundle.Commitments

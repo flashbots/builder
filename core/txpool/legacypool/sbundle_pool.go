@@ -180,7 +180,7 @@ func (p *SBundlePool) validateTx(tx *types.Transaction) error {
 		MinTip:  new(big.Int),
 	}
 
-	if err := txpool.ValidateTransaction(tx, nil, nil, nil, p.currentHead.Load(), p.signer, opts); err != nil {
+	if err := txpool.ValidateTransaction(tx, p.currentHead.Load(), p.signer, opts); err != nil {
 		return err
 	}
 	return nil

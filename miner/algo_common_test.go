@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/trie"
 )
 
 const GasLimit uint64 = 30000000
@@ -200,7 +201,7 @@ func genTestSetupWithAlloc(config *params.ChainConfig, alloc core.GenesisAlloc) 
 		Config: config,
 		Alloc:  alloc,
 	}
-	_ = gspec.MustCommit(db)
+	_ = gspec.MustCommit(db, trie.NewDatabase(db, trie.HashDefaults))
 
 	chain, _ := core.NewBlockChain(db, &core.CacheConfig{TrieDirtyDisabled: true}, gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
 

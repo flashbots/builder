@@ -222,7 +222,7 @@ func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersC
 func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
 	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
 	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
-	executableData := engine.BlockToExecutableData(block, blockValue, nil, nil, nil)
+	executableData := engine.BlockToExecutableData(block, blockValue, nil)
 	payload, err := executableDataToExecutionPayload(executableData.ExecutionPayload)
 	if err != nil {
 		log.Error("could not format execution payload", "err", err)
@@ -281,7 +281,7 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, 
 func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
 	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
 	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
-	executableData := engine.BlockToExecutableData(block, blockValue, nil, nil, nil)
+	executableData := engine.BlockToExecutableData(block, blockValue, nil)
 	payload, err := executableDataToCapellaExecutionPayload(executableData.ExecutionPayload)
 	if err != nil {
 		log.Error("could not format execution payload", "err", err)
