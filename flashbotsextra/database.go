@@ -225,13 +225,13 @@ func (ds *DatabaseService) insertBuildBlockBundleIds(tx *sqlx.Tx, ctx context.Co
 	return err
 }
 
-func (ds *DatabaseService) insertAllBlockBundleIds(tx *sqlx.Tx, ctx context.Context, blockId uint64, bundleIdsMap map[uuid.UUID]uint64) error {
-	if len(bundleIdsMap) == 0 {
+func (ds *DatabaseService) insertAllBlockBundleIds(tx *sqlx.Tx, ctx context.Context, blockId uint64, bundleIds []uint64) error {
+	if len(bundleIds) == 0 {
 		return nil
 	}
 
-	toInsert := make([]blockAndBundleId, 0, len(bundleIdsMap))
-	for _, bundleId := range bundleIdsMap {
+	toInsert := make([]blockAndBundleId, 0, len(bundleIds))
+	for _, bundleId := range bundleIds {
 		toInsert = append(toInsert, blockAndBundleId{blockId, bundleId})
 	}
 
@@ -310,10 +310,20 @@ func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, blockValue *big
 		return
 	}
 
-	err = ds.insertAllBlockBundleIds(tx, ctx, blockId, bundleIdsMap)
+	var uniqueBundleIDs = make(map[uint64]struct{})
+	var allBundleIds []uint64
+	// we need to filter out duplicates while we still have unique constraint on bundle_hash+block_number which leads to data discrepancies
+	for _, v := range bundleIdsMap {
+		if _, ok := uniqueBundleIDs[v]; ok {
+			continue
+		}
+		uniqueBundleIDs[v] = struct{}{}
+		allBundleIds = append(allBundleIds, v)
+	}
+	err = ds.insertAllBlockBundleIds(tx, ctx, blockId, allBundleIds)
 	if err != nil {
 		tx.Rollback()
-		log.Error("could not insert built block all bundles", "err", err)
+		log.Error("could not insert built block all bundles", "err", err, "block", block.NumberU64(), "commitedBundles", commitedBundlesIds)
 		return
 	}
 
