@@ -278,7 +278,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		reorgShutdownCh: make(chan struct{}),
 		initDoneCh:      make(chan struct{}),
 		privateTxs:      newExpiringTxHashSet(config.PrivateTxLifetime),
-		sbundles:        NewSBundlePool(types.LatestSigner(chain.Config())),
+		sbundles:        NewSBundlePool(chain.Config()),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -1586,7 +1586,8 @@ func (pool *LegacyPool) reset(oldHead, newHead *types.Header) {
 	pool.currentHead.Store(newHead)
 	pool.currentState = statedb
 	pool.pendingNonces = newNoncer(statedb)
-
+	pool.sbundles.ResetPoolData(pool)
+	
 	// Inject any transactions discarded due to reorgs
 	log.Debug("Reinjecting stale transactions", "count", len(reinject))
 	core.SenderCacher.Recover(pool.signer, reinject)

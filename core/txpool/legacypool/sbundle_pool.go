@@ -42,13 +42,14 @@ type SBundlePool struct {
 	currentHead atomic.Pointer[types.Header]
 }
 
-func NewSBundlePool(signer types.Signer) *SBundlePool {
+func NewSBundlePool(chainConfig *params.ChainConfig) *SBundlePool {
 	return &SBundlePool{
 		bundles:           make(map[common.Hash]*types.SBundle),
 		byBlock:           make(map[uint64][]*types.SBundle),
 		cancelled:         make(map[common.Hash]struct{}),
 		cancelledMaxBlock: make(map[uint64][]common.Hash),
-		signer:            signer,
+		signer:            types.LatestSigner(chainConfig),
+		chainconfig:       chainConfig,
 	}
 }
 
