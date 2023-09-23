@@ -245,7 +245,7 @@ type LegacyPool struct {
 
 	changesSinceReorg int // A counter for how many drops we've performed in-between reorg.
 
-	privateTxs    *timestampedTxHashSet
+	privateTxs    *types.TimestampedTxHashSet
 	mevBundles    []types.MevBundle
 	bundleFetcher txpool.IFetcher
 	sbundles      *SBundlePool
@@ -277,7 +277,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
 		initDoneCh:      make(chan struct{}),
-		privateTxs:      newExpiringTxHashSet(config.PrivateTxLifetime),
+		privateTxs:      types.NewExpiringTxHashSet(config.PrivateTxLifetime),
 		sbundles:        NewSBundlePool(chain.Config()),
 	}
 	pool.locals = newAccountSet(pool.signer)
@@ -412,7 +412,7 @@ func (pool *LegacyPool) loop() {
 			}
 		// Remove stale hashes that must be kept private
 		case <-privateTx.C:
-			pool.privateTxs.prune()
+			pool.privateTxs.Prune()
 		}
 	}
 }
@@ -1587,7 +1587,7 @@ func (pool *LegacyPool) reset(oldHead, newHead *types.Header) {
 	pool.currentState = statedb
 	pool.pendingNonces = newNoncer(statedb)
 	pool.sbundles.ResetPoolData(pool)
-	
+
 	// Inject any transactions discarded due to reorgs
 	log.Debug("Reinjecting stale transactions", "count", len(reinject))
 	core.SenderCacher.Recover(pool.signer, reinject)
@@ -2117,58 +2117,4 @@ func (t *lookup) RemotesBelowTip(threshold *big.Int) types.Transactions {
 // numSlots calculates the number of slots needed for a single transaction.
 func numSlots(tx *types.Transaction) int {
 	return int((tx.Size() + txSlotSize - 1) / txSlotSize)
-}
-
-type timestampedTxHashSet struct {
-	lock       sync.RWMutex
-	timestamps map[common.Hash]time.Time
-	ttl        time.Duration
-}
-
-func newExpiringTxHashSet(ttl time.Duration) *timestampedTxHashSet {
-	s := &timestampedTxHashSet{
-		timestamps: make(map[common.Hash]time.Time),
-		ttl:        ttl,
-	}
-
-	return s
-}
-
-func (s *timestampedTxHashSet) Add(hash common.Hash) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	_, ok := s.timestamps[hash]
-	if !ok {
-		s.timestamps[hash] = time.Now().Add(s.ttl)
-	}
-}
-
-func (s *timestampedTxHashSet) Contains(hash common.Hash) bool {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-	_, ok := s.timestamps[hash]
-	return ok
-}
-
-func (s *timestampedTxHashSet) Remove(hash common.Hash) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	_, ok := s.timestamps[hash]
-	if ok {
-		delete(s.timestamps, hash)
-	}
-}
-
-func (s *timestampedTxHashSet) prune() {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
-	now := time.Now()
-	for hash, ts := range s.timestamps {
-		if ts.Before(now) {
-			delete(s.timestamps, hash)
-		}
-	}
 }

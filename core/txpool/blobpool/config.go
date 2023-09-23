@@ -17,14 +17,17 @@
 package blobpool
 
 import (
+	"time"
+
 	"github.com/ethereum/go-ethereum/log"
 )
 
 // Config are the configuration parameters of the blob transaction pool.
 type Config struct {
-	Datadir   string // Data directory containing the currently executable blobs
-	Datacap   uint64 // Soft-cap of database storage (hard cap is larger due to overhead)
-	PriceBump uint64 // Minimum price bump percentage to replace an already existing nonce
+	Datadir           string        // Data directory containing the currently executable blobs
+	Datacap           uint64        // Soft-cap of database storage (hard cap is larger due to overhead)
+	PriceBump         uint64        // Minimum price bump percentage to replace an already existing nonce
+	PrivateTxLifetime time.Duration // Maximum amount of time to keep private transactions private
 }
 
 // DefaultConfig contains the default configurations for the transaction pool.
@@ -32,6 +35,7 @@ var DefaultConfig = Config{
 	Datadir:   "blobpool",
 	Datacap:   10 * 1024 * 1024 * 1024,
 	PriceBump: 100, // either have patience or be aggressive, no mushy ground
+	PrivateTxLifetime: 3 * 24 * time.Hour,
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -45,6 +49,10 @@ func (config *Config) sanitize() Config {
 	if conf.PriceBump < 1 {
 		log.Warn("Sanitizing invalid blobpool price bump", "provided", conf.PriceBump, "updated", DefaultConfig.PriceBump)
 		conf.PriceBump = DefaultConfig.PriceBump
+	}
+	if conf.PrivateTxLifetime < 1 {
+		log.Warn("Sanitizing invalid txpool private tx lifetime", "provided", conf.PrivateTxLifetime, "updated", DefaultConfig.PrivateTxLifetime)
+		conf.PrivateTxLifetime = DefaultConfig.PrivateTxLifetime
 	}
 	return conf
 }
