@@ -113,7 +113,8 @@ func TestOnPayloadAttributes(t *testing.T) {
 		Value:                &uint256.Int{0x0a},
 	}
 	copy(expectedMessage.BlockHash[:], hexutil.MustDecode("0xca4147f0d4150183ece9155068f34ee3c375448814e4ca557d482b1d40ee5407")[:])
-	require.Equal(t, expectedMessage, *testRelay.submittedMsg.Message)
+	require.NotNil(t, testRelay.submittedMsg.Bellatrix)
+	require.Equal(t, expectedMessage, *testRelay.submittedMsg.Bellatrix.Message)
 
 	expectedExecutionPayload := bellatrix.ExecutionPayload{
 		ParentHash:    [32]byte(testExecutableData.ParentHash),
@@ -132,12 +133,12 @@ func TestOnPayloadAttributes(t *testing.T) {
 		Transactions:  []bellatrix.Transaction{},
 	}
 
-	require.Equal(t, expectedExecutionPayload, *testRelay.submittedMsg.ExecutionPayload)
+	require.Equal(t, expectedExecutionPayload, *testRelay.submittedMsg.Bellatrix.ExecutionPayload)
 
 	expectedSignature, err := utils.HexToSignature("0xad09f171b1da05636acfc86778c319af69e39c79515d44bdfed616ba2ef677ffd4d155d87b3363c6bae651ce1e92786216b75f1ac91dd65f3b1d1902bf8485e742170732dd82ffdf4decb0151eeb7926dd053efa9794b2ebed1a203e62bb13e9")
 
 	require.NoError(t, err)
-	require.Equal(t, expectedSignature, testRelay.submittedMsg.Signature)
+	require.Equal(t, expectedSignature, testRelay.submittedMsg.Bellatrix.Signature)
 
 	require.Equal(t, uint64(25), testRelay.requestedSlot)
 

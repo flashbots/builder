@@ -15,6 +15,7 @@ import (
 	builderApiV1 "github.com/attestantio/go-builder-client/api/v1"
 	builderSpec "github.com/attestantio/go-builder-client/spec"
 	eth2ApiV1Bellatrix "github.com/attestantio/go-eth2-client/api/v1/bellatrix"
+	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/altair"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
@@ -176,9 +177,9 @@ func TestGetHeader(t *testing.T) {
 	err = json.Unmarshal(rr.Body.Bytes(), bid)
 	require.NoError(t, err)
 
-	executionPayload, err := executableDataToExecutionPayload(forkchoiceData)
+	executionPayload, err := executableDataToExecutionPayload(&engine.ExecutionPayloadEnvelope{ExecutionPayload: forkchoiceData}, spec.DataVersionBellatrix)
 	require.NoError(t, err)
-	expectedHeader, err := PayloadToPayloadHeader(executionPayload)
+	expectedHeader, err := PayloadToPayloadHeader(executionPayload.Bellatrix)
 	require.NoError(t, err)
 	expectedValue, ok := uint256.FromBig(forkchoiceBlockProfit)
 	require.False(t, ok)

@@ -5,8 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	builderApiBellatrix "github.com/attestantio/go-builder-client/api/bellatrix"
-	builderApiCapella "github.com/attestantio/go-builder-client/api/capella"
+	builderSpec "github.com/attestantio/go-builder-client/spec"
 	"github.com/ethereum/go-ethereum/log"
 )
 
@@ -41,7 +40,7 @@ func (r *RemoteRelayAggregator) Stop() {
 	}
 }
 
-func (r *RemoteRelayAggregator) SubmitBlock(msg *builderApiBellatrix.SubmitBlockRequest, registration ValidatorData) error {
+func (r *RemoteRelayAggregator) SubmitBlock(msg *builderSpec.VersionedSubmitBlockRequest, registration ValidatorData) error {
 	r.registrationsCacheLock.RLock()
 	defer r.registrationsCacheLock.RUnlock()
 
@@ -52,26 +51,6 @@ func (r *RemoteRelayAggregator) SubmitBlock(msg *builderApiBellatrix.SubmitBlock
 	for _, relay := range relays {
 		go func(relay IRelay) {
 			err := relay.SubmitBlock(msg, registration)
-			if err != nil {
-				log.Error("could not submit block", "err", err)
-			}
-		}(relay)
-	}
-
-	return nil
-}
-
-func (r *RemoteRelayAggregator) SubmitBlockCapella(msg *builderApiCapella.SubmitBlockRequest, registration ValidatorData) error {
-	r.registrationsCacheLock.RLock()
-	defer r.registrationsCacheLock.RUnlock()
-
-	relays, found := r.registrationsCache[registration]
-	if !found {
-		return fmt.Errorf("no relays for registration %s", registration.Pubkey)
-	}
-	for _, relay := range relays {
-		go func(relay IRelay) {
-			err := relay.SubmitBlockCapella(msg, registration)
 			if err != nil {
 				log.Error("could not submit block", "err", err)
 			}

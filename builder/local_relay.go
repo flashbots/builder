@@ -14,7 +14,6 @@ import (
 
 	builderApi "github.com/attestantio/go-builder-client/api"
 	builderApiBellatrix "github.com/attestantio/go-builder-client/api/bellatrix"
-	builderCapellaApi "github.com/attestantio/go-builder-client/api/capella"
 	builderApiV1 "github.com/attestantio/go-builder-client/api/v1"
 	builderSpec "github.com/attestantio/go-builder-client/spec"
 	eth2ApiV1Bellatrix "github.com/attestantio/go-eth2-client/api/v1/bellatrix"
@@ -110,25 +109,14 @@ func (r *LocalRelay) Stop() {
 	r.beaconClient.Stop()
 }
 
-func (r *LocalRelay) SubmitBlock(msg *builderApiBellatrix.SubmitBlockRequest, _ ValidatorData) error {
-	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
-	return r.submitBlock(msg)
-}
-
-func (r *LocalRelay) SubmitBlockCapella(msg *builderCapellaApi.SubmitBlockRequest, _ ValidatorData) error {
-	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
-
-	return r.submitBlockCapella(msg)
+func (r *LocalRelay) SubmitBlock(msg *builderSpec.VersionedSubmitBlockRequest, _ ValidatorData) error {
+	log.Info("submitting block to local relay", "block", msg.Bellatrix.ExecutionPayload.BlockHash.String())
+	return r.submitBlock(msg.Bellatrix)
 }
 
 func (r *LocalRelay) Config() RelayConfig {
 	// local relay does not need config as it is submitting to its own internal endpoint
 	return RelayConfig{}
-}
-
-// TODO: local relay support for capella
-func (r *LocalRelay) submitBlockCapella(msg *builderCapellaApi.SubmitBlockRequest) error {
-	return nil
 }
 
 func (r *LocalRelay) submitBlock(msg *builderApiBellatrix.SubmitBlockRequest) error {
