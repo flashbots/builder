@@ -18,7 +18,7 @@ import (
 // / 2. Call buildBlock
 // / 2. If new bundles, txs arrive, call buildBlock again
 // / This struct lifecycle is tied to 1 block-building task
-type greedyBucketsBuilder struct {
+type greedyBucketsMultiSnapBuilder struct {
 	inputEnvironment *environment
 	chainData        chainData
 	builderKey       *ecdsa.PrivateKey
@@ -27,15 +27,15 @@ type greedyBucketsBuilder struct {
 	algoConf         algorithmConfig
 }
 
-func newGreedyBucketsBuilder(
+func newGreedyBucketsMultiSnapBuilder(
 	chain *core.BlockChain, chainConfig *params.ChainConfig, algoConf *algorithmConfig,
 	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32,
-) *greedyBucketsBuilder {
+) *greedyBucketsMultiSnapBuilder {
 	if algoConf == nil {
 		panic("algoConf cannot be nil")
 	}
 
-	return &greedyBucketsBuilder{
+	return &greedyBucketsMultiSnapBuilder{
 		inputEnvironment: env,
 		chainData:        chainData{chainConfig: chainConfig, chain: chain, blacklist: blacklist},
 		builderKey:       key,
@@ -45,18 +45,7 @@ func newGreedyBucketsBuilder(
 	}
 }
 
-// CutoffPriceFromOrder returns the cutoff price for a given order based on the cutoff percent.
-// For example, if the cutoff percent is 90, the cutoff price will be 90% of the order price, rounded down to the nearest integer.
-func CutoffPriceFromOrder(order *types.TxWithMinerFee, cutoffPercent int) *big.Int {
-	return common.PercentOf(order.Price(), cutoffPercent)
-}
-
-// IsOrderInPriceRange returns true if the order price is greater than or equal to the minPrice.
-func IsOrderInPriceRange(order *types.TxWithMinerFee, minPrice *big.Int) bool {
-	return order.Price().Cmp(minPrice) >= 0
-}
-
-func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
+func (b *greedyBucketsMultiSnapBuilder) commit(changes *envChanges,
 	transactions []*types.TxWithMinerFee,
 	orders *types.TransactionsByPriceAndNonce,
 	gasUsedMap map[*types.TxWithMinerFee]uint64, retryMap map[*types.TxWithMinerFee]int, retryLimit int,
@@ -69,8 +58,16 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 	)
 
 	for _, order := range transactions {
+		if err := changes.env.state.NewMultiTxSnapshot(); err != nil {
+			log.Error("Failed to create new multi-tx snapshot", "err", err)
+			return usedBundles, usedSbundles
+		}
+
+		orderFailed := false
+
 		if tx := order.Tx(); tx != nil {
-			receipt, skip, err := envDiff.commitTx(tx, b.chainData)
+			receipt, skip, err := changes.commitTx(tx, b.chainData)
+			orderFailed = err != nil
 			if err != nil {
 				log.Trace("could not apply tx", "hash", tx.Hash(), "err", err)
 
@@ -83,19 +80,17 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 					gasUsedMap[order] = receipt.GasUsed
 					CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
 				}
-				continue
-			}
-
-			if skip == shiftTx {
-				orders.ShiftAndPushByAccountForTx(tx)
-			}
-
-			effGapPrice, err := tx.EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
-			if err == nil {
+			} else {
+				if skip == shiftTx {
+					orders.ShiftAndPushByAccountForTx(tx)
+				}
+				// we don't check for error here because if EGP returns error, it would have been caught and returned by commitTx
+				effGapPrice, _ := tx.EffectiveGasTip(changes.env.header.BaseFee)
 				log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
 			}
 		} else if bundle := order.Bundle(); bundle != nil {
-			err := envDiff.commitBundle(bundle, b.chainData, b.interrupt, algoConf)
+			err := changes.commitBundle(bundle, b.chainData, algoConf)
+			orderFailed = err != nil
 			if err != nil {
 				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
 
@@ -111,17 +106,20 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 					// if the bundle was not included due to low profit, we can retry the bundle
 					CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
 				}
-				continue
+			} else {
+				log.Trace("Included bundle", "bundleEGP", bundle.MevGasPrice.String(),
+					"gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.EthSentToCoinbase))
+				usedBundles = append(usedBundles, *bundle)
+			}
+		} else if sbundle := order.SBundle(); sbundle != nil {
+			err := changes.CommitSBundle(sbundle, b.chainData, b.builderKey, algoConf)
+			orderFailed = err != nil
+			usedEntry := types.UsedSBundle{
+				Bundle:  sbundle.Bundle,
+				Success: err == nil,
 			}
 
-			log.Trace("Included bundle", "bundleEGP", bundle.MevGasPrice.String(),
-				"gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.EthSentToCoinbase))
-			usedBundles = append(usedBundles, *bundle)
-		} else if sbundle := order.SBundle(); sbundle != nil {
-			usedEntry := types.UsedSBundle{
-				Bundle: sbundle.Bundle,
-			}
-			err := envDiff.commitSBundle(sbundle, b.chainData, b.interrupt, b.builderKey, algoConf)
+			isValidOrNotRetried := true
 			if err != nil {
 				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
 
@@ -136,37 +134,54 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 					}
 
 					// if the sbundle was not included due to low profit, we can retry the bundle
-					if ok := CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit); !ok {
-						usedEntry.Success = false
-						usedSbundles = append(usedSbundles, usedEntry)
+					if ok := CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit); ok {
+						isValidOrNotRetried = false
 					}
 				}
-				continue
+			} else {
+				log.Trace("Included sbundle", "bundleEGP", sbundle.MevGasPrice.String(), "ethToCoinbase", ethIntToFloat(sbundle.Profit))
 			}
 
-			log.Trace("Included sbundle", "bundleEGP", sbundle.MevGasPrice.String(), "ethToCoinbase", ethIntToFloat(sbundle.Profit))
-			usedEntry.Success = true
-			usedSbundles = append(usedSbundles, usedEntry)
+			if isValidOrNotRetried {
+				usedSbundles = append(usedSbundles, usedEntry)
+			}
 		} else {
 			// note: this should never happen because we should not be inserting invalid transaction types into
 			// the orders heap
 			panic("unsupported order type found")
 		}
+
+		if orderFailed {
+			if err := changes.env.state.MultiTxSnapshotRevert(); err != nil {
+				log.Error("Failed to revert snapshot", "err", err)
+				return usedBundles, usedSbundles
+			}
+		} else {
+			if err := changes.env.state.MultiTxSnapshotCommit(); err != nil {
+				log.Error("Failed to commit snapshot", "err", err)
+				return usedBundles, usedSbundles
+			}
+		}
 	}
 	return usedBundles, usedSbundles
 }
 
-func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
-	envDiff *environmentDiff, orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle,
-) {
+func (b *greedyBucketsMultiSnapBuilder) mergeOrdersAndApplyToEnv(
+	orders *types.TransactionsByPriceAndNonce) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
 	if orders.Peek() == nil {
-		return nil, nil
+		return b.inputEnvironment, nil, nil
+	}
+
+	changes, err := newEnvChanges(b.inputEnvironment)
+	if err != nil {
+		log.Error("Failed to create new environment changes", "err", err)
+		return b.inputEnvironment, nil, nil
 	}
 
 	const retryLimit = 1
 
 	var (
-		baseFee            = envDiff.baseEnvironment.header.BaseFee
+		baseFee            = changes.env.header.BaseFee
 		retryMap           = make(map[*types.TxWithMinerFee]int)
 		usedBundles        []types.SimulatedBundle
 		usedSbundles       []types.UsedSBundle
@@ -186,7 +201,7 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 		if order == nil {
 			if len(transactions) != 0 {
 				SortInPlaceByProfit(baseFee, transactions, b.gasUsedMap)
-				bundles, sbundles := b.commit(envDiff, transactions, orders, b.gasUsedMap, retryMap, retryLimit)
+				bundles, sbundles := b.commit(changes, transactions, orders, b.gasUsedMap, retryMap, retryLimit)
 				usedBundles = append(usedBundles, bundles...)
 				usedSbundles = append(usedSbundles, sbundles...)
 				transactions = nil
@@ -203,7 +218,7 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 		} else {
 			if len(transactions) != 0 {
 				SortInPlaceByProfit(baseFee, transactions, b.gasUsedMap)
-				bundles, sbundles := b.commit(envDiff, transactions, orders, b.gasUsedMap, retryMap, retryLimit)
+				bundles, sbundles := b.commit(changes, transactions, orders, b.gasUsedMap, retryMap, retryLimit)
 				usedBundles = append(usedBundles, bundles...)
 				usedSbundles = append(usedSbundles, sbundles...)
 				transactions = nil
@@ -212,13 +227,15 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 		}
 	}
 
-	return usedBundles, usedSbundles
+	if err := changes.apply(); err != nil {
+		log.Error("Failed to apply changes", "err", err)
+		return b.inputEnvironment, nil, nil
+	}
+
+	return changes.env, usedBundles, usedSbundles
 }
 
-func (b *greedyBucketsBuilder) buildBlock(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
+func (b *greedyBucketsMultiSnapBuilder) buildBlock(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
 	orders := types.NewTransactionsByPriceAndNonce(b.inputEnvironment.signer, transactions, simBundles, simSBundles, b.inputEnvironment.header.BaseFee)
-	envDiff := newEnvironmentDiff(b.inputEnvironment.copy())
-	usedBundles, usedSbundles := b.mergeOrdersIntoEnvDiff(envDiff, orders)
-	envDiff.applyToBaseEnv()
-	return envDiff.baseEnvironment, usedBundles, usedSbundles
+	return b.mergeOrdersAndApplyToEnv(orders)
 }

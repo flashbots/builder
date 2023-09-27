@@ -54,16 +54,22 @@ const (
 	ALGO_MEV_GETH AlgoType = iota
 	ALGO_GREEDY
 	ALGO_GREEDY_BUCKETS
+	ALGO_GREEDY_MULTISNAP
+	ALGO_GREEDY_BUCKETS_MULTISNAP
 )
 
 func (a AlgoType) String() string {
 	switch a {
 	case ALGO_GREEDY:
 		return "greedy"
+	case ALGO_GREEDY_MULTISNAP:
+		return "greedy-multi-snap"
 	case ALGO_MEV_GETH:
 		return "mev-geth"
 	case ALGO_GREEDY_BUCKETS:
 		return "greedy-buckets"
+	case ALGO_GREEDY_BUCKETS_MULTISNAP:
+		return "greedy-buckets-multi-snap"
 	default:
 		return "unsupported"
 	}
@@ -77,6 +83,10 @@ func AlgoTypeFlagToEnum(algoString string) (AlgoType, error) {
 		return ALGO_GREEDY_BUCKETS, nil
 	case ALGO_GREEDY.String():
 		return ALGO_GREEDY, nil
+	case ALGO_GREEDY_MULTISNAP.String():
+		return ALGO_GREEDY_MULTISNAP, nil
+	case ALGO_GREEDY_BUCKETS_MULTISNAP.String():
+		return ALGO_GREEDY_BUCKETS_MULTISNAP, nil
 	default:
 		return ALGO_MEV_GETH, errors.New("algo not recognized")
 	}
@@ -98,8 +108,8 @@ type Config struct {
 	MaxMergedBundles         int
 	Blocklist                []common.Address `toml:",omitempty"`
 	NewPayloadTimeout        time.Duration    // The maximum time allowance for creating a new payload
-	DiscardRevertibleTxOnErr bool             // Whether to discard revertible transactions on error
 	PriceCutoffPercent       int              // Effective gas price cutoff % used for bucketing transactions by price (only useful in greedy-buckets AlgoType)
+	DiscardRevertibleTxOnErr bool             // When enabled, if bundle revertible transaction has error on commit, builder will discard the transaction
 }
 
 // DefaultConfig contains default settings for miner.

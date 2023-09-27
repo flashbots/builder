@@ -28,8 +28,9 @@ func newGreedyBuilder(
 	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32,
 ) *greedyBuilder {
 	if algoConf == nil {
-		algoConf = &defaultAlgorithmConfig
+		panic("algoConf cannot be nil")
 	}
+
 	return &greedyBuilder{
 		inputEnvironment: env,
 		chainData:        chainData{chainConfig, chain, blacklist},

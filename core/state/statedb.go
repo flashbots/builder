@@ -109,6 +109,9 @@ type StateDB struct {
 	validRevisions []revision
 	nextRevisionId int
 
+	// Multi-Transaction Snapshot Stack
+	multiTxSnapshotStack *MultiTxSnapshotStack
+
 	// Measurements gathered during execution for debugging purposes
 	AccountReads         time.Duration
 	AccountHashes        time.Duration
@@ -151,6 +154,8 @@ func New(root common.Hash, db Database, snaps *snapshot.Tree) (*StateDB, error) 
 		transientStorage:     newTransientStorage(),
 		hasher:               crypto.NewKeccakState(),
 	}
+
+	sdb.multiTxSnapshotStack = NewMultiTxSnapshotStack(sdb)
 	if sdb.snaps != nil {
 		if sdb.snap = sdb.snaps.Snapshot(root); sdb.snap != nil {
 			sdb.snapAccounts = make(map[common.Hash][]byte)
@@ -712,6 +717,8 @@ func (s *StateDB) Copy() *StateDB {
 		journal:              newJournal(),
 		hasher:               crypto.NewKeccakState(),
 	}
+	// Initialize copy of multi-transaction snapshot stack for the copied state
+	state.multiTxSnapshotStack = s.multiTxSnapshotStack.Copy(state)
 	// Copy the dirty states, logs, and preimages
 	for addr := range s.journal.dirties {
 		// As documented [here](https://github.com/ethereum/go-ethereum/pull/16485#issuecomment-380438527),
@@ -842,6 +849,8 @@ func (s *StateDB) GetRefund() uint64 {
 // the journal as well as the refunds. Finalise, however, will not push any updates
 // into the tries just yet. Only IntermediateRoot or Commit will do that.
 func (s *StateDB) Finalise(deleteEmptyObjects bool) {
+	s.multiTxSnapshotStack.UpdateFromJournal(s.journal)
+
 	addressesToPrefetch := make([][]byte, 0, len(s.journal.dirties))
 	for addr := range s.journal.dirties {
 		obj, exist := s.stateObjects[addr]
@@ -855,6 +864,8 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			continue
 		}
 		if obj.suicided || (deleteEmptyObjects && obj.empty()) {
+			s.multiTxSnapshotStack.UpdateObjectDeleted(obj.address, obj.deleted)
+
 			obj.deleted = true
 
 			// We need to maintain account deletions explicitly (will remain
@@ -871,6 +882,12 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			}
 		} else {
 			obj.finalise(true) // Prefetch slots in the background
+		}
+
+		if s.multiTxSnapshotStack.Size() > 0 {
+			_, wasPending := s.stateObjectsPending[addr]
+			_, wasDirty := s.stateObjectsDirty[addr]
+			s.multiTxSnapshotStack.UpdatePendingStatus(addr, wasPending, wasDirty)
 		}
 		s.stateObjectsPending[addr] = struct{}{}
 		s.stateObjectsDirty[addr] = struct{}{}
@@ -893,6 +910,10 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 func (s *StateDB) IntermediateRoot(deleteEmptyObjects bool) common.Hash {
 	// Finalise all the dirty storage states and write them into the tries
 	s.Finalise(deleteEmptyObjects)
+
+	// Intermediate root writes updates to the trie, which will cause
+	// in memory multi-transaction snapshot to be incompatible with the committed state, so we invalidate.
+	s.multiTxSnapshotStack.Invalidate()
 
 	// If there was a trie prefetcher operating, it gets aborted and irrevocably
 	// modified after we start retrieving tries. Remove it from the statedb after
@@ -1180,4 +1201,23 @@ func (s *StateDB) convertAccountSet(set map[common.Address]struct{}) map[common.
 		}
 	}
 	return ret
+}
+
+func (s *StateDB) NewMultiTxSnapshot() (err error) {
+	_, err = s.multiTxSnapshotStack.NewSnapshot()
+	return
+}
+
+func (s *StateDB) MultiTxSnapshotRevert() (err error) {
+	_, err = s.multiTxSnapshotStack.Revert()
+	return
+}
+
+func (s *StateDB) MultiTxSnapshotCommit() (err error) {
+	_, err = s.multiTxSnapshotStack.Commit()
+	return
+}
+
+func (s *StateDB) MultiTxSnapshotStackSize() int {
+	return s.multiTxSnapshotStack.Size()
 }

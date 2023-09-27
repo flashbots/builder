@@ -1312,7 +1312,7 @@ func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) 
 		err             error
 	)
 	switch w.flashbots.algoType {
-	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS:
+	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP:
 		blockBundles, allBundles, usedSbundles, mempoolTxHashes, err = w.fillTransactionsAlgoWorker(interrupt, env)
 	case ALGO_MEV_GETH:
 		blockBundles, allBundles, mempoolTxHashes, err = w.fillTransactions(interrupt, env)
@@ -1433,6 +1433,37 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 		)
 
 		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
+	case ALGO_GREEDY_BUCKETS_MULTISNAP:
+		priceCutoffPercent := w.config.PriceCutoffPercent
+		if !(priceCutoffPercent >= 0 && priceCutoffPercent <= 100) {
+			return nil, nil, nil, nil, errors.New("invalid price cutoff percent - must be between 0 and 100")
+		}
+
+		algoConf := &algorithmConfig{
+			DropRevertibleTxOnErr:  w.config.DiscardRevertibleTxOnErr,
+			EnforceProfit:          true,
+			ProfitThresholdPercent: defaultProfitThresholdPercent,
+			PriceCutoffPercent:     priceCutoffPercent,
+		}
+		builder := newGreedyBucketsMultiSnapBuilder(
+			w.chain, w.chainConfig, algoConf, w.blockList, env,
+			w.config.BuilderTxSigningKey, interrupt,
+		)
+		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
+	case ALGO_GREEDY_MULTISNAP:
+		// For greedy multi-snap builder, set algorithm configuration to default values,
+		// except DropRevertibleTxOnErr which is passed in from worker config
+		algoConf := &algorithmConfig{
+			DropRevertibleTxOnErr:  w.config.DiscardRevertibleTxOnErr,
+			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
+			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
+		}
+
+		builder := newGreedyMultiSnapBuilder(
+			w.chain, w.chainConfig, algoConf, w.blockList, env,
+			w.config.BuilderTxSigningKey, interrupt,
+		)
+		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
 	case ALGO_GREEDY:
 		fallthrough
 	default:
@@ -1443,11 +1474,11 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
 			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
 		}
-		builder := newGreedyBuilder(
-			w.chain, w.chainConfig, algoConf, w.blockList, env,
-			w.config.BuilderTxSigningKey, interrupt,
-		)
 
+		builder := newGreedyBuilder(
+			w.chain, w.chainConfig, algoConf, w.blockList,
+			env, w.config.BuilderTxSigningKey, interrupt,
+		)
 		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
 	}
 
@@ -1517,7 +1548,8 @@ func (w *worker) generateWork(params *generateParams) (*types.Block, *big.Int, e
 			totalSbundles++
 		}
 
-		log.Info("Block finalized and assembled", "blockProfit", ethIntToFloat(profit),
+		log.Info("Block finalized and assembled",
+			"height", block.Number().String(), "blockProfit", ethIntToFloat(profit),
 			"txs", len(env.txs), "bundles", len(blockBundles), "okSbundles", okSbundles, "totalSbundles", totalSbundles,
 			"gasUsed", block.GasUsed(), "time", time.Since(start))
 		if metrics.EnabledBuilder {

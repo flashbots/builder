@@ -532,7 +532,7 @@ func TestVerifyBundlesAtomicity(t *testing.T) {
 }
 
 func TestExtractBundleDataFromUsedBundles(t *testing.T) {
-	_, _, signers := genTestSetup()
+	_, _, signers := genTestSetup(GasLimit)
 
 	tx1 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
 	tx2 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
@@ -580,7 +580,7 @@ func TestExtractBundleDataFromUsedBundles(t *testing.T) {
 }
 
 func TestExtractIncludedTxDataFromEnv(t *testing.T) {
-	_, _, signers := genTestSetup()
+	_, _, signers := genTestSetup(GasLimit)
 
 	tx1 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
 	tx2 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
@@ -638,7 +638,7 @@ func TestExtractPrivateTxData(t *testing.T) {
 }
 
 func BenchmarkVerifyBundlesAtomicity(b *testing.B) {
-	_, _, signers := genTestSetup()
+	_, _, signers := genTestSetup(GasLimit)
 
 	var (
 		env              = &environment{}

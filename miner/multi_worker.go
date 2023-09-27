@@ -141,7 +141,7 @@ func newMultiWorker(config *Config, chainConfig *params.ChainConfig, engine cons
 	switch config.AlgoType {
 	case ALGO_MEV_GETH:
 		return newMultiWorkerMevGeth(config, chainConfig, engine, eth, mux, isLocalBlock, init)
-	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS:
+	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP:
 		return newMultiWorkerGreedy(config, chainConfig, engine, eth, mux, isLocalBlock, init)
 	default:
 		panic("unsupported builder algorithm found")

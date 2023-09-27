@@ -38,7 +38,7 @@ var algoTests = []*algoTest{
 			}
 		},
 		WantProfit:          big.NewInt(2 * 21_000),
-		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP},
 		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 	{
@@ -65,7 +65,7 @@ var algoTests = []*algoTest{
 			}
 		},
 		WantProfit:          big.NewInt(4 * 21_000),
-		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP},
 		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 	{
@@ -84,7 +84,7 @@ var algoTests = []*algoTest{
 			}
 		},
 		WantProfit:          big.NewInt(0),
-		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP},
 		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 	{
@@ -106,7 +106,7 @@ var algoTests = []*algoTest{
 			}
 		},
 		WantProfit:          big.NewInt(50_000),
-		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP},
 		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 	{
@@ -128,7 +128,7 @@ var algoTests = []*algoTest{
 			}
 		},
 		WantProfit:          common.Big0,
-		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP},
 		AlgorithmConfig: algorithmConfig{
 			DropRevertibleTxOnErr:  true,
 			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
@@ -160,7 +160,7 @@ var algoTests = []*algoTest{
 			}
 		},
 		WantProfit:          big.NewInt(21_000),
-		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP},
 		AlgorithmConfig: algorithmConfig{
 			DropRevertibleTxOnErr:  true,
 			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
@@ -191,7 +191,7 @@ var algoTests = []*algoTest{
 			}
 		},
 		WantProfit:          big.NewInt(50_000),
-		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS},
+		SupportedAlgorithms: []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP},
 		AlgorithmConfig:     defaultAlgorithmConfig,
 	},
 }
@@ -205,6 +205,7 @@ func TestAlgo(t *testing.T) {
 	for _, test := range algoTests {
 		for _, algo := range test.SupportedAlgorithms {
 			testName := fmt.Sprintf("%s-%s", test.Name, algo.String())
+
 			t.Run(testName, func(t *testing.T) {
 				alloc, txPool, bundles, err := test.build(signer, 1)
 				if err != nil {
@@ -214,7 +215,6 @@ func TestAlgo(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Simulate Bundles: %v", err)
 				}
-
 				gotProfit, err := runAlgoTest(algo, test.AlgorithmConfig, config, alloc, txPool, simBundles, test.Header, 1)
 				if err != nil {
 					t.Fatal(err)
@@ -287,18 +287,24 @@ func runAlgoTest(
 	txPool map[common.Address]types.Transactions, bundles []types.SimulatedBundle, header *types.Header, scale int,
 ) (gotProfit *big.Int, err error) {
 	var (
-		statedb, chData = genTestSetupWithAlloc(config, alloc)
+		statedb, chData = genTestSetupWithAlloc(config, alloc, GasLimit)
 		env             = newEnvironment(chData, statedb, header.Coinbase, header.GasLimit*uint64(scale), header.BaseFee)
 		resultEnv       *environment
 	)
 
 	// build block
 	switch algo {
+	case ALGO_GREEDY:
+		builder := newGreedyBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
+		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
+	case ALGO_GREEDY_MULTISNAP:
+		builder := newGreedyMultiSnapBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
+		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	case ALGO_GREEDY_BUCKETS:
 		builder := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
-	case ALGO_GREEDY:
-		builder := newGreedyBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
+	case ALGO_GREEDY_BUCKETS_MULTISNAP:
+		builder := newGreedyBucketsMultiSnapBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	}
 	return resultEnv.profit, nil
@@ -307,7 +313,7 @@ func runAlgoTest(
 // simulateBundles simulates bundles and returns the simulated bundles.
 func simulateBundles(config *params.ChainConfig, header *types.Header, alloc core.GenesisAlloc, bundles []types.MevBundle) ([]types.SimulatedBundle, error) {
 	var (
-		statedb, chData = genTestSetupWithAlloc(config, alloc)
+		statedb, chData = genTestSetupWithAlloc(config, alloc, GasLimit)
 		env             = newEnvironment(chData, statedb, header.Coinbase, header.GasLimit, header.BaseFee)
 
 		simBundles = make([]types.SimulatedBundle, 0)
