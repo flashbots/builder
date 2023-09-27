@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -328,102 +327,6 @@ func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint6
 	}
 
 	return nil, err
-}
-
-// BuildMultiTxSnapBlock attempts to build a block with input orders using state.MultiTxSnapshot. If a failure occurs attempting to commit a given order,
-// it reverts to previous state and the next order is attempted.
-func BuildMultiTxSnapBlock(
-	inputEnvironment *environment,
-	key *ecdsa.PrivateKey,
-	chData chainData,
-	algoConf algorithmConfig,
-	orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle, error) {
-	// NOTE(wazzymandias): BuildMultiTxSnapBlock uses envChanges which is different from envDiff struct.
-	//   Eventually the structs should be consolidated but for now they represent the difference between using state
-	//   copies for building blocks (envDiff) versus using MultiTxSnapshot (envChanges).
-	var (
-		usedBundles      []types.SimulatedBundle
-		usedSbundles     []types.UsedSBundle
-		orderFailed      bool
-		buildBlockErrors []error
-	)
-
-	changes, err := newEnvChanges(inputEnvironment)
-	if err != nil {
-		return nil, nil, err
-	}
-	opMap := map[bool]func() error{
-		true:  changes.env.state.MultiTxSnapshotRevert,
-		false: changes.env.state.MultiTxSnapshotCommit,
-	}
-
-	for {
-		order := orders.Peek()
-		if order == nil {
-			break
-		}
-
-		orderFailed = false
-		// if snapshot cannot be instantiated, return early
-		if err = changes.env.state.NewMultiTxSnapshot(); err != nil {
-			log.Error("Failed to create snapshot", "err", err)
-			return nil, nil, err
-		}
-
-		if tx := order.Tx(); tx != nil {
-			_, skip, err := changes.commitTx(tx, chData)
-			switch skip {
-			case shiftTx:
-				orders.Shift()
-			case popTx:
-				orders.Pop()
-			}
-
-			if err != nil {
-				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to commit tx: %w", err))
-				orderFailed = true
-			}
-		} else if bundle := order.Bundle(); bundle != nil {
-			err = changes.commitBundle(bundle, chData, algoConf)
-			orders.Pop()
-			if err != nil {
-				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
-				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to commit bundle: %w", err))
-				orderFailed = true
-			} else {
-				usedBundles = append(usedBundles, *bundle)
-			}
-		} else if sbundle := order.SBundle(); sbundle != nil {
-			err = changes.CommitSBundle(sbundle, chData, key, algoConf)
-			usedEntry := types.UsedSBundle{
-				Bundle:  sbundle.Bundle,
-				Success: err == nil,
-			}
-			if err != nil {
-				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
-
-				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to commit sbundle: %w", err))
-				orderFailed = true
-			}
-			usedSbundles = append(usedSbundles, usedEntry)
-		} else {
-			// note: this should never happen because we should not be inserting invalid transaction types into
-			// the orders heap
-			panic("unsupported order type found")
-		}
-
-		if err = opMap[orderFailed](); err != nil {
-			log.Error("Failed to apply changes with multi-transaction snapshot", "err", err)
-			buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to apply changes: %w", err))
-		}
-	}
-
-	if err = changes.apply(); err != nil {
-		log.Error("Failed to apply changes with multi-transaction snapshot", "err", err)
-		buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to apply changes: %w", err))
-	}
-
-	return usedBundles, usedSbundles, errors.Join(buildBlockErrors...)
 }
 
 // CheckRetryOrderAndReinsert checks if the order has been retried up to the retryLimit and if not, reinserts the order into the orders heap.
