@@ -280,7 +280,7 @@ func (b *Builder) onSealedBlock(opts SubmitBlockOpts) error {
 		go b.ds.ConsumeBuiltBlock(opts.Block, opts.BlockValue, opts.OrdersClosedAt, opts.SealedAt, opts.CommitedBundles, opts.AllBundles, opts.UsedSbundles, &blockBidMsg)
 		err = b.relay.SubmitBlock(versionedBlockRequest, opts.ValidatorData)
 		if err != nil {
-			log.Error("could not submit bellatrix block", "err", err, "#commitedBundles", len(opts.CommitedBundles))
+			log.Error("could not submit block", "err", err, "verion", dataVersion, "#commitedBundles", len(opts.CommitedBundles))
 			return err
 		}
 	}
@@ -534,9 +534,9 @@ func executableDataToExecutionPayload(data *engine.ExecutionPayloadEnvelope, ver
 		return getCapellaPayload(payload, *baseFeePerGas, transactionData, withdrawalData), nil
 	}
 
-	uint256BaseFeePerGas, ok := uint256.FromBig(payload.BaseFeePerGas)
-	if !ok {
-		return nil, fmt.Errorf("could not convert base fee per gas from big.Int to uint256")
+	uint256BaseFeePerGas, overflow := uint256.FromBig(payload.BaseFeePerGas)
+	if overflow {
+		return nil, fmt.Errorf("base fee per gas overflow")
 	}
 
 	if len(blobsBundle.Blobs) != len(blobsBundle.Commitments) || len(blobsBundle.Blobs) != len(blobsBundle.Proofs) {

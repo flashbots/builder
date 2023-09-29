@@ -218,7 +218,6 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 			Address:   testAddr,
 		},
 	}
-	withdrawalsRoot := types.DeriveSha(types.Withdrawals(withdrawals), trie.NewStackTrie(nil))
 
 	execData, err := assembleBlock(api, parent.Hash(), &engine.PayloadAttributes{
 		Timestamp:             parent.Time() + 5,
@@ -250,7 +249,6 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 			ExecutionPayload: payload,
 		},
 		RegisteredGasLimit: execData.GasLimit,
-		WithdrawalsRoot:    withdrawalsRoot,
 	}
 
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "inaccurate payment")
@@ -842,7 +840,6 @@ func executableDataToBlockValidationRequest(execData *engine.ExecutableData, pro
 			ExecutionPayload: payload,
 		},
 		RegisteredGasLimit: execData.GasLimit,
-		WithdrawalsRoot:    withdrawalsRoot,
 	}
 	return blockRequest, nil
 }
