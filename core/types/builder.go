@@ -13,6 +13,7 @@ type BuilderPayloadAttributes struct {
 	Slot                  uint64         `json:"slot"`
 	HeadHash              common.Hash    `json:"blockHash"`
 	Withdrawals           Withdrawals    `json:"withdrawals"`
+	ParentBeaconBlockRoot *common.Hash    `json:"parentBeaconBlockRoot"`
 	GasLimit              uint64
 }
 
