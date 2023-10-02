@@ -65,8 +65,8 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if !opts.Config.IsLondon(head.Number) && tx.Type() == types.DynamicFeeTxType {
 		return fmt.Errorf("%w: type %d rejected, pool not yet in London", core.ErrTxTypeNotSupported, tx.Type())
 	}
-	if !opts.Config.IsCancun(head.Number, head.Time) && tx.Type() == types.BlobTxType {
-		return fmt.Errorf("%w: type %d rejected, pool not yet in Cancun", core.ErrTxTypeNotSupported, tx.Type())
+	if opts.Config.CancunTime == nil && tx.Type() == types.BlobTxType {
+		return fmt.Errorf("%w: type %d rejected, pool not configured for Cancun", core.ErrTxTypeNotSupported, tx.Type())
 	}
 	// Check whether the init code size has been exceeded
 	if opts.Config.IsShanghai(head.Number, head.Time) && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
@@ -118,7 +118,7 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 		if sidecar == nil {
 			return fmt.Errorf("missing sidecar in blob transaction")
 		}
-		// Ensure the number of items in the blob transaction and vairous side
+		// Ensure the number of items in the blob transaction and various side
 		// data match up before doing any expensive validations
 		hashes := tx.BlobHashes()
 		if len(hashes) == 0 {
@@ -186,7 +186,7 @@ type ValidationOptionsWithState struct {
 	// be rejected once the number of remaining slots reaches zero.
 	UsedAndLeftSlots func(addr common.Address) (int, int)
 
-	// ExistingExpenditure is a mandatory callback to retrieve the cummulative
+	// ExistingExpenditure is a mandatory callback to retrieve the cumulative
 	// cost of the already pooled transactions to check for overdrafts.
 	ExistingExpenditure func(addr common.Address) *big.Int
 
@@ -241,7 +241,7 @@ func ValidateTransactionWithState(tx *types.Transaction, signer types.Signer, op
 			return fmt.Errorf("%w: balance %v, queued cost %v, tx cost %v, overshot %v", core.ErrInsufficientFunds, balance, spent, cost, new(big.Int).Sub(need, balance))
 		}
 		// Transaction takes a new nonce value out of the pool. Ensure it doesn't
-		// overflow the number of permitted transactions from a single accoun
+		// overflow the number of permitted transactions from a single account
 		// (i.e. max cancellable via out-of-bound transaction).
 		if used, left := opts.UsedAndLeftSlots(from); left <= 0 {
 			return fmt.Errorf("%w: pooled %d txs", ErrAccountLimitExceeded, used)
