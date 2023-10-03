@@ -70,7 +70,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 
 		BaseFeePerGas: big.NewInt(16),
 
-		BlockHash:    common.HexToHash("68e516c8827b589fcb749a9e672aa16b9643437459508c467f66a9ed1de66a6c"),
+		BlockHash:    common.HexToHash("0x68e516c8827b589fcb749a9e672aa16b9643437459508c467f66a9ed1de66a6c"),
 		Transactions: [][]byte{},
 	}
 
