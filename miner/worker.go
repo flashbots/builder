@@ -1428,7 +1428,7 @@ func (w *worker) generateWork(params *generateParams) *newPayloadResult {
 			transactionNumGauge.Update(int64(len(env.txs)))
 		}
 		if params.onBlock != nil {
-			go params.onBlock(block, profit, orderCloseTime, blockBundles, allBundles, usedSbundles)
+			go params.onBlock(block, profit, work.sidecars, orderCloseTime, blockBundles, allBundles, usedSbundles)
 		}
 
 		return &newPayloadResult{

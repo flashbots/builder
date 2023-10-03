@@ -113,6 +113,8 @@ type SubmitBlockOpts struct {
 	Block *types.Block
 	// BlockValue is the block value
 	BlockValue *big.Int
+	// BlobSidecars are the blob sidecars
+	BlobSidecars []*types.BlobTxSidecar
 	// OrdersClosedAt is the time at which orders were closed
 	OrdersClosedAt time.Time
 	// SealedAt is the time at which the block was sealed
@@ -229,7 +231,7 @@ func (b *Builder) Stop() error {
 }
 
 func (b *Builder) onSealedBlock(opts SubmitBlockOpts) error {
-	executableData := engine.BlockToExecutableData(opts.Block, opts.BlockValue, nil)
+	executableData := engine.BlockToExecutableData(opts.Block, opts.BlockValue, opts.BlobSidecars)
 	var dataVersion spec.DataVersion
 	if b.eth.Config().IsCancun(opts.Block.Number(), opts.Block.Time()) {
 		dataVersion = spec.DataVersionDeneb
@@ -331,7 +333,7 @@ func (b *Builder) getBlockRequest(executableData *engine.ExecutionPayloadEnvelop
 			Signature:        signature,
 			Message:          blockBidMsg,
 			ExecutionPayload: payload.Deneb.ExecutionPayload,
-			BlobsBundle: 	payload.Deneb.BlobsBundle,
+			BlobsBundle:      payload.Deneb.BlobsBundle,
 		}
 		versionedBlockRequest = builderSpec.VersionedSubmitBlockRequest{
 			Version: spec.DataVersionDeneb,
@@ -392,6 +394,7 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 type blockQueueEntry struct {
 	block           *types.Block
 	blockValue      *big.Int
+	blobSidecars    []*types.BlobTxSidecar
 	ordersCloseTime time.Time
 	sealedAt        time.Time
 	commitedBundles []types.SimulatedBundle
@@ -424,15 +427,16 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 		queueMu.Lock()
 		if queueBestEntry.block.Hash() != queueLastSubmittedHash {
 			submitBlockOpts := SubmitBlockOpts{
-				Block:            queueBestEntry.block,
-				BlockValue:       queueBestEntry.blockValue,
-				OrdersClosedAt:   queueBestEntry.ordersCloseTime,
-				SealedAt:         queueBestEntry.sealedAt,
-				CommitedBundles:  queueBestEntry.commitedBundles,
-				AllBundles:       queueBestEntry.allBundles,
-				UsedSbundles:     queueBestEntry.usedSbundles,
-				ProposerPubkey:   proposerPubkey,
-				ValidatorData:    vd,
+				Block:             queueBestEntry.block,
+				BlockValue:        queueBestEntry.blockValue,
+				BlobSidecars:      queueBestEntry.blobSidecars,
+				OrdersClosedAt:    queueBestEntry.ordersCloseTime,
+				SealedAt:          queueBestEntry.sealedAt,
+				CommitedBundles:   queueBestEntry.commitedBundles,
+				AllBundles:        queueBestEntry.allBundles,
+				UsedSbundles:      queueBestEntry.usedSbundles,
+				ProposerPubkey:    proposerPubkey,
+				ValidatorData:     vd,
 				PayloadAttributes: attrs,
 			}
 			err := b.onSealedBlock(submitBlockOpts)
@@ -455,7 +459,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock, slotSubmitStartTime)
 
 	// Populates queue with submissions that increase block profit
-	blockHook := func(block *types.Block, blockValue *big.Int, ordersCloseTime time.Time,
+	blockHook := func(block *types.Block, blockValue *big.Int, sidecars []*types.BlobTxSidecar, ordersCloseTime time.Time,
 		committedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
 	) {
 		if ctx.Err() != nil {
@@ -470,6 +474,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 			queueBestEntry = blockQueueEntry{
 				block:           block,
 				blockValue:      new(big.Int).Set(blockValue),
+				blobSidecars:    sidecars,
 				ordersCloseTime: ordersCloseTime,
 				sealedAt:        sealedAt,
 				commitedBundles: committedBundles,

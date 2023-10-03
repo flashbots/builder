@@ -151,6 +151,7 @@ func (payload *Payload) resolveBestFullPayload(payloads []*Payload) {
 			log.Trace("best payload updated", "id", p.id, "blockHash", p.full.Hash())
 			payload.full = p.full
 			payload.fullFees = p.fullFees
+			payload.sidecars = p.sidecars
 		}
 		p.lock.Unlock()
 	}

@@ -30,6 +30,8 @@ import (
 	"github.com/holiman/uint256"
 )
 
+// TODO (deneb): remove local relay
+
 type ForkData struct {
 	GenesisForkVersion    string
 	BellatrixForkVersion  string
