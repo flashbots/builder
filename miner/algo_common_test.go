@@ -8,8 +8,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
@@ -21,6 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/stretchr/testify/require"
 )
 
 const GasLimit uint64 = 30000000
@@ -42,7 +41,12 @@ type signerList struct {
 }
 
 func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, interrupt *atomic.Int32) (types.SimulatedBundle, error) {
-	stateDB := env.state.Copy()
+	// NOTE(wazzymandias): We are referencing the environment StateDB here - notice that it is not a copy.
+	// For test scenarios where bundles depend on previous bundle transactions to succeed, it is
+	// necessary to reference the same StateDB in order to avoid nonce too high errors.
+	// As a result, it is recommended that the caller make a copy before invoking this function, in order to
+	// ensure transaction serializability across bundles.
+	stateDB := env.state
 	gasPool := new(core.GasPool).AddGas(env.header.GasLimit)
 
 	var totalGasUsed uint64
@@ -131,7 +135,7 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 	}, nil
 }
 
-func (sig signerList) signTx(i int, gas uint64, gasTipCap *big.Int, gasFeeCap *big.Int, to common.Address, value *big.Int, data []byte) *types.Transaction {
+func (sig signerList) signTx(i int, gas uint64, gasTipCap, gasFeeCap *big.Int, to common.Address, value *big.Int, data []byte) *types.Transaction {
 	txData := &types.DynamicFeeTx{
 		ChainID:   sig.config.ChainID,
 		Nonce:     sig.nonces[i],
@@ -185,21 +189,22 @@ func genGenesisAlloc(sign signerList, contractAddr []common.Address, contractCod
 	return genesisAlloc
 }
 
-func genTestSetup() (*state.StateDB, chainData, signerList) {
+func genTestSetup(gasLimit uint64) (*state.StateDB, chainData, signerList) {
 	config := params.AllEthashProtocolChanges
 	signerList := genSignerList(10, params.AllEthashProtocolChanges)
 	genesisAlloc := genGenesisAlloc(signerList, []common.Address{payProxyAddress, logContractAddress}, [][]byte{payProxyCode, logContractCode})
 
-	stateDB, chainData := genTestSetupWithAlloc(config, genesisAlloc)
+	stateDB, chainData := genTestSetupWithAlloc(config, genesisAlloc, gasLimit)
 	return stateDB, chainData, signerList
 }
 
-func genTestSetupWithAlloc(config *params.ChainConfig, alloc core.GenesisAlloc) (*state.StateDB, chainData) {
+func genTestSetupWithAlloc(config *params.ChainConfig, alloc core.GenesisAlloc, gasLimit uint64) (*state.StateDB, chainData) {
 	db := rawdb.NewMemoryDatabase()
 
 	gspec := &core.Genesis{
-		Config: config,
-		Alloc:  alloc,
+		Config:   config,
+		Alloc:    alloc,
+		GasLimit: gasLimit,
 	}
 	_ = gspec.MustCommit(db, trie.NewDatabase(db, trie.HashDefaults))
 
@@ -232,7 +237,7 @@ func newEnvironment(data chainData, state *state.StateDB, coinbase common.Addres
 }
 
 func TestTxCommit(t *testing.T) {
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], GasLimit, big.NewInt(1))
 	envDiff := newEnvironmentDiff(env)
@@ -279,7 +284,7 @@ func TestTxCommit(t *testing.T) {
 
 func TestBundleCommit(t *testing.T) {
 	algoConf := defaultAlgorithmConfig
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], GasLimit, big.NewInt(1))
 	envDiff := newEnvironmentDiff(env)
@@ -314,7 +319,7 @@ func TestBundleCommit(t *testing.T) {
 }
 
 func TestErrorTxCommit(t *testing.T) {
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], GasLimit, big.NewInt(1))
 	envDiff := newEnvironmentDiff(env)
@@ -348,7 +353,7 @@ func TestErrorTxCommit(t *testing.T) {
 }
 
 func TestCommitTxOverGasLimit(t *testing.T) {
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], 21000, big.NewInt(1))
 	envDiff := newEnvironmentDiff(env)
@@ -376,7 +381,7 @@ func TestCommitTxOverGasLimit(t *testing.T) {
 }
 
 func TestErrorBundleCommit(t *testing.T) {
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], 21000*2, big.NewInt(1))
 	envDiff := newEnvironmentDiff(env)
@@ -438,7 +443,7 @@ func TestErrorBundleCommit(t *testing.T) {
 }
 
 func TestBlacklist(t *testing.T) {
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], GasLimit, big.NewInt(1))
 	envDiff := newEnvironmentDiff(env)
@@ -522,7 +527,7 @@ func TestGetSealingWorkAlgos(t *testing.T) {
 		testConfig.AlgoType = ALGO_MEV_GETH
 	})
 
-	for _, algoType := range []AlgoType{ALGO_MEV_GETH, ALGO_GREEDY, ALGO_GREEDY_BUCKETS} {
+	for _, algoType := range []AlgoType{ALGO_MEV_GETH, ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP} {
 		local := new(params.ChainConfig)
 		*local = *ethashChainConfig
 		local.TerminalTotalDifficulty = big.NewInt(0)
@@ -537,12 +542,12 @@ func TestGetSealingWorkAlgosWithProfit(t *testing.T) {
 		testConfig.BuilderTxSigningKey = nil
 	})
 
-	for _, algoType := range []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS} {
+	for _, algoType := range []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP} {
 		var err error
 		testConfig.BuilderTxSigningKey, err = crypto.GenerateKey()
 		require.NoError(t, err)
 		testConfig.AlgoType = algoType
-		t.Logf("running for %d", algoType)
+		t.Logf("running for %s", algoType.String())
 		testBundles(t)
 	}
 }
@@ -550,7 +555,7 @@ func TestGetSealingWorkAlgosWithProfit(t *testing.T) {
 func TestPayoutTxUtils(t *testing.T) {
 	availableFunds := big.NewInt(50000000000000000) // 0.05 eth
 
-	statedb, chData, signers := genTestSetup()
+	statedb, chData, signers := genTestSetup(GasLimit)
 
 	env := newEnvironment(chData, statedb, signers.addresses[0], GasLimit, big.NewInt(1))
 

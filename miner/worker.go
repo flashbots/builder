@@ -20,7 +20,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-
 	"sort"
 	"sync"
 	"sync/atomic"
@@ -792,7 +791,7 @@ func (w *worker) resultLoop() {
 }
 
 // makeEnv creates a new environment for the sealing block.
-func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase common.Address) (*environment, error) {
+func (w *worker) makeEnv(parent, header *types.Header, coinbase common.Address) (*environment, error) {
 	// Retrieve the parent state to execute on top and start a prefetcher for
 	// the miner to speed block sealing up a bit.
 	state, err := w.chain.StateAt(parent.Root)
@@ -1184,7 +1183,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 		return nil, err
 	}
 	// uncomment to enable dirty fix for clique coinbase for local builder
-	//header.Coinbase = genParams.coinbase
+	// header.Coinbase = genParams.coinbase
 
 	// Could potentially happen if starting to mine in an odd state.
 	// Note genParams.coinbase can be different with header.Coinbase
@@ -1211,7 +1210,7 @@ func (w *worker) fillTransactionsSelectAlgo(interrupt *atomic.Int32, env *enviro
 		err             error
 	)
 	switch w.flashbots.algoType {
-	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS:
+	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP:
 		blockBundles, allBundles, usedSbundles, mempoolTxHashes, err = w.fillTransactionsAlgoWorker(interrupt, env)
 	case ALGO_MEV_GETH:
 		blockBundles, allBundles, mempoolTxHashes, err = w.fillTransactions(interrupt, env)
@@ -1332,6 +1331,37 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *atomic.Int32, env *enviro
 		)
 
 		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
+	case ALGO_GREEDY_BUCKETS_MULTISNAP:
+		priceCutoffPercent := w.config.PriceCutoffPercent
+		if !(priceCutoffPercent >= 0 && priceCutoffPercent <= 100) {
+			return nil, nil, nil, nil, errors.New("invalid price cutoff percent - must be between 0 and 100")
+		}
+
+		algoConf := &algorithmConfig{
+			DropRevertibleTxOnErr:  w.config.DiscardRevertibleTxOnErr,
+			EnforceProfit:          true,
+			ProfitThresholdPercent: defaultProfitThresholdPercent,
+			PriceCutoffPercent:     priceCutoffPercent,
+		}
+		builder := newGreedyBucketsMultiSnapBuilder(
+			w.chain, w.chainConfig, algoConf, w.blockList, env,
+			w.config.BuilderTxSigningKey, interrupt,
+		)
+		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
+	case ALGO_GREEDY_MULTISNAP:
+		// For greedy multi-snap builder, set algorithm configuration to default values,
+		// except DropRevertibleTxOnErr which is passed in from worker config
+		algoConf := &algorithmConfig{
+			DropRevertibleTxOnErr:  w.config.DiscardRevertibleTxOnErr,
+			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
+			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
+		}
+
+		builder := newGreedyMultiSnapBuilder(
+			w.chain, w.chainConfig, algoConf, w.blockList, env,
+			w.config.BuilderTxSigningKey, interrupt,
+		)
+		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
 	case ALGO_GREEDY:
 		fallthrough
 	default:
@@ -1342,11 +1372,11 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *atomic.Int32, env *enviro
 			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
 			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
 		}
-		builder := newGreedyBuilder(
-			w.chain, w.chainConfig, algoConf, w.blockList, env,
-			w.config.BuilderTxSigningKey, interrupt,
-		)
 
+		builder := newGreedyBuilder(
+			w.chain, w.chainConfig, algoConf, w.blockList,
+			env, w.config.BuilderTxSigningKey, interrupt,
+		)
 		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
 	}
 
@@ -1401,7 +1431,8 @@ func (w *worker) generateWork(params *generateParams) *newPayloadResult {
 	defer work.discard()
 
 	finalizeFn := func(env *environment, orderCloseTime time.Time,
-		blockBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, noTxs bool) *newPayloadResult {
+		blockBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, noTxs bool,
+	) *newPayloadResult {
 		block, profit, err := w.finalizeBlock(env, params.withdrawals, validatorCoinbase, noTxs)
 		if err != nil {
 			log.Error("could not finalize block", "err", err)
@@ -1416,7 +1447,8 @@ func (w *worker) generateWork(params *generateParams) *newPayloadResult {
 			totalSbundles++
 		}
 
-		log.Info("Block finalized and assembled", "blockProfit", ethIntToFloat(profit),
+		log.Info("Block finalized and assembled",
+			"height", block.Number().String(), "blockProfit", ethIntToFloat(profit),
 			"txs", len(env.txs), "bundles", len(blockBundles), "okSbundles", okSbundles, "totalSbundles", totalSbundles,
 			"gasUsed", block.GasUsed(), "time", time.Since(start))
 		if metrics.EnabledBuilder {

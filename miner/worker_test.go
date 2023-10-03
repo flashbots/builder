@@ -129,7 +129,7 @@ func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine 
 	if alloc == nil {
 		alloc = defaultGenesisAlloc
 	}
-	var gspec = &core.Genesis{
+	gspec := &core.Genesis{
 		GasLimit: gasLimit,
 		Config:   chainConfig,
 		Alloc:    alloc,
@@ -236,6 +236,7 @@ func TestGenerateAndImportBlock(t *testing.T) {
 func TestEmptyWorkEthash(t *testing.T) {
 	testEmptyWork(t, ethashChainConfig, ethash.NewFaker())
 }
+
 func TestEmptyWorkClique(t *testing.T) {
 	testEmptyWork(t, cliqueChainConfig, clique.New(cliqueChainConfig.Clique, rawdb.NewMemoryDatabase()))
 }
@@ -301,7 +302,7 @@ func testAdjustInterval(t *testing.T, chainConfig *params.ChainConfig, engine co
 		index    = 0
 		start    atomic.Bool
 	)
-	w.resubmitHook = func(minInterval time.Duration, recommitInterval time.Duration) {
+	w.resubmitHook = func(minInterval, recommitInterval time.Duration) {
 		// Short circuit if interval checking hasn't started.
 		if !start.Load() {
 			return
@@ -429,7 +430,7 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 			t.Errorf("Mismatched block number, want %d got %d", number, block.NumberU64())
 		}
 	}
-	var cases = []struct {
+	cases := []struct {
 		parent       common.Hash
 		coinbase     common.Address
 		random       common.Hash

@@ -123,7 +123,7 @@ func generateTests() {
 		if err != nil {
 			panic(err)
 		}
-		err = os.WriteFile(os.Getenv("DUMP_SBUNDLE_TEST_PATH"), jsonBytes, 0644)
+		err = os.WriteFile(os.Getenv("DUMP_SBUNDLE_TEST_PATH"), jsonBytes, 0o644)
 		if err != nil {
 			panic(err)
 		}
@@ -452,7 +452,7 @@ func TestSBundles(t *testing.T) {
 			var (
 				config          = params.TestChainConfig
 				signer          = types.LatestSigner(config)
-				statedb, chData = genTestSetupWithAlloc(config, testSuite.GenesisAlloc)
+				statedb, chData = genTestSetupWithAlloc(config, testSuite.GenesisAlloc, GasLimit)
 				env             = newEnvironment(chData, statedb, testSuite.Header.Coinbase, testSuite.Header.GasLimit, testSuite.Header.BaseFee)
 				envDiff         = newEnvironmentDiff(env)
 

@@ -59,7 +59,7 @@ func (m *mockBackend) TxPool() *txpool.TxPool {
 	return m.txPool
 }
 
-func (m *mockBackend) StateAtBlock(block *types.Block, reexec uint64, base *state.StateDB, checkLive bool, preferDisk bool) (statedb *state.StateDB, err error) {
+func (m *mockBackend) StateAtBlock(block *types.Block, reexec uint64, base *state.StateDB, checkLive, preferDisk bool) (statedb *state.StateDB, err error) {
 	return nil, errors.New("not supported")
 }
 
@@ -258,7 +258,7 @@ func waitForMiningState(t *testing.T, m *Miner, mining bool) {
 	t.Fatalf("Mining() == %t, want %t", state, mining)
 }
 
-func minerTestGenesisBlock(period uint64, gasLimit uint64, faucet common.Address) *core.Genesis {
+func minerTestGenesisBlock(period, gasLimit uint64, faucet common.Address) *core.Genesis {
 	config := *params.AllCliqueProtocolChanges
 	config.Clique = &params.CliqueConfig{
 		Period: period,
@@ -286,6 +286,7 @@ func minerTestGenesisBlock(period uint64, gasLimit uint64, faucet common.Address
 		},
 	}
 }
+
 func createMiner(t *testing.T) (*Miner, *event.TypeMux, func(skipMiner bool)) {
 	// Create Ethash config
 	config := Config{

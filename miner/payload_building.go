@@ -236,7 +236,7 @@ func (payload *Payload) ResolveFull() *engine.ExecutionPayloadEnvelope {
 	if payload.full == nil {
 		return nil
 	}
-	
+
 	return engine.BlockToExecutableData(payload.full, payload.fullFees, payload.sidecars)
 }
 
