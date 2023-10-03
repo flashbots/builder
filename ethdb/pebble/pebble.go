@@ -84,6 +84,8 @@ type Database struct {
 	writeDelayStartTime time.Time     // The start time of the latest write stall
 	writeDelayCount     atomic.Int64  // Total number of write stall counts
 	writeDelayTime      atomic.Int64  // Total time spent in write stalls
+
+	writeOptions *pebble.WriteOptions
 }
 
 func (d *Database) onCompactionBegin(info pebble.CompactionInfo) {
@@ -118,7 +120,7 @@ func (d *Database) onWriteStallEnd() {
 
 // New returns a wrapped pebble DB object. The namespace is the prefix that the
 // metrics reporting should use for surfacing internal stats.
-func New(file string, cache int, handles int, namespace string, readonly bool) (*Database, error) {
+func New(file string, cache int, handles int, namespace string, readonly bool, ephemeral bool) (*Database, error) {
 	// Ensure we have some minimal caching and file guarantees
 	if cache < minCache {
 		cache = minCache
@@ -142,9 +144,10 @@ func New(file string, cache int, handles int, namespace string, readonly bool) (
 		memTableSize = maxMemTableSize
 	}
 	db := &Database{
-		fn:       file,
-		log:      logger,
-		quitChan: make(chan chan error),
+		fn:           file,
+		log:          logger,
+		quitChan:     make(chan chan error),
+		writeOptions: &pebble.WriteOptions{Sync: !ephemeral},
 	}
 	opt := &pebble.Options{
 		// Pebble has a single combined cache area and the write
@@ -279,7 +282,7 @@ func (d *Database) Put(key []byte, value []byte) error {
 	if d.closed {
 		return pebble.ErrClosed
 	}
-	return d.db.Set(key, value, pebble.Sync)
+	return d.db.Set(key, value, d.writeOptions)
 }
 
 // Delete removes the key from the key-value store.
@@ -376,9 +379,12 @@ func upperBound(prefix []byte) (limit []byte) {
 	return limit
 }
 
-// Stat returns a particular internal stat of the database.
+// Stat returns the internal metrics of Pebble in a text format. It's a developer
+// method to read everything there is to read independent of Pebble version.
+//
+// The property is unused in Pebble as there's only one thing to retrieve.
 func (d *Database) Stat(property string) (string, error) {
-	return "", nil
+	return d.db.Metrics().String(), nil
 }
 
 // Compact flattens the underlying data store for the given key range. In essence,
@@ -535,7 +541,7 @@ func (b *batch) Write() error {
 	if b.db.closed {
 		return pebble.ErrClosed
 	}
-	return b.b.Commit(pebble.Sync)
+	return b.b.Commit(b.db.writeOptions)
 }
 
 // Reset resets the batch for reuse.

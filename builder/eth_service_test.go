@@ -94,8 +94,8 @@ func TestBuildBlock(t *testing.T) {
 	service := NewEthereumService(ethservice)
 	service.eth.APIBackend.Miner().SetEtherbase(common.Address{0x05, 0x11})
 
-	err := service.BuildBlock(testPayloadAttributes, func(block *types.Block, blockValue *big.Int, _ time.Time, _, _ []types.SimulatedBundle, _ []types.UsedSBundle) {
-		executableData := engine.BlockToExecutableData(block, blockValue, nil, nil, nil)
+	err := service.BuildBlock(testPayloadAttributes, func(block *types.Block, blockValue *big.Int, _ []*types.BlobTxSidecar, _ time.Time, _, _ []types.SimulatedBundle, _ []types.UsedSBundle) {
+		executableData := engine.BlockToExecutableData(block, blockValue, nil)
 		require.Equal(t, common.Address{0x05, 0x11}, executableData.ExecutionPayload.FeeRecipient)
 		require.Equal(t, common.Hash{0x05, 0x10}, executableData.ExecutionPayload.Random)
 		require.Equal(t, parent.Hash(), executableData.ExecutionPayload.ParentHash)

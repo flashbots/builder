@@ -55,7 +55,7 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
 		}
 
 		if tx := order.Tx(); tx != nil {
-			receipt, skip, err := envDiff.commitTx(tx.Tx.Tx, b.chainData)
+			receipt, skip, err := envDiff.commitTx(tx.Tx, b.chainData)
 			switch skip {
 			case shiftTx:
 				orders.Shift()
@@ -64,10 +64,10 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
 			}
 
 			if err != nil {
-				log.Trace("could not apply tx", "hash", tx.Tx.Tx.Hash(), "err", err)
+				log.Trace("could not apply tx", "hash", tx.Tx.Hash(), "err", err)
 				continue
 			}
-			effGapPrice, err := tx.Tx.Tx.EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
+			effGapPrice, err := tx.Tx.EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
 			if err == nil {
 				log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
 			}

@@ -20,7 +20,7 @@ func TestBuildBlockGasLimit(t *testing.T) {
 		tx1 := signers.signTx(1, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
 		txs[signers.addresses[1]] = []*txpool.LazyTransaction{{
 			Hash:      tx1.Hash(),
-			Tx:        &txpool.Transaction{Tx: tx1},
+			Tx:        tx1,
 			Time:      tx1.Time(),
 			GasFeeCap: tx1.GasFeeCap(),
 			GasTipCap: tx1.GasTipCap(),
@@ -28,7 +28,7 @@ func TestBuildBlockGasLimit(t *testing.T) {
 		tx2 := signers.signTx(2, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
 		txs[signers.addresses[2]] = []*txpool.LazyTransaction{{
 			Hash:      tx2.Hash(),
-			Tx:        &txpool.Transaction{Tx: tx2},
+			Tx:        tx2,
 			Time:      tx2.Time(),
 			GasFeeCap: tx2.GasFeeCap(),
 			GasTipCap: tx2.GasTipCap(),
@@ -36,7 +36,7 @@ func TestBuildBlockGasLimit(t *testing.T) {
 		tx3 := signers.signTx(3, 21000, big.NewInt(math.MaxInt), big.NewInt(math.MaxInt), signers.addresses[2], big.NewInt(math.MaxInt), []byte{})
 		txs[signers.addresses[3]] = []*txpool.LazyTransaction{{
 			Hash:      tx3.Hash(),
-			Tx:        &txpool.Transaction{Tx: tx3},
+			Tx:        tx3,
 			Time:      tx3.Time(),
 			GasFeeCap: tx3.GasFeeCap(),
 			GasTipCap: tx3.GasTipCap(),
@@ -70,7 +70,7 @@ func TestTxWithMinerFeeHeap(t *testing.T) {
 	txs[signers.addresses[1]] = []*txpool.LazyTransaction{
 		{
 			Hash:      tx1.Hash(),
-			Tx:        &txpool.Transaction{Tx: tx1},
+			Tx:        tx1,
 			Time:      tx1.Time(),
 			GasFeeCap: tx1.GasFeeCap(),
 			GasTipCap: tx1.GasTipCap(),
@@ -80,7 +80,7 @@ func TestTxWithMinerFeeHeap(t *testing.T) {
 	txs[signers.addresses[2]] = []*txpool.LazyTransaction{
 		{
 			Hash:      tx2.Hash(),
-			Tx:        &txpool.Transaction{Tx: tx2},
+			Tx:        tx2,
 			Time:      tx2.Time(),
 			GasFeeCap: tx2.GasFeeCap(),
 			GasTipCap: tx2.GasTipCap(),

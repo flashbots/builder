@@ -9,20 +9,25 @@ import (
 	"testing"
 	"time"
 
-	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
-	capellaapi "github.com/attestantio/go-builder-client/api/capella"
-	apiv1 "github.com/attestantio/go-builder-client/api/v1"
+	"github.com/attestantio/go-builder-client/api"
+	builderApiBellatrix "github.com/attestantio/go-builder-client/api/bellatrix"
+	builderApiCapella "github.com/attestantio/go-builder-client/api/capella"
+	builderApiDeneb "github.com/attestantio/go-builder-client/api/deneb"
+	builderApiV1 "github.com/attestantio/go-builder-client/api/v1"
+	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/capella"
+	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/consensus"
+	beaconConsensus "github.com/ethereum/go-ethereum/consensus/beacon"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -39,6 +44,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	boostTypes "github.com/flashbots/go-boost-utils/types"
+	"github.com/flashbots/go-boost-utils/utils"
 )
 
 /* Based on catalyst API tests */
@@ -79,14 +85,14 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	nonce := statedb.GetNonce(testAddr)
 
 	tx1, _ := types.SignTx(types.NewTransaction(nonce, common.Address{0x16}, big.NewInt(10), 21000, big.NewInt(2*params.InitialBaseFee), nil), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
-	ethservice.TxPool().Add([]*txpool.Transaction{{Tx: tx1}}, true, true, false)
+	ethservice.TxPool().Add([]*types.Transaction{tx1}, true, true, false)
 
 	cc, _ := types.SignTx(types.NewContractCreation(nonce+1, new(big.Int), 1000000, big.NewInt(2*params.InitialBaseFee), logCode), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
-	ethservice.TxPool().Add([]*txpool.Transaction{{Tx: cc}}, true, true, false)
+	ethservice.TxPool().Add([]*types.Transaction{cc}, true, true, false)
 
 	baseFee := eip1559.CalcBaseFee(params.AllEthashProtocolChanges, preMergeBlocks[len(preMergeBlocks)-1].Header())
 	tx2, _ := types.SignTx(types.NewTransaction(nonce+2, testAddr, big.NewInt(10), 21000, baseFee, nil), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
-	ethservice.TxPool().Add([]*txpool.Transaction{{Tx: tx2}}, true, true, false)
+	ethservice.TxPool().Add([]*types.Transaction{tx2}, true, true, false)
 
 	execData, err := assembleBlock(api, parent.Hash(), &engine.PayloadAttributes{
 		Timestamp:             parent.Time() + 5,
@@ -102,9 +108,9 @@ func TestValidateBuilderSubmissionV1(t *testing.T) {
 	copy(proposerAddr[:], testValidatorAddr[:])
 
 	blockRequest := &BuilderBlockValidationRequest{
-		SubmitBlockRequest: bellatrixapi.SubmitBlockRequest{
+		SubmitBlockRequest: builderApiBellatrix.SubmitBlockRequest{
 			Signature: phase0.BLSSignature{},
-			Message: &apiv1.BidTrace{
+			Message: &builderApiV1.BidTrace{
 				ParentHash:           phase0.Hash32(execData.ParentHash),
 				BlockHash:            phase0.Hash32(execData.BlockHash),
 				ProposerFeeRecipient: proposerAddr,
@@ -189,14 +195,14 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	nonce := statedb.GetNonce(testAddr)
 
 	tx1, _ := types.SignTx(types.NewTransaction(nonce, common.Address{0x16}, big.NewInt(10), 21000, big.NewInt(2*params.InitialBaseFee), nil), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
-	ethservice.TxPool().Add([]*txpool.Transaction{{Tx: tx1}}, true, true, false)
+	ethservice.TxPool().Add([]*types.Transaction{tx1}, true, true, false)
 
 	cc, _ := types.SignTx(types.NewContractCreation(nonce+1, new(big.Int), 1000000, big.NewInt(2*params.InitialBaseFee), logCode), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
-	ethservice.TxPool().Add([]*txpool.Transaction{{Tx: cc}}, true, true, false)
+	ethservice.TxPool().Add([]*types.Transaction{cc}, true, true, false)
 
 	baseFee := eip1559.CalcBaseFee(params.AllEthashProtocolChanges, preMergeBlocks[len(preMergeBlocks)-1].Header())
 	tx2, _ := types.SignTx(types.NewTransaction(nonce+2, testAddr, big.NewInt(10), 21000, baseFee, nil), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
-	ethservice.TxPool().Add([]*txpool.Transaction{{Tx: tx2}}, true, true, false)
+	ethservice.TxPool().Add([]*types.Transaction{tx2}, true, true, false)
 
 	withdrawals := []*types.Withdrawal{
 		{
@@ -212,7 +218,6 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 			Address:   testAddr,
 		},
 	}
-	withdrawalsRoot := types.DeriveSha(types.Withdrawals(withdrawals), trie.NewStackTrie(nil))
 
 	execData, err := assembleBlock(api, parent.Hash(), &engine.PayloadAttributes{
 		Timestamp:             parent.Time() + 5,
@@ -230,9 +235,9 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	copy(proposerAddr[:], testValidatorAddr.Bytes())
 
 	blockRequest := &BuilderBlockValidationRequestV2{
-		SubmitBlockRequest: capellaapi.SubmitBlockRequest{
+		SubmitBlockRequest: builderApiCapella.SubmitBlockRequest{
 			Signature: phase0.BLSSignature{},
-			Message: &apiv1.BidTrace{
+			Message: &builderApiV1.BidTrace{
 				ParentHash:           phase0.Hash32(execData.ParentHash),
 				BlockHash:            phase0.Hash32(execData.BlockHash),
 				ProposerFeeRecipient: proposerAddr,
@@ -244,7 +249,6 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 			ExecutionPayload: payload,
 		},
 		RegisteredGasLimit: execData.GasLimit,
-		WithdrawalsRoot:    withdrawalsRoot,
 	}
 
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "inaccurate payment")
@@ -301,16 +305,165 @@ func TestValidateBuilderSubmissionV2(t *testing.T) {
 	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(blockRequest), "could not apply tx 4", "insufficient funds for gas * price + value")
 }
 
-func updatePayloadHash(t *testing.T, blockRequest *BuilderBlockValidationRequest) {
-	updatedBlock, err := engine.ExecutionPayloadToBlock(blockRequest.ExecutionPayload)
+func TestValidateBuilderSubmissionV3(t *testing.T) {
+	genesis, blocks := generateMergeChain(10, true)
+
+	// Set cancun time to last block + 5 seconds
+	time := blocks[len(blocks)-1].Time() + 5
+	genesis.Config.ShanghaiTime = &time
+	genesis.Config.CancunTime = &time
+	os.Setenv("BUILDER_TX_SIGNING_KEY", testBuilderKeyHex)
+
+	n, ethservice := startEthService(t, genesis, blocks)
+	ethservice.Merger().ReachTTD()
+	defer n.Close()
+
+	api := NewBlockValidationAPI(ethservice, nil, true)
+	parent := ethservice.BlockChain().CurrentHeader()
+
+	api.eth.APIBackend.Miner().SetEtherbase(testBuilderAddr)
+
+	statedb, _ := ethservice.BlockChain().StateAt(parent.Root)
+	nonce := statedb.GetNonce(testAddr)
+
+	tx1, _ := types.SignTx(types.NewTransaction(nonce, common.Address{0x16}, big.NewInt(10), 21000, big.NewInt(2*params.InitialBaseFee), nil), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
+	ethservice.TxPool().Add([]*types.Transaction{tx1}, true, true, false)
+
+	cc, _ := types.SignTx(types.NewContractCreation(nonce+1, new(big.Int), 1000000, big.NewInt(2*params.InitialBaseFee), logCode), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
+	ethservice.TxPool().Add([]*types.Transaction{cc}, true, true, false)
+
+	baseFee := eip1559.CalcBaseFee(params.AllEthashProtocolChanges, parent)
+	tx2, _ := types.SignTx(types.NewTransaction(nonce+2, testAddr, big.NewInt(10), 21000, baseFee, nil), types.LatestSigner(ethservice.BlockChain().Config()), testKey)
+	ethservice.TxPool().Add([]*types.Transaction{tx2}, true, true, false)
+
+	withdrawals := []*types.Withdrawal{
+		{
+			Index:     0,
+			Validator: 1,
+			Amount:    100,
+			Address:   testAddr,
+		},
+		{
+			Index:     1,
+			Validator: 1,
+			Amount:    100,
+			Address:   testAddr,
+		},
+	}
+
+	execData, err := assembleBlock(api, parent.Hash(), &engine.PayloadAttributes{
+		Timestamp:             parent.Time + 5,
+		Withdrawals:           withdrawals,
+		SuggestedFeeRecipient: testValidatorAddr,
+		BeaconRoot:            &common.Hash{42},
+	})
 	require.NoError(t, err)
-	copy(blockRequest.Message.BlockHash[:], updatedBlock.Hash().Bytes()[:32])
+	require.EqualValues(t, len(execData.Withdrawals), 2)
+	require.EqualValues(t, len(execData.Transactions), 4)
+
+	payload, err := ExecutableDataToExecutionPayloadV3(execData)
+	require.NoError(t, err)
+
+	proposerAddr := bellatrix.ExecutionAddress{}
+	copy(proposerAddr[:], testValidatorAddr.Bytes())
+
+	blockRequest := &BuilderBlockValidationRequestV3{
+		SubmitBlockRequest: builderApiDeneb.SubmitBlockRequest{
+			Signature: phase0.BLSSignature{},
+			Message: &builderApiV1.BidTrace{
+				ParentHash:           phase0.Hash32(execData.ParentHash),
+				BlockHash:            phase0.Hash32(execData.BlockHash),
+				ProposerFeeRecipient: proposerAddr,
+				GasLimit:             execData.GasLimit,
+				GasUsed:              execData.GasUsed,
+				// This value is actual profit + 1, validation should fail
+				Value: uint256.NewInt(132912184722469),
+			},
+			ExecutionPayload: payload,
+			BlobsBundle: &builderApiDeneb.BlobsBundle{
+				Commitments: make([]deneb.KzgCommitment, 0),
+				Proofs:      make([]deneb.KzgProof, 0),
+				Blobs:       make([]deneb.Blob, 0),
+			},
+		},
+		RegisteredGasLimit:    execData.GasLimit,
+		ParentBeaconBlockRoot: common.Hash{42},
+	}
+
+	require.ErrorContains(t, api.ValidateBuilderSubmissionV3(blockRequest), "inaccurate payment")
+	blockRequest.Message.Value = uint256.NewInt(132912184722468)
+	require.NoError(t, api.ValidateBuilderSubmissionV3(blockRequest))
+
+	blockRequest.Message.GasLimit += 1
+	blockRequest.ExecutionPayload.GasLimit += 1
+	updatePayloadHashV3(t, blockRequest)
+
+	require.ErrorContains(t, api.ValidateBuilderSubmissionV3(blockRequest), "incorrect gas limit set")
+
+	blockRequest.Message.GasLimit -= 1
+	blockRequest.ExecutionPayload.GasLimit -= 1
+	updatePayloadHashV3(t, blockRequest)
+
+	// TODO: test with contract calling blacklisted address
+	// Test tx from blacklisted address
+	api.accessVerifier = &AccessVerifier{
+		blacklistedAddresses: map[common.Address]struct{}{
+			testAddr: {},
+		},
+	}
+	require.ErrorContains(t, api.ValidateBuilderSubmissionV3(blockRequest), "transaction from blacklisted address 0x71562b71999873DB5b286dF957af199Ec94617F7")
+
+	// Test tx to blacklisted address
+	api.accessVerifier = &AccessVerifier{
+		blacklistedAddresses: map[common.Address]struct{}{
+			{0x16}: {},
+		},
+	}
+	require.ErrorContains(t, api.ValidateBuilderSubmissionV3(blockRequest), "transaction to blacklisted address 0x1600000000000000000000000000000000000000")
+
+	api.accessVerifier = nil
+
+	blockRequest.Message.GasUsed = 10
+	require.ErrorContains(t, api.ValidateBuilderSubmissionV3(blockRequest), "incorrect GasUsed 10, expected 119996")
+	blockRequest.Message.GasUsed = execData.GasUsed
+
+	newTestKey, _ := crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f290")
+	invalidTx, err := types.SignTx(types.NewTransaction(0, common.Address{}, new(big.Int).Mul(big.NewInt(2e18), big.NewInt(10)), 19000, big.NewInt(2*params.InitialBaseFee), nil), types.LatestSigner(ethservice.BlockChain().Config()), newTestKey)
+	require.NoError(t, err)
+
+	txData, err := invalidTx.MarshalBinary()
+	require.NoError(t, err)
+	execData.Transactions = append(execData.Transactions, txData)
+
+	invalidPayload, err := ExecutableDataToExecutionPayloadV3(execData)
+	require.NoError(t, err)
+	invalidPayload.GasUsed = execData.GasUsed
+	copy(invalidPayload.ReceiptsRoot[:], hexutil.MustDecode("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")[:32])
+	blockRequest.ExecutionPayload = invalidPayload
+	updatePayloadHashV3(t, blockRequest)
+	require.ErrorContains(t, api.ValidateBuilderSubmissionV3(blockRequest), "could not apply tx 4", "insufficient funds for gas * price + value")
+}
+
+func updatePayloadHash(t *testing.T, blockRequest *BuilderBlockValidationRequest) {
+	blockHash, err := utils.ComputeBlockHash(&api.VersionedExecutionPayload{Version: spec.DataVersionBellatrix, Bellatrix: blockRequest.ExecutionPayload}, nil)
+	require.NoError(t, err)
+	copy(blockRequest.Message.BlockHash[:], blockHash[:])
+	copy(blockRequest.ExecutionPayload.BlockHash[:], blockHash[:])
 }
 
 func updatePayloadHashV2(t *testing.T, blockRequest *BuilderBlockValidationRequestV2) {
-	updatedBlock, err := engine.ExecutionPayloadV2ToBlock(blockRequest.ExecutionPayload)
+	blockHash, err := utils.ComputeBlockHash(&api.VersionedExecutionPayload{Version: spec.DataVersionCapella, Capella: blockRequest.ExecutionPayload}, nil)
 	require.NoError(t, err)
-	copy(blockRequest.Message.BlockHash[:], updatedBlock.Hash().Bytes()[:32])
+	copy(blockRequest.Message.BlockHash[:], blockHash[:])
+	copy(blockRequest.ExecutionPayload.BlockHash[:], blockHash[:])
+}
+
+func updatePayloadHashV3(t *testing.T, blockRequest *BuilderBlockValidationRequestV3) {
+	root := phase0.Hash32(blockRequest.ParentBeaconBlockRoot)
+	blockHash, err := utils.ComputeBlockHash(&api.VersionedExecutionPayload{Version: spec.DataVersionDeneb, Deneb: blockRequest.ExecutionPayload}, &root)
+	require.NoError(t, err)
+	copy(blockRequest.Message.BlockHash[:], blockHash[:])
+	copy(blockRequest.ExecutionPayload.BlockHash[:], blockHash[:])
 }
 
 func generatePreMergeChain(n int) (*core.Genesis, []*types.Block) {
@@ -325,14 +478,14 @@ func generatePreMergeChain(n int) (*core.Genesis, []*types.Block) {
 		Difficulty: big.NewInt(0),
 	}
 	testNonce := uint64(0)
-	generate := func(i int, g *core.BlockGen) {
+	generate := func(_ int, g *core.BlockGen) {
 		g.OffsetTime(5)
 		g.SetExtra([]byte("test"))
 		tx, _ := types.SignTx(types.NewTransaction(testNonce, common.HexToAddress("0x9a9070028361F7AAbeB3f2F2Dc07F82C4a98A02a"), big.NewInt(1), params.TxGas, big.NewInt(params.InitialBaseFee*2), nil), types.LatestSigner(config), testKey)
 		g.AddTx(tx)
 		testNonce++
 	}
-	gblock := genesis.MustCommit(db)
+	gblock := genesis.MustCommit(db, trie.NewDatabase(db, trie.HashDefaults))
 	engine := ethash.NewFaker()
 	blocks, _ := core.GenerateChain(config, gblock, engine, db, n, generate)
 	totalDifficulty := big.NewInt(0)
@@ -340,6 +493,46 @@ func generatePreMergeChain(n int) (*core.Genesis, []*types.Block) {
 		totalDifficulty.Add(totalDifficulty, b.Difficulty())
 	}
 	config.TerminalTotalDifficulty = totalDifficulty
+	return genesis, blocks
+}
+
+func generateMergeChain(n int, merged bool) (*core.Genesis, []*types.Block) {
+	config := *params.AllEthashProtocolChanges
+	engine := consensus.Engine(beaconConsensus.New(ethash.NewFaker()))
+	if merged {
+		config.TerminalTotalDifficulty = common.Big0
+		config.TerminalTotalDifficultyPassed = true
+		engine = beaconConsensus.NewFaker()
+	}
+	genesis := &core.Genesis{
+		Config: &config,
+		Alloc: core.GenesisAlloc{
+			testAddr:                         {Balance: testBalance},
+			params.BeaconRootsStorageAddress: {Balance: common.Big0, Code: common.Hex2Bytes("3373fffffffffffffffffffffffffffffffffffffffe14604457602036146024575f5ffd5b620180005f350680545f35146037575f5ffd5b6201800001545f5260205ff35b6201800042064281555f359062018000015500")},
+		},
+		ExtraData:  []byte("test genesis"),
+		Timestamp:  9000,
+		BaseFee:    big.NewInt(params.InitialBaseFee),
+		Difficulty: big.NewInt(0),
+	}
+	testNonce := uint64(0)
+	generate := func(_ int, g *core.BlockGen) {
+		g.OffsetTime(5)
+		g.SetExtra([]byte("test"))
+		tx, _ := types.SignTx(types.NewTransaction(testNonce, common.HexToAddress("0x9a9070028361F7AAbeB3f2F2Dc07F82C4a98A02a"), big.NewInt(1), params.TxGas, big.NewInt(params.InitialBaseFee*2), nil), types.LatestSigner(&config), testKey)
+		g.AddTx(tx)
+		testNonce++
+	}
+	_, blocks, _ := core.GenerateChainWithGenesis(genesis, engine, n, generate)
+
+	if !merged {
+		totalDifficulty := big.NewInt(0)
+		for _, b := range blocks {
+			totalDifficulty.Add(totalDifficulty, b.Difficulty())
+		}
+		config.TerminalTotalDifficulty = totalDifficulty
+	}
+
 	return genesis, blocks
 }
 
@@ -384,6 +577,7 @@ func assembleBlock(api *BlockValidationAPI, parentHash common.Hash, params *engi
 		GasLimit:     params.GasLimit,
 		Random:       params.Random,
 		Withdrawals:  params.Withdrawals,
+		BeaconRoot:   params.BeaconRoot,
 	}
 
 	payload, err := api.eth.Miner().BuildPayload(args)
@@ -511,6 +705,43 @@ func ExecutableDataToExecutionPayloadV2(data *engine.ExecutableData) (*capella.E
 	}, nil
 }
 
+func ExecutableDataToExecutionPayloadV3(data *engine.ExecutableData) (*deneb.ExecutionPayload, error) {
+	transactionData := make([]bellatrix.Transaction, len(data.Transactions))
+	for i, tx := range data.Transactions {
+		transactionData[i] = bellatrix.Transaction(tx)
+	}
+
+	withdrawalData := make([]*capella.Withdrawal, len(data.Withdrawals))
+	for i, withdrawal := range data.Withdrawals {
+		withdrawalData[i] = &capella.Withdrawal{
+			Index:          capella.WithdrawalIndex(withdrawal.Index),
+			ValidatorIndex: phase0.ValidatorIndex(withdrawal.Validator),
+			Address:        bellatrix.ExecutionAddress(withdrawal.Address),
+			Amount:         phase0.Gwei(withdrawal.Amount),
+		}
+	}
+
+	return &deneb.ExecutionPayload{
+		ParentHash:    [32]byte(data.ParentHash),
+		FeeRecipient:  [20]byte(data.FeeRecipient),
+		StateRoot:     [32]byte(data.StateRoot),
+		ReceiptsRoot:  [32]byte(data.ReceiptsRoot),
+		LogsBloom:     types.BytesToBloom(data.LogsBloom),
+		PrevRandao:    [32]byte(data.Random),
+		BlockNumber:   data.Number,
+		GasLimit:      data.GasLimit,
+		GasUsed:       data.GasUsed,
+		Timestamp:     data.Timestamp,
+		ExtraData:     data.ExtraData,
+		BaseFeePerGas: uint256.MustFromBig(data.BaseFeePerGas),
+		BlockHash:     [32]byte(data.BlockHash),
+		Transactions:  transactionData,
+		Withdrawals:   withdrawalData,
+		BlobGasUsed:   *data.BlobGasUsed,
+		ExcessBlobGas: *data.ExcessBlobGas,
+	}, nil
+}
+
 func WithdrawalToBlockRequestWithdrawal(withdrawals types.Withdrawals) []*capella.Withdrawal {
 	withdrawalsData := make([]*capella.Withdrawal, len(withdrawals))
 	for i, withdrawal := range withdrawals {
@@ -577,7 +808,7 @@ func buildBlock(args buildBlockArgs, chain *core.BlockChain) (*engine.Executable
 		return nil, err
 	}
 
-	execData := engine.BlockToExecutableData(block, common.Big0, nil, nil, nil)
+	execData := engine.BlockToExecutableData(block, common.Big0, nil)
 
 	return execData.ExecutionPayload, nil
 }
@@ -596,9 +827,9 @@ func executableDataToBlockValidationRequest(execData *engine.ExecutableData, pro
 		return nil, errors.New("could not convert value to uint256")
 	}
 	blockRequest := &BuilderBlockValidationRequestV2{
-		SubmitBlockRequest: capellaapi.SubmitBlockRequest{
+		SubmitBlockRequest: builderApiCapella.SubmitBlockRequest{
 			Signature: phase0.BLSSignature{},
-			Message: &apiv1.BidTrace{
+			Message: &builderApiV1.BidTrace{
 				ParentHash:           phase0.Hash32(execData.ParentHash),
 				BlockHash:            phase0.Hash32(execData.BlockHash),
 				ProposerFeeRecipient: proposerAddr,
@@ -609,7 +840,6 @@ func executableDataToBlockValidationRequest(execData *engine.ExecutableData, pro
 			ExecutionPayload: payload,
 		},
 		RegisteredGasLimit: execData.GasLimit,
-		WithdrawalsRoot:    withdrawalsRoot,
 	}
 	return blockRequest, nil
 }

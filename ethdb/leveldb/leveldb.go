@@ -22,6 +22,7 @@ package leveldb
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"time"
 
@@ -146,11 +147,6 @@ func NewCustom(file string, namespace string, customize func(options *opt.Option
 	ldb.seekCompGauge = metrics.NewRegisteredGauge(namespace+"compact/seek", nil)
 	ldb.manualMemAllocGauge = metrics.NewRegisteredGauge(namespace+"memory/manualalloc", nil)
 
-	// leveldb has only up to 7 levels
-	for i := range ldb.levelsGauge {
-		ldb.levelsGauge[i] = metrics.NewRegisteredGauge(namespace+fmt.Sprintf("tables/level%v", i), nil)
-	}
-
 	// Start up the metrics gathering and return
 	go ldb.meter(metricsGatheringInterval, namespace)
 	return ldb, nil
@@ -250,6 +246,11 @@ func (db *Database) NewSnapshot() (ethdb.Snapshot, error) {
 
 // Stat returns a particular internal stat of the database.
 func (db *Database) Stat(property string) (string, error) {
+	if property == "" {
+		property = "leveldb.stats"
+	} else if !strings.HasPrefix(property, "leveldb.") {
+		property = "leveldb." + property
+	}
 	return db.db.GetProperty(property)
 }
 

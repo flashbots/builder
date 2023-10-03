@@ -18,7 +18,6 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
-	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
@@ -195,7 +194,7 @@ func TestSimulatorState(t *testing.T) {
 
 	buildBlock := func(txs []*types.Transaction, requireTx int) *types.Block {
 		// TODO: deneb support
-		txpoolTxs := make([]*txpool.Transaction, len(txs))
+		txpoolTxs := make([]*types.Transaction, len(txs))
 		for i, tx := range txs {
 			signer := types.LatestSigner(b.chain.Config())
 			from, err := signer.Sender(tx)
@@ -207,7 +206,7 @@ func TestSimulatorState(t *testing.T) {
 			balance := sdb.GetBalance(from)
 			require.Greater(t, balance.Cmp(tx.Cost()), 0)
 
-			txpoolTxs[i] = &txpool.Transaction{Tx: tx}
+			txpoolTxs[i] = tx
 		}
 
 		errs := b.txPool.Add(txpoolTxs, true, true, false)
@@ -215,15 +214,25 @@ func TestSimulatorState(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		block, _, err := w.getSealingBlock(b.chain.CurrentBlock().Hash(), b.chain.CurrentHeader().Time+12, testAddress1, 0, common.Hash{}, nil, false, nil)
-		require.NoError(t, err)
-		require.NotNil(t, block)
+		r := w.getSealingBlock(&generateParams{
+			parentHash:  b.chain.CurrentBlock().Hash(),
+			timestamp:   b.chain.CurrentHeader().Time + 12,
+			coinbase:    testAddress1,
+			gasLimit:    0,
+			random:      common.Hash{},
+			withdrawals: nil,
+			beaconRoot:  nil,
+			noTxs:       false,
+			onBlock:     nil,
+		})
+		require.NoError(t, r.err)
+		require.NotNil(t, r.block)
 		if requireTx != -1 {
-			require.Equal(t, requireTx, len(block.Transactions()))
+			require.Equal(t, requireTx, len(r.block.Transactions()))
 		}
-		_, err = b.chain.InsertChain([]*types.Block{block})
+		_, err = b.chain.InsertChain([]*types.Block{r.block})
 		require.NoError(t, err)
-		return block
+		return r.block
 	}
 
 	buildBlock(deploymentTxs, len(deploymentTxs)+1)

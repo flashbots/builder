@@ -188,7 +188,7 @@ var algoTests = []*algoTest{
 		},
 		Bundles: func(acc accByIndex, sign signByIndex, txs txByAccIndexAndNonce) []*bundle {
 			return []*bundle{
-				{Txs: types.Transactions{txs(0, 0).Tx}},
+				{Txs: types.Transactions{txs(0, 0)}},
 			}
 		},
 		WantProfit:          big.NewInt(50_000),
@@ -415,7 +415,7 @@ func (test *algoTest) build(signer types.Signer, scale int) (alloc core.GenesisA
 					signedTx := types.MustSignNewTx(prvs[s*n+i], signer, tx)
 					signedTxs[j] = &txpool.LazyTransaction{
 						Hash:      signedTx.Hash(),
-						Tx:        &txpool.Transaction{Tx: signedTx},
+						Tx:        signedTx,
 						Time:      signedTx.Time(),
 						GasFeeCap: signedTx.GasFeeCap(),
 						GasTipCap: signedTx.GasTipCap(),
@@ -467,10 +467,10 @@ func signByIndexFunc(prvs []*ecdsa.PrivateKey, signer types.Signer) signByIndex 
 
 // txByAccIndexAndNonce returns the transaction with the given nonce of the
 // genesis account with the given index.
-type txByAccIndexAndNonce func(int, uint64) *txpool.Transaction
+type txByAccIndexAndNonce func(int, uint64) *types.Transaction
 
 func txByAccIndexAndNonceFunc(accs []common.Address, txPool map[common.Address][]*txpool.LazyTransaction) txByAccIndexAndNonce {
-	return func(i int, nonce uint64) *txpool.Transaction {
+	return func(i int, nonce uint64) *types.Transaction {
 		if 0 > i || i >= len(accs) {
 			panic(fmt.Sprintf("invalid account %d, should be in [0, %d]", i, len(accs)-1))
 		}
@@ -479,7 +479,7 @@ func txByAccIndexAndNonceFunc(accs []common.Address, txPool map[common.Address][
 
 		// q&d: iterate to find nonce
 		for _, tx := range txs {
-			if tx.Tx.Tx.Nonce() == nonce {
+			if tx.Tx.Nonce() == nonce {
 				return tx.Tx
 			}
 		}

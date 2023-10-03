@@ -73,7 +73,7 @@ var (
 	testUserAddress = crypto.PubkeyToAddress(testUserKey.PublicKey)
 
 	// Test transactions
-	pendingTxs []*txpool.Transaction
+	pendingTxs []*types.Transaction
 	newTxs     []*types.Transaction
 
 	testConfig = &Config{
@@ -105,7 +105,7 @@ func init() {
 		Gas:      params.TxGas,
 		GasPrice: big.NewInt(params.InitialBaseFee),
 	})
-	pendingTxs = append(pendingTxs, &txpool.Transaction{Tx: tx1})
+	pendingTxs = append(pendingTxs, tx1)
 
 	tx2 := types.MustSignNewTx(testBankKey, signer, &types.LegacyTx{
 		Nonce:    1,
@@ -218,8 +218,8 @@ func TestGenerateAndImportBlock(t *testing.T) {
 	w.start()
 
 	for i := 0; i < 5; i++ {
-		b.txPool.Add([]*txpool.Transaction{{Tx: b.newRandomTx(true, testUserAddress, 0, testBankKey, 0, big.NewInt(10*params.InitialBaseFee))}}, true, false, false)
-		b.txPool.Add([]*txpool.Transaction{{Tx: b.newRandomTx(false, testUserAddress, 1000, testBankKey, 0, big.NewInt(10*params.InitialBaseFee))}}, true, false, false)
+		b.txPool.Add([]*types.Transaction{b.newRandomTx(true, testUserAddress, 0, testBankKey, 0, big.NewInt(10*params.InitialBaseFee))}, true, false, false)
+		b.txPool.Add([]*types.Transaction{b.newRandomTx(false, testUserAddress, 1000, testBankKey, 0, big.NewInt(10*params.InitialBaseFee))}, true, false, false)
 
 		select {
 		case ev := <-sub.Chan():
@@ -475,32 +475,52 @@ func testGetSealingWork(t *testing.T, chainConfig *params.ChainConfig, engine co
 
 	// This API should work even when the automatic sealing is not enabled
 	for _, c := range cases {
-		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, nil, true, nil)
+		r := w.getSealingBlock(&generateParams{
+			parentHash:  c.parent,
+			timestamp:   timestamp,
+			coinbase:    c.coinbase,
+			random:      c.random,
+			withdrawals: nil,
+			beaconRoot:  nil,
+			noTxs:       false,
+			forceTime:   true,
+			onBlock:     nil,
+		})
 		if c.expectErr {
-			if err == nil {
+			if r.err == nil {
 				t.Error("Expect error but get nil")
 			}
 		} else {
-			if err != nil {
-				t.Errorf("Unexpected error %v", err)
+			if r.err != nil {
+				t.Errorf("Unexpected error %v", r.err)
 			}
-			assertBlock(block, c.expectNumber, c.coinbase, c.random, true)
+			assertBlock(r.block, c.expectNumber, c.coinbase, c.random, true)
 		}
 	}
 
 	// This API should work even when the automatic sealing is enabled
 	w.start()
 	for _, c := range cases {
-		block, _, err := w.getSealingBlock(c.parent, timestamp, c.coinbase, 0, c.random, nil, false, nil)
+		r := w.getSealingBlock(&generateParams{
+			parentHash:  c.parent,
+			timestamp:   timestamp,
+			coinbase:    c.coinbase,
+			random:      c.random,
+			withdrawals: nil,
+			beaconRoot:  nil,
+			noTxs:       false,
+			forceTime:   true,
+			onBlock:     nil,
+		})
 		if c.expectErr {
-			if err == nil {
+			if r.err == nil {
 				t.Error("Expect error but get nil")
 			}
 		} else {
-			if err != nil {
-				t.Errorf("Unexpected error %v", err)
+			if r.err != nil {
+				t.Errorf("Unexpected error %v", r.err)
 			}
-			assertBlock(block, c.expectNumber, c.coinbase, c.random, false)
+			assertBlock(r.block, c.expectNumber, c.coinbase, c.random, false)
 		}
 	}
 }
@@ -639,16 +659,25 @@ func testBundles(t *testing.T) {
 			require.NoError(t, err)
 		}
 
-		block, _, err := w.getSealingBlock(w.chain.CurrentBlock().Hash(), w.chain.CurrentHeader().Time+12, testUserAddress, 0, common.Hash{}, nil, false, nil)
-		require.NoError(t, err)
+		r := w.getSealingBlock(&generateParams{
+			parentHash:  w.chain.CurrentBlock().Hash(),
+			timestamp:   w.chain.CurrentHeader().Time + 12,
+			coinbase:    testUserAddress,
+			random:      common.Hash{},
+			withdrawals: nil,
+			beaconRoot:  nil,
+			noTxs:       false,
+			onBlock:     nil,
+		})
+		require.NoError(t, r.err)
 
 		state, err := w.chain.State()
 		require.NoError(t, err)
 		balancePre := state.GetBalance(testUserAddress)
-		if _, err := w.chain.InsertChain([]*types.Block{block}); err != nil {
-			t.Fatalf("failed to insert new mined block %d: %v", block.NumberU64(), err)
+		if _, err := w.chain.InsertChain([]*types.Block{r.block}); err != nil {
+			t.Fatalf("failed to insert new mined block %d: %v", r.block.NumberU64(), err)
 		}
-		state, err = w.chain.StateAt(block.Root())
+		state, err = w.chain.StateAt(r.block.Root())
 		require.NoError(t, err)
 		balancePost := state.GetBalance(testUserAddress)
 		t.Log("Balances", balancePre, balancePost)

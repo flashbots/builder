@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	apiv1 "github.com/attestantio/go-builder-client/api/v1"
+	builderApiV1 "github.com/attestantio/go-builder-client/api/v1"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -120,7 +120,7 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 		Success: true,
 	}
 
-	bidTrace := &apiv1.BidTrace{}
+	bidTrace := &builderApiV1.BidTrace{}
 
 	ocAt := time.Now().Add(-time.Hour).UTC()
 	sealedAt := time.Now().Add(-30 * time.Minute).UTC()
