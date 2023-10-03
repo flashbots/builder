@@ -412,6 +412,9 @@ func (api *ConsensusAPI) ExchangeTransitionConfigurationV1(config engine.Transit
 
 // GetPayloadV1 returns a cached payload by id.
 func (api *ConsensusAPI) GetPayloadV1(payloadID engine.PayloadID) (*engine.ExecutableData, error) {
+	if payloadID.Version() != engine.PayloadV1 {
+		return nil, engine.UnsupportedFork
+	}
 	data, err := api.getPayload(payloadID, false)
 	if err != nil {
 		return nil, err
@@ -421,11 +424,18 @@ func (api *ConsensusAPI) GetPayloadV1(payloadID engine.PayloadID) (*engine.Execu
 
 // GetPayloadV2 returns a cached payload by id.
 func (api *ConsensusAPI) GetPayloadV2(payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error) {
+	version := payloadID.Version()
+	if version != engine.PayloadV1 && version != engine.PayloadV2 {
+		return nil, engine.UnsupportedFork
+	}
 	return api.getPayload(payloadID, false)
 }
 
 // GetPayloadV3 returns a cached payload by id.
 func (api *ConsensusAPI) GetPayloadV3(payloadID engine.PayloadID) (*engine.ExecutionPayloadEnvelope, error) {
+	if payloadID.Version() != engine.PayloadV3 {
+		return nil, engine.UnsupportedFork
+	}
 	return api.getPayload(payloadID, false)
 }
 
