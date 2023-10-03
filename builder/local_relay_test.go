@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/ethereum/go-ethereum/core"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/core"
 
 	"github.com/attestantio/go-builder-client/api"
 	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"

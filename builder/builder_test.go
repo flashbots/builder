@@ -1,10 +1,11 @@
 package builder
 
 import (
-	"github.com/ethereum/go-ethereum/core"
 	"math/big"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/core"
 
 	apiv1 "github.com/attestantio/go-builder-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
@@ -62,7 +63,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 		ReceiptsRoot: common.Hash{0x08, 0x20},
 		LogsBloom:    types.Bloom{}.Bytes(),
 		Number:       uint64(10),
-		GasLimit:     uint64(expectedGasLimit),
+		GasLimit:     expectedGasLimit,
 		GasUsed:      uint64(100),
 		Timestamp:    uint64(105),
 		ExtraData:    hexutil.MustDecode("0x0042fafc"),
@@ -117,7 +118,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 		BuilderPubkey:        builder.builderPublicKey,
 		ProposerPubkey:       expectedProposerPubkey,
 		ProposerFeeRecipient: feeRecipient,
-		GasLimit:             uint64(expectedGasLimit),
+		GasLimit:             expectedGasLimit,
 		GasUsed:              uint64(100),
 		Value:                &uint256.Int{0x0a},
 	}
