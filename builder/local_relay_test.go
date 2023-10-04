@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core"
+
 	"github.com/attestantio/go-builder-client/api"
 	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
 	apiv1 "github.com/attestantio/go-builder-client/api/v1"
@@ -28,6 +30,10 @@ import (
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/time/rate"
+)
+
+const (
+	testLocalRelayValidatorGasLimit = 15_000_000
 )
 
 func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *types.Block, blockValue *big.Int) (*Builder, *LocalRelay, *ValidatorPrivateData) {
@@ -109,7 +115,7 @@ func prepareRegistrationMessage(t *testing.T, domain phase0.Domain, v *Validator
 
 	msg := apiv1.ValidatorRegistration{
 		FeeRecipient: bellatrix.ExecutionAddress{0x42},
-		GasLimit:     15_000_000,
+		GasLimit:     testLocalRelayValidatorGasLimit,
 		Timestamp:    time.Now(),
 		Pubkey:       pubkey,
 	}
@@ -139,9 +145,10 @@ func TestGetHeader(t *testing.T) {
 		ParentHash:    common.HexToHash("0xafafafa"),
 		FeeRecipient:  common.Address{0x01},
 		LogsBloom:     types.Bloom{0x00, 0x05, 0x10}.Bytes(),
-		BlockHash:     common.HexToHash("0x24e6998e4d2b4fd85f7f0d27ac4b87aaf0ec18e156e4b6e194ab5dadee0cd004"),
+		BlockHash:     common.HexToHash("0x64559c793c74678dff3f5d25aa328526cdb6013f13b6d989d491a8e1d9cac77a"),
 		BaseFeePerGas: big.NewInt(12),
 		ExtraData:     []byte{},
+		GasLimit:      10_000_000,
 	}
 
 	forkchoiceBlock, err := engine.ExecutableDataToBlock(*forkchoiceData)
@@ -164,8 +171,13 @@ func TestGetHeader(t *testing.T) {
 	require.Equal(t, ``, rr.Body.String())
 	require.Equal(t, 204, rr.Code)
 
-	err = backend.OnPayloadAttribute(&types.BuilderPayloadAttributes{})
+	attrs := &types.BuilderPayloadAttributes{}
+	err = backend.OnPayloadAttribute(attrs)
 	require.NoError(t, err)
+
+	expectedGasLimit := core.CalcGasLimit(forkchoiceData.GasLimit, testLocalRelayValidatorGasLimit)
+	require.Equal(t, attrs.GasLimit, expectedGasLimit)
+
 	time.Sleep(2 * time.Second)
 
 	path = fmt.Sprintf("/eth/v1/builder/header/%d/%s/%s", 0, forkchoiceData.ParentHash.Hex(), validator.Pk.String())

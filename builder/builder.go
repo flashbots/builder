@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethereum/go-ethereum/core"
+
 	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
 	capellaapi "github.com/attestantio/go-builder-client/api/capella"
 	apiv1 "github.com/attestantio/go-builder-client/api/v1"
@@ -346,8 +348,13 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 		return fmt.Errorf("could not get validator while submitting block for slot %d - %w", attrs.Slot, err)
 	}
 
+	parentBlock := b.eth.GetBlockByHash(attrs.HeadHash)
+	if parentBlock == nil {
+		return fmt.Errorf("parent block hash not found in block tree given head block hash %s", attrs.HeadHash)
+	}
+
 	attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
-	attrs.GasLimit = vd.GasLimit
+	attrs.GasLimit = core.CalcGasLimit(parentBlock.GasLimit(), vd.GasLimit)
 
 	proposerPubkey, err := utils.HexToPubkey(string(vd.Pubkey))
 	if err != nil {
@@ -356,11 +363,6 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 
 	if !b.eth.Synced() {
 		return errors.New("backend not Synced")
-	}
-
-	parentBlock := b.eth.GetBlockByHash(attrs.HeadHash)
-	if parentBlock == nil {
-		return fmt.Errorf("parent block hash not found in block tree given head block hash %s", attrs.HeadHash)
 	}
 
 	b.slotMu.Lock()
