@@ -8,6 +8,12 @@ GOBIN = ./build/bin
 GO ?= latest
 GORUN = env GO111MODULE=on go run
 
+bor:
+	mkdir -p $(GOPATH)/bin/
+	go build -o $(GOBIN)/bor $(GO_LDFLAGS) ./cmd/cli/main.go
+	cp $(GOBIN)/bor $(GOPATH)/bin/
+	@echo "Done building."
+
 geth:
 	$(GORUN) build/ci.go install ./cmd/geth
 	@echo "Done building."
