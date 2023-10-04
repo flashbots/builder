@@ -67,8 +67,8 @@ func (b *greedyMultiSnapBuilder) buildBlock(simBundles []types.SimulatedBundle, 
 			return b.inputEnvironment, usedBundles, usedSbundles
 		}
 
-		if tx := order.Tx(); tx != nil {
-			receipt, skip, err := changes.commitTx(tx.Resolve(), b.chainData)
+		if tx := order.Tx(); tx != nil && tx.Resolve() != nil {
+			receipt, skip, err := changes.commitTx(tx.Tx, b.chainData)
 			switch skip {
 			case shiftTx:
 				orders.Shift()

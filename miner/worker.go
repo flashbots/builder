@@ -1041,13 +1041,13 @@ func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAn
 		// Check whether the tx is replay protected. If we're not in the EIP155 hf
 		// phase, start ignoring the sender until we do.
 		if tx.Tx.Protected() && !w.chainConfig.IsEIP155(env.header.Number) {
-			log.Trace("Ignoring replay protected transaction", "hash", tx.Tx.Hash(), "eip155", w.chainConfig.EIP155Block)
+			log.Trace("Ignoring replay protected transaction", "hash", tx.Hash, "eip155", w.chainConfig.EIP155Block)
 			txs.Pop()
 			continue
 		}
 
 		// Start executing the transaction
-		env.state.SetTxContext(tx.Tx.Hash(), env.tcount)
+		env.state.SetTxContext(tx.Hash, env.tcount)
 
 		logs, err := w.commitTransaction(env, tx.Tx)
 		switch {
@@ -1065,7 +1065,7 @@ func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAn
 		default:
 			// Transaction is regarded as invalid, drop all consecutive transactions from
 			// the same sender because of `nonce-too-high` clause.
-			log.Debug("Transaction failed, account skipped", "hash", tx.Tx.Hash(), "err", err)
+			log.Debug("Transaction failed, account skipped", "hash", tx.Hash, "err", err)
 			txs.Pop()
 		}
 	}
@@ -1228,7 +1228,7 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) ([]
 	mempoolTxHashes := make(map[common.Hash]struct{}, len(pending))
 	for _, txs := range pending {
 		for _, tx := range txs {
-			mempoolTxHashes[tx.Tx.Hash()] = struct{}{}
+			mempoolTxHashes[tx.Hash] = struct{}{}
 		}
 	}
 
@@ -1298,7 +1298,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *atomic.Int32, env *enviro
 	mempoolTxHashes := make(map[common.Hash]struct{}, len(pending))
 	for _, txs := range pending {
 		for _, tx := range txs {
-			mempoolTxHashes[tx.Tx.Hash()] = struct{}{}
+			mempoolTxHashes[tx.Hash] = struct{}{}
 		}
 	}
 	bundlesToConsider, sbundlesToConsider, err := w.getSimulatedBundles(env)
