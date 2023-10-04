@@ -138,7 +138,7 @@ func (r *RemoteRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, _ Validator
 	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
 	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"
 	if r.cancellationsEnabled {
-		endpoint = endpoint + "?cancellations=true"
+		endpoint = endpoint + "?cancellations=1"
 	}
 	code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg, nil)
 	if err != nil {
@@ -160,7 +160,7 @@ func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ Vali
 
 	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"
 	if r.cancellationsEnabled {
-		endpoint = endpoint + "?cancellations=true"
+		endpoint = endpoint + "?cancellations=1"
 	}
 
 	if r.config.SszEnabled {
