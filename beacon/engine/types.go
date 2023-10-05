@@ -32,6 +32,16 @@ import (
 	"github.com/ethereum/go-ethereum/trie"
 )
 
+// PayloadVersion denotes the version of PayloadAttributes used to request the
+// building of the payload to commence.
+type PayloadVersion byte
+
+var (
+	PayloadV1 PayloadVersion = 0x1
+	PayloadV2 PayloadVersion = 0x2
+	PayloadV3 PayloadVersion = 0x3
+)
+
 //go:generate go run github.com/fjl/gencodec -type PayloadAttributes -field-override payloadAttributesMarshaling -out gen_blockparams.go
 
 // PayloadAttributes describes the environment context in which a block should
@@ -122,6 +132,10 @@ type TransitionConfigurationV1 struct {
 
 // PayloadID is an identifier of the payload build process
 type PayloadID [8]byte
+
+func (b PayloadID) Version() PayloadVersion {
+	return PayloadVersion(b[0])
+}
 
 func (b PayloadID) String() string {
 	return hexutil.Encode(b[:])

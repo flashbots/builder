@@ -1456,9 +1456,6 @@ func setupReceiptBackend(t *testing.T, genBlocks int) (*testBackend, []common.Ha
 			b.AddTx(tx)
 			txHashes[i] = tx.Hash()
 		}
-		if i == 5 {
-			b.SetBlobGas(params.BlobTxBlobGasPerBlob)
-		}
 		b.SetPoS()
 	})
 	return backend, txHashes

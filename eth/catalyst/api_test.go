@@ -211,6 +211,7 @@ func TestEth2PrepareAndGetPayload(t *testing.T) {
 		GasLimit:     blockParams.GasLimit,
 		Random:       blockParams.Random,
 		BeaconRoot:   blockParams.BeaconRoot,
+		Version:      engine.PayloadV1,
 	}).Id()
 	execData, err := api.GetPayloadV1(payloadID)
 	if err != nil {
@@ -1080,6 +1081,7 @@ func TestWithdrawals(t *testing.T) {
 		Random:       blockParams.Random,
 		Withdrawals:  blockParams.Withdrawals,
 		BeaconRoot:   blockParams.BeaconRoot,
+		Version:      engine.PayloadV2,
 	}).Id()
 	execData, err := api.GetPayloadV2(payloadID)
 	if err != nil {
@@ -1129,6 +1131,7 @@ func TestWithdrawals(t *testing.T) {
 		Random:       blockParams.Random,
 		Withdrawals:  blockParams.Withdrawals,
 		BeaconRoot:   blockParams.BeaconRoot,
+		Version:      engine.PayloadV2,
 	}).Id()
 	execData, err = api.GetPayloadV2(payloadID)
 	if err != nil {
@@ -1160,123 +1163,135 @@ func TestWithdrawals(t *testing.T) {
 	}
 }
 
-// func TestNilWithdrawals(t *testing.T) {
-//         genesis, blocks := generateMergeChain(10, true)
-//         // Set shanghai time to last block + 4 seconds (first post-merge block)
-//         time := blocks[len(blocks)-1].Time() + 4
-//         genesis.Config.ShanghaiTime = &time
+func TestNilWithdrawals(t *testing.T) {
+	genesis, blocks := generateMergeChain(10, true)
+	// Set shanghai time to last block + 4 seconds (first post-merge block)
+	time := blocks[len(blocks)-1].Time() + 4
+	genesis.Config.ShanghaiTime = &time
 
-//         n, ethservice := startEthService(t, genesis, blocks)
-//         ethservice.Merger().ReachTTD()
-//         defer n.Close()
+	n, ethservice := startEthService(t, genesis, blocks)
+	ethservice.Merger().ReachTTD()
+	defer n.Close()
 
-//         api := NewConsensusAPI(ethservice)
-//         parent := ethservice.BlockChain().CurrentHeader()
-//         aa := common.Address{0xaa}
+	api := NewConsensusAPI(ethservice)
+	parent := ethservice.BlockChain().CurrentHeader()
+	aa := common.Address{0xaa}
 
-//         type test struct {
-//                 blockParams engine.PayloadAttributes
-//                 wantErr     bool
-//         }
-//         tests := []test{
-//                 // Before Shanghai
-//                 {
-//                         blockParams: engine.PayloadAttributes{
-//                                 Timestamp:   parent.Time + 2,
-//                                 Withdrawals: nil,
-//                         },
-//                         wantErr: false,
-//                 },
-//                 {
-//                         blockParams: engine.PayloadAttributes{
-//                                 Timestamp:   parent.Time + 2,
-//                                 Withdrawals: make([]*types.Withdrawal, 0),
-//                         },
-//                         wantErr: true,
-//                 },
-//                 {
-//                         blockParams: engine.PayloadAttributes{
-//                                 Timestamp: parent.Time + 2,
-//                                 Withdrawals: []*types.Withdrawal{
-//                                         {
-//                                                 Index:   0,
-//                                                 Address: aa,
-//                                                 Amount:  32,
-//                                         },
-//                                 },
-//                         },
-//                         wantErr: true,
-//                 },
-//                 // After Shanghai
-//                 {
-//                         blockParams: engine.PayloadAttributes{
-//                                 Timestamp:   parent.Time + 5,
-//                                 Withdrawals: nil,
-//                         },
-//                         wantErr: true,
-//                 },
-//                 {
-//                         blockParams: engine.PayloadAttributes{
-//                                 Timestamp:   parent.Time + 5,
-//                                 Withdrawals: make([]*types.Withdrawal, 0),
-//                         },
-//                         wantErr: false,
-//                 },
-//                 {
-//                         blockParams: engine.PayloadAttributes{
-//                                 Timestamp: parent.Time + 5,
-//                                 Withdrawals: []*types.Withdrawal{
-//                                         {
-//                                                 Index:   0,
-//                                                 Address: aa,
-//                                                 Amount:  32,
-//                                         },
-//                                 },
-//                         },
-//                         wantErr: false,
-//                 },
-//         }
+	type test struct {
+		blockParams engine.PayloadAttributes
+		wantErr     bool
+	}
+	tests := []test{
+		// Before Shanghai
+		{
+			blockParams: engine.PayloadAttributes{
+				Timestamp:   parent.Time + 2,
+				Withdrawals: nil,
+			},
+			wantErr: false,
+		},
+		{
+			blockParams: engine.PayloadAttributes{
+				Timestamp:   parent.Time + 2,
+				Withdrawals: make([]*types.Withdrawal, 0),
+			},
+			wantErr: true,
+		},
+		{
+			blockParams: engine.PayloadAttributes{
+				Timestamp: parent.Time + 2,
+				Withdrawals: []*types.Withdrawal{
+					{
+						Index:   0,
+						Address: aa,
+						Amount:  32,
+					},
+				},
+			},
+			wantErr: true,
+		},
+		// After Shanghai
+		{
+			blockParams: engine.PayloadAttributes{
+				Timestamp:   parent.Time + 5,
+				Withdrawals: nil,
+			},
+			wantErr: true,
+		},
+		{
+			blockParams: engine.PayloadAttributes{
+				Timestamp:   parent.Time + 5,
+				Withdrawals: make([]*types.Withdrawal, 0),
+			},
+			wantErr: false,
+		},
+		{
+			blockParams: engine.PayloadAttributes{
+				Timestamp: parent.Time + 5,
+				Withdrawals: []*types.Withdrawal{
+					{
+						Index:   0,
+						Address: aa,
+						Amount:  32,
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
 
-//         fcState := engine.ForkchoiceStateV1{
-//                 HeadBlockHash: parent.Hash(),
-//         }
+	fcState := engine.ForkchoiceStateV1{
+		HeadBlockHash: parent.Hash(),
+	}
 
-//         for _, test := range tests {
-//                 var err error
-//                 if genesis.Config.IsShanghai(genesis.Config.LondonBlock, test.blockParams.Timestamp) {
-//                         _, err = api.ForkchoiceUpdatedV2(fcState, &test.blockParams)
-//                 } else {
-//                         _, err = api.ForkchoiceUpdatedV1(fcState, &test.blockParams)
-//                 }
-//                 if test.wantErr {
-//                         if err == nil {
-//                                 t.Fatal("wanted error on fcuv2 with invalid withdrawals")
-//                         }
-//                         continue
-//                 }
-//                 if err != nil {
-//                         t.Fatalf("error preparing payload, err=%v", err)
-//                 }
+	for _, test := range tests {
+		var (
+			err            error
+			payloadVersion engine.PayloadVersion
+			shanghai       = genesis.Config.IsShanghai(genesis.Config.LondonBlock, test.blockParams.Timestamp)
+		)
+		if !shanghai {
+			payloadVersion = engine.PayloadV1
+			_, err = api.ForkchoiceUpdatedV1(fcState, &test.blockParams)
+		} else {
+			payloadVersion = engine.PayloadV2
+			_, err = api.ForkchoiceUpdatedV2(fcState, &test.blockParams)
+		}
+		if test.wantErr {
+			if err == nil {
+				t.Fatal("wanted error on fcuv2 with invalid withdrawals")
+			}
+			continue
+		}
+		if err != nil {
+			t.Fatalf("error preparing payload, err=%v", err)
+		}
 
-//                 // 11: verify locally build block.
-//                 payloadID := (&miner.BuildPayloadArgs{
-//                         Parent:       fcState.HeadBlockHash,
-//                         Timestamp:    test.blockParams.Timestamp,
-//                         FeeRecipient: test.blockParams.SuggestedFeeRecipient,
-//                         Random:       test.blockParams.Random,
-//                         BeaconRoot:   test.blockParams.BeaconRoot,
-//                 }).Id()
-//                 execData, err := api.GetPayloadV2(payloadID)
-//                 if err != nil {
-//                         t.Fatalf("error getting payload, err=%v", err)
-//                 }
-//                 if status, err := api.NewPayloadV2(*execData.ExecutionPayload); err != nil {
-//                         t.Fatalf("error validating payload: %v", err)
-//                 } else if status.Status != engine.VALID {
-//                         t.Fatalf("invalid payload")
-//                 }
-//         }
-// }
+		// 11: verify locally build block.
+		payloadID := (&miner.BuildPayloadArgs{
+			Parent:       fcState.HeadBlockHash,
+			Timestamp:    test.blockParams.Timestamp,
+			FeeRecipient: test.blockParams.SuggestedFeeRecipient,
+			Random:       test.blockParams.Random,
+			Version:      payloadVersion,
+		}).Id()
+		execData, err := api.GetPayloadV2(payloadID)
+		if err != nil {
+			t.Fatalf("error getting payload, err=%v", err)
+		}
+		var status engine.PayloadStatusV1
+		if !shanghai {
+			status, err = api.NewPayloadV1(*execData.ExecutionPayload)
+		} else {
+			status, err = api.NewPayloadV2(*execData.ExecutionPayload)
+		}
+		if err != nil {
+			t.Fatalf("error validating payload: %v", err.(*engine.EngineAPIError).ErrorData())
+		} else if status.Status != engine.VALID {
+			t.Fatalf("invalid payload")
+		}
+	}
+}
 
 func setupBodies(t *testing.T) (*node.Node, *eth.Ethereum, []*types.Block) {
 	genesis, blocks := generateMergeChain(10, true)
@@ -1613,6 +1628,7 @@ func TestParentBeaconBlockRoot(t *testing.T) {
 		Random:       blockParams.Random,
 		Withdrawals:  blockParams.Withdrawals,
 		BeaconRoot:   blockParams.BeaconRoot,
+		Version:      engine.PayloadV3,
 	}).Id()
 	execData, err := api.GetPayloadV3(payloadID)
 	if err != nil {
