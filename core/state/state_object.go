@@ -201,7 +201,9 @@ func (s *stateObject) GetCommittedState(db Database, key common.Hash) common.Has
 			s.db.setError(err)
 			return common.Hash{}
 		}
-		enc, err = tr.TryGet(key.Bytes())
+
+		enc, err = tr.GetStorage(s.address, key.Bytes())
+
 		if metrics.EnabledExpensive {
 			s.db.StorageReads += time.Since(start)
 		}

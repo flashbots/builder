@@ -17,15 +17,13 @@
 package core
 
 import (
-	crand "crypto/rand"
 	"errors"
+	"github.com/maticnetwork/crand"
 	"math/big"
-	mrand "math/rand"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -47,25 +45,30 @@ type ChainReader interface {
 // for all other proof-of-work networks.
 type ForkChoice struct {
 	chain ChainReader
-	rand  *mrand.Rand
+	rand  Floater
 
 	// preserve is a helper function used in td fork choice.
 	// Miners will prefer to choose the local mined block if the
 	// local td is equal to the extern one. It can be nil for light
 	// client
 	preserve func(header *types.Header) bool
+
+	validator ethereum.ChainValidator
 }
 
-func NewForkChoice(chainReader ChainReader, preserve func(header *types.Header) bool) *ForkChoice {
+type Floater interface {
+	Float64() float64
+}
+
+func NewForkChoice(chainReader ChainReader, preserve func(header *types.Header) bool, validator ethereum.ChainValidator) *ForkChoice {
 	// Seed a fast but crypto originating random generator
-	seed, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64))
-	if err != nil {
-		log.Crit("Failed to initialize random seed", "err", err)
-	}
+	r := crand.NewRand()
+
 	return &ForkChoice{
-		chain:    chainReader,
-		rand:     mrand.New(mrand.NewSource(seed.Int64())),
-		preserve: preserve,
+		chain:     chainReader,
+		rand:      r,
+		preserve:  preserve,
+		validator: validator,
 	}
 }
 
@@ -110,4 +113,14 @@ func (f *ForkChoice) ReorgNeeded(current *types.Header, extern *types.Header) (b
 		reorg = !currentPreserve && (externPreserve || f.rand.Float64() < 0.5)
 	}
 	return reorg, nil
+}
+
+// ValidateReorg calls the chain validator service to check if the reorg is valid or not
+func (f *ForkChoice) ValidateReorg(current *types.Header, chain []*types.Header) (bool, error) {
+	// Call the bor chain validator service
+	if f.validator != nil {
+		return f.validator.IsValidChain(current, chain)
+	}
+
+	return true, nil
 }
