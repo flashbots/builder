@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 )
 
 // environmentDiff is a helper struct used to apply transactions to a block using a copy of the state at that block
@@ -24,6 +25,8 @@ type environmentDiff struct {
 	newProfit       *big.Int
 	newTxs          []*types.Transaction
 	newReceipts     []*types.Receipt
+	newSidecars     []*types.BlobTxSidecar
+	newBlobs        int
 }
 
 func newEnvironmentDiff(env *environment) *environmentDiff {
@@ -48,6 +51,8 @@ func (envDiff *environmentDiff) copy() *environmentDiff {
 		newProfit:       new(big.Int).Set(envDiff.newProfit),
 		newTxs:          envDiff.newTxs[:],
 		newReceipts:     envDiff.newReceipts[:],
+		newSidecars:     envDiff.newSidecars[:],
+		newBlobs:        envDiff.newBlobs,
 	}
 }
 
@@ -61,10 +66,36 @@ func (envDiff *environmentDiff) applyToBaseEnv() {
 	env.tcount += len(envDiff.newTxs)
 	env.txs = append(env.txs, envDiff.newTxs...)
 	env.receipts = append(env.receipts, envDiff.newReceipts...)
+	env.sidecars = append(env.sidecars, envDiff.newSidecars...)
+	env.blobs += envDiff.newBlobs
 }
 
-// commit tx to envDiff
-func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
+func (envDiff *environmentDiff) commitBlobTx(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
+	sc := tx.BlobTxSidecar()
+	if sc == nil {
+		panic("blob transaction without blobs in miner")
+	}
+	// Checking against blob gas limit: It's kind of ugly to perform this check here, but there
+	// isn't really a better place right now. The blob gas limit is checked at block validation time
+	// and not during execution. This means core.ApplyTransaction will not return an error if the
+	// tx has too many blobs. So we have to explicitly check it here.
+	if (envDiff.newBlobs+len(sc.Blobs))*params.BlobTxBlobGasPerBlob > params.MaxBlobGasPerBlock {
+		// TODO: (deneb) shift or pop tx?
+		return nil, shiftTx, errors.New("max data blobs reached")
+	}
+	receipt, txType, err := envDiff.commitLegacyTx(tx, chData)
+	if err != nil {
+		return nil, txType, err
+	}
+
+	envDiff.newSidecars = append(envDiff.newSidecars, sc)
+	envDiff.newBlobs += len(sc.Blobs)
+	*envDiff.header.BlobGasUsed += receipt.BlobGasUsed
+	return receipt, txType, nil
+}
+
+// commitLegacyTx commits a legacy transaction to envDiff
+func (envDiff *environmentDiff) commitLegacyTx(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
 	header := envDiff.header
 	coinbase := &envDiff.baseEnvironment.coinbase
 	signer := envDiff.baseEnvironment.signer
@@ -119,6 +150,14 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 	envDiff.newReceipts = append(envDiff.newReceipts, receipt)
 
 	return receipt, shiftTx, nil
+}
+
+// commit tx to envDiff
+func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
+	if tx.Type() == types.BlobTxType {
+		return envDiff.commitBlobTx(tx, chData)
+	}
+	return envDiff.commitLegacyTx(tx, chData)
 }
 
 // Commit Bundle to env diff

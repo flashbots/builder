@@ -94,6 +94,7 @@ func testTransactionPriceNonceSort(t *testing.T, baseFee *big.Int) {
 				GasTipCap: tx.GasTipCap(),
 				Gas:       tx.Gas(),
 				BlobGas:   tx.BlobGas(),
+				GasPrice:  tx.GasPrice(),
 			})
 		}
 		expectedCount += count
@@ -161,6 +162,7 @@ func TestTransactionTimeSort(t *testing.T) {
 			GasTipCap: tx.GasTipCap(),
 			Gas:       tx.Gas(),
 			BlobGas:   tx.BlobGas(),
+			GasPrice:  tx.GasPrice(),
 		})
 	}
 	// Sort the transactions and cross check the nonce ordering

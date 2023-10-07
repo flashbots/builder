@@ -626,6 +626,7 @@ func (w *worker) mainLoop() {
 						GasTipCap: tx.GasTipCap(),
 						Gas:       tx.Gas(),
 						BlobGas:   tx.BlobGas(),
+						GasPrice:  tx.GasPrice(),
 					})
 				}
 				txset := newTransactionsByPriceAndNonce(w.current.signer, txs, nil, nil, w.current.header.BaseFee)

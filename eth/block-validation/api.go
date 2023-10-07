@@ -153,12 +153,12 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockV
 
 type BuilderBlockValidationRequestV2 struct {
 	builderApiCapella.SubmitBlockRequest
-	RegisteredGasLimit uint64      `json:"registered_gas_limit,string"`
+	RegisteredGasLimit uint64 `json:"registered_gas_limit,string"`
 }
 
 func (r *BuilderBlockValidationRequestV2) UnmarshalJSON(data []byte) error {
 	params := &struct {
-		RegisteredGasLimit uint64      `json:"registered_gas_limit,string"`
+		RegisteredGasLimit uint64 `json:"registered_gas_limit,string"`
 	}{}
 	err := json.Unmarshal(data, params)
 	if err != nil {

@@ -68,7 +68,7 @@ func (b *greedyBucketsMultiSnapBuilder) commit(changes *envChanges,
 		orderFailed := false
 
 		if tx := order.Tx(); tx != nil && tx.Resolve() != nil {
-			receipt, skip, err := changes.commitTx(tx.Resolve(), b.chainData)
+			receipt, skip, err := changes.commitTx(tx.Tx, b.chainData)
 			orderFailed = err != nil
 			if err != nil {
 				log.Trace("could not apply tx", "hash", tx.Hash, "err", err)
@@ -87,7 +87,7 @@ func (b *greedyBucketsMultiSnapBuilder) commit(changes *envChanges,
 					orders.ShiftAndPushByAccountForTx(tx)
 				}
 				// we don't check for error here because if EGP returns error, it would have been caught and returned by commitTx
-				effGapPrice, _ := tx.Resolve().EffectiveGasTip(changes.env.header.BaseFee)
+				effGapPrice, _ := tx.Tx.EffectiveGasTip(changes.env.header.BaseFee)
 				log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
 			}
 		} else if bundle := order.Bundle(); bundle != nil {

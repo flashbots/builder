@@ -1419,6 +1419,7 @@ func (p *BlobPool) Pending(enforceTips bool) map[common.Address][]*txpool.LazyTr
 				GasTipCap: tx.execTipCap.ToBig(),
 				Gas:       tx.execGas,
 				BlobGas:   tx.blobGas,
+				GasPrice:  tx.execFeeCap.ToBig(),
 			})
 		}
 		if len(lazies) > 0 {

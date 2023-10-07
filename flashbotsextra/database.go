@@ -20,8 +20,8 @@ const (
 )
 
 type IDatabaseService interface {
-	ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, OrdersClosedAt time.Time, sealedAt time.Time,
-		commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle,
+	ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, OrdersClosedAt, sealedAt time.Time,
+		commitedBundles, allBundles []types.SimulatedBundle,
 		usedSbundles []types.UsedSBundle,
 		bidTrace *builderApiV1.BidTrace)
 	GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error)
@@ -30,7 +30,7 @@ type IDatabaseService interface {
 
 type NilDbService struct{}
 
-func (NilDbService) ConsumeBuiltBlock(block *types.Block, _ *big.Int, _ time.Time, _ time.Time, _ []types.SimulatedBundle, _ []types.SimulatedBundle, _ []types.UsedSBundle, _ *builderApiV1.BidTrace) {
+func (NilDbService) ConsumeBuiltBlock(block *types.Block, _ *big.Int, _, _ time.Time, _, _ []types.SimulatedBundle, _ []types.UsedSBundle, _ *builderApiV1.BidTrace) {
 }
 
 func (NilDbService) GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error) {
@@ -85,7 +85,7 @@ func NewDatabaseService(postgresDSN string) (*DatabaseService, error) {
 	}, nil
 }
 
-func Min(l int, r int) int {
+func Min(l, r int) int {
 	if l < r {
 		return l
 	}
@@ -172,7 +172,7 @@ func (ds *DatabaseService) getBundleIdsAndInsertMissingBundles(ctx context.Conte
 	return bundleIdsMap, nil
 }
 
-func (ds *DatabaseService) insertBuildBlock(tx *sqlx.Tx, ctx context.Context, block *types.Block, blockValue *big.Int, bidTrace *builderApiV1.BidTrace, ordersClosedAt time.Time, sealedAt time.Time) (uint64, error) {
+func (ds *DatabaseService) insertBuildBlock(tx *sqlx.Tx, ctx context.Context, block *types.Block, blockValue *big.Int, bidTrace *builderApiV1.BidTrace, ordersClosedAt, sealedAt time.Time) (uint64, error) {
 	blockData := BuiltBlock{
 		BlockNumber:          block.NumberU64(),
 		Profit:               new(big.Rat).SetFrac(blockValue, big.NewInt(1e18)).FloatString(18),
@@ -244,10 +244,11 @@ func (ds *DatabaseService) insertUsedSBundleIds(tx *sqlx.Tx, ctx context.Context
 	return err
 }
 
-func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time,
-	commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle,
+func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
+	commitedBundles, allBundles []types.SimulatedBundle,
 	usedSbundles []types.UsedSBundle,
-	bidTrace *builderApiV1.BidTrace) {
+	bidTrace *builderApiV1.BidTrace,
+) {
 	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 
@@ -302,6 +303,7 @@ func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, blockValue *big
 		log.Error("could not commit DB trasnaction", "err", err)
 	}
 }
+
 func (ds *DatabaseService) GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error) {
 	var bundles []DbBundle
 	arg := map[string]interface{}{"param_block_number": uint64(blockNum), "is_high_prio": isHighPrio, "limit": lowPrioLimitSize}

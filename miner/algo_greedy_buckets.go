@@ -72,7 +72,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 
 	for _, order := range transactions {
 		if tx := order.Tx(); tx != nil && tx.Resolve() != nil {
-			receipt, skip, err := envDiff.commitTx(tx.Resolve(), b.chainData)
+			receipt, skip, err := envDiff.commitTx(tx.Tx, b.chainData)
 			if err != nil {
 				log.Trace("could not apply tx", "hash", tx.Hash, "err", err)
 
@@ -92,7 +92,7 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 				orders.ShiftAndPushByAccountForTx(tx)
 			}
 
-			effGapPrice, err := tx.Resolve().EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
+			effGapPrice, err := tx.Tx.EffectiveGasTip(envDiff.baseEnvironment.header.BaseFee)
 			if err == nil {
 				log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
 			}

@@ -80,12 +80,12 @@ func (t *txWithMinerFee) Price() *big.Int {
 }
 
 func (t *txWithMinerFee) Profit(baseFee *big.Int, gasUsed uint64) *big.Int {
-	if tx := t.Tx(); tx != nil && tx.Resolve() != nil {
-		profit := new(big.Int).Sub(tx.Tx.GasPrice(), baseFee)
+	if tx := t.Tx(); tx != nil {
+		profit := new(big.Int).Sub(tx.GasPrice, baseFee)
 		if gasUsed != 0 {
 			profit.Mul(profit, new(big.Int).SetUint64(gasUsed))
 		} else {
-			profit.Mul(profit, new(big.Int).SetUint64(tx.Tx.Gas()))
+			profit.Mul(profit, new(big.Int).SetUint64(tx.Gas))
 		}
 		return profit
 	} else if bundle := t.Bundle(); bundle != nil {

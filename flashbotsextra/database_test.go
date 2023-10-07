@@ -114,7 +114,8 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 			},
 			Body: []types.BundleBody{
 				{
-					Tx: types.NewTransaction(uint64(53), common.Address{0x63}, big.NewInt(111), uint64(169), big.NewInt(435), []byte{})},
+					Tx: types.NewTransaction(uint64(53), common.Address{0x63}, big.NewInt(111), uint64(169), big.NewInt(435), []byte{}),
+				},
 			},
 		},
 		Success: true,

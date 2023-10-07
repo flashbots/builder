@@ -115,6 +115,7 @@ func (p *testTxPool) Pending(enforceTips bool) map[common.Address][]*txpool.Lazy
 				GasTipCap: tx.GasTipCap(),
 				Gas:       tx.Gas(),
 				BlobGas:   tx.BlobGas(),
+				GasPrice:  tx.GasPrice(),
 			})
 		}
 	}
