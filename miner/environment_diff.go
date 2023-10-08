@@ -80,8 +80,7 @@ func (envDiff *environmentDiff) commitBlobTx(tx *types.Transaction, chData chain
 	// and not during execution. This means core.ApplyTransaction will not return an error if the
 	// tx has too many blobs. So we have to explicitly check it here.
 	if (envDiff.newBlobs+len(sc.Blobs))*params.BlobTxBlobGasPerBlob > params.MaxBlobGasPerBlock {
-		// TODO: (deneb) shift or pop tx?
-		return nil, shiftTx, errors.New("max data blobs reached")
+		return nil, popTx, errors.New("max data blobs reached")
 	}
 	receipt, txType, err := envDiff.commitLegacyTx(tx, chData)
 	if err != nil {

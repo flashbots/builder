@@ -67,7 +67,12 @@ func (b *greedyBucketsMultiSnapBuilder) commit(changes *envChanges,
 
 		orderFailed := false
 
-		if tx := order.Tx(); tx != nil && tx.Resolve() != nil {
+		if tx := order.Tx(); tx != nil {
+			if tx.Resolve() == nil {
+				log.Trace("Ignoring evicted transaction", "hash", tx.Hash)
+				orders.Pop()
+				continue
+			}
 			receipt, skip, err := changes.commitTx(tx.Tx, b.chainData)
 			orderFailed = err != nil
 			if err != nil {

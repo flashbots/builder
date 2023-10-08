@@ -55,7 +55,12 @@ func (b *greedyBuilder) mergeOrdersIntoEnvDiff(
 			break
 		}
 
-		if tx := order.Tx(); tx != nil && tx.Resolve() != nil {
+		if tx := order.Tx(); tx != nil {
+			if tx.Resolve() == nil {
+				log.Trace("Ignoring evicted transaction", "hash", tx.Hash)
+				orders.Pop()
+				continue
+			}
 			receipt, skip, err := envDiff.commitTx(tx.Tx, b.chainData)
 			switch skip {
 			case shiftTx:

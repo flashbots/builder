@@ -71,7 +71,12 @@ func (b *greedyBucketsBuilder) commit(envDiff *environmentDiff,
 	)
 
 	for _, order := range transactions {
-		if tx := order.Tx(); tx != nil && tx.Resolve() != nil {
+		if tx := order.Tx(); tx != nil {
+			if tx.Resolve() == nil {
+				log.Trace("Ignoring evicted transaction", "hash", tx.Hash)
+				orders.Pop()
+				continue
+			}
 			receipt, skip, err := envDiff.commitTx(tx.Tx, b.chainData)
 			if err != nil {
 				log.Trace("could not apply tx", "hash", tx.Hash, "err", err)
