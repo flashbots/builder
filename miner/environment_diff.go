@@ -87,6 +87,7 @@ func (envDiff *environmentDiff) commitBlobTx(tx *types.Transaction, chData chain
 		return nil, txType, err
 	}
 
+	envDiff.newTxs = append(envDiff.newTxs, tx.WithoutBlobTxSidecar())
 	envDiff.newSidecars = append(envDiff.newSidecars, sc)
 	envDiff.newBlobs += len(sc.Blobs)
 	*envDiff.header.BlobGasUsed += receipt.BlobGasUsed
@@ -145,7 +146,6 @@ func (envDiff *environmentDiff) commitLegacyTx(tx *types.Transaction, chData cha
 	}
 
 	envDiff.newProfit = envDiff.newProfit.Add(envDiff.newProfit, gasPrice.Mul(gasPrice, big.NewInt(int64(receipt.GasUsed))))
-	envDiff.newTxs = append(envDiff.newTxs, tx)
 	envDiff.newReceipts = append(envDiff.newReceipts, receipt)
 
 	return receipt, shiftTx, nil
@@ -156,7 +156,12 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 	if tx.Type() == types.BlobTxType {
 		return envDiff.commitBlobTx(tx, chData)
 	}
-	return envDiff.commitLegacyTx(tx, chData)
+	receipt, skip, err := envDiff.commitLegacyTx(tx, chData)
+	if err != nil {
+		return nil, skip, err
+	}
+	envDiff.newTxs = append(envDiff.newTxs, tx)
+	return receipt, skip, nil
 }
 
 // Commit Bundle to env diff

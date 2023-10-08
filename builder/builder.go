@@ -610,9 +610,9 @@ func getCapellaPayload(
 }
 
 func getBlobsBundle(blobsBundle *engine.BlobsBundleV1) *builderApiDeneb.BlobsBundle {
-	var commitments []deneb.KzgCommitment
-	var proofs []deneb.KzgProof
-	var blobs []deneb.Blob
+	commitments := make([]deneb.KzgCommitment, len(blobsBundle.Commitments))
+	proofs := make([]deneb.KzgProof, len(blobsBundle.Proofs))
+	blobs := make([]deneb.Blob, len(blobsBundle.Blobs))
 
 	// we assume the lengths for blobs bundle is validated beforehand to be the same
 	for i := range blobsBundle.Blobs {
