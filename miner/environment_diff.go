@@ -270,7 +270,13 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 		return errors.New("coinbase balance decreased")
 	}
 
-	gotEGP := new(big.Int).Div(coinbaseDelta, gasDelta)
+	var gotEGP *big.Int
+	if gasDelta.Cmp(common.Big0) == 0 {
+		gotEGP = new(big.Int).SetUint64(0)
+	} else {
+		gotEGP = new(big.Int).Div(coinbaseDelta, gasDelta)
+	}
+
 	simEGP := new(big.Int).Set(b.MevGasPrice)
 
 	// allow > 1% difference
