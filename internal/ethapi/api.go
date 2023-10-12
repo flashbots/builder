@@ -2252,7 +2252,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))
 
-	timestamp := parent.Time + 1
+	timestamp := parent.Time + 12
 	if args.Timestamp != nil {
 		timestamp = *args.Timestamp
 	}
