@@ -28,7 +28,14 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
+	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+)
+
+var (
+	ExtraVanityLength = 32 // Fixed number of extra-data prefix bytes reserved for signer vanity
+	ExtraSealLength   = 65 // Fixed number of extra-data suffix bytes reserved for signer seal
 )
 
 // A BlockNonce is a 64-bit hash which proves (combined with the
@@ -85,11 +92,24 @@ type Header struct {
 	// WithdrawalsHash was added by EIP-4895 and is ignored in legacy headers.
 	WithdrawalsHash *common.Hash `json:"withdrawalsRoot" rlp:"optional"`
 
+	// ExcessDataGas was added by EIP-4844 and is ignored in legacy headers.
+	ExcessDataGas *big.Int `json:"excessDataGas" rlp:"optional"`
+
 	/*
 		TODO (MariusVanDerWijden) Add this field once needed
 		// Random was added during the merge and contains the BeaconState randomness
 		Random common.Hash `json:"random" rlp:"optional"`
 	*/
+}
+
+// Used for Encoding and Decoding of the Extra Data Field
+type BlockExtraData struct {
+	ValidatorBytes []byte
+
+	// length of TxDependency          ->   n (n = number of transactions in the block)
+	// length of TxDependency[i]       ->   k (k = a whole number)
+	// k elements in TxDependency[i]   ->   transaction indexes on which transaction i is dependent on
+	TxDependency [][]uint64
 }
 
 // field type overrides for gencodec
@@ -158,6 +178,44 @@ func (h *Header) EmptyBody() bool {
 // EmptyReceipts returns true if there are no receipts for this header/block.
 func (h *Header) EmptyReceipts() bool {
 	return h.ReceiptHash == EmptyReceiptsHash
+}
+
+// ValidateBlockNumberOptions4337 validates the block range passed as in the options parameter in the conditional transaction (EIP-4337)
+func (h *Header) ValidateBlockNumberOptions4337(minBlockNumber *big.Int, maxBlockNumber *big.Int) error {
+	currentBlockNumber := h.Number
+
+	if minBlockNumber != nil {
+		if currentBlockNumber.Cmp(minBlockNumber) == -1 {
+			return fmt.Errorf("current block number %v is less than minimum block number: %v", currentBlockNumber, minBlockNumber)
+		}
+	}
+
+	if maxBlockNumber != nil {
+		if currentBlockNumber.Cmp(maxBlockNumber) == 1 {
+			return fmt.Errorf("current block number %v is greater than maximum block number: %v", currentBlockNumber, maxBlockNumber)
+		}
+	}
+
+	return nil
+}
+
+// ValidateBlockNumberOptions4337 validates the timestamp range passed as in the options parameter in the conditional transaction (EIP-4337)
+func (h *Header) ValidateTimestampOptions4337(minTimestamp *uint64, maxTimestamp *uint64) error {
+	currentBlockTime := h.Time
+
+	if minTimestamp != nil {
+		if currentBlockTime < *minTimestamp {
+			return fmt.Errorf("current block time %v is less than minimum timestamp: %v", currentBlockTime, minTimestamp)
+		}
+	}
+
+	if maxTimestamp != nil {
+		if currentBlockTime > *maxTimestamp {
+			return fmt.Errorf("current block time %v is greater than maximum timestamp: %v", currentBlockTime, maxTimestamp)
+		}
+	}
+
+	return nil
 }
 
 // Body is a simple (mutable, non-safe) data container for storing and moving
@@ -338,6 +396,40 @@ func (b *Block) TxHash() common.Hash      { return b.header.TxHash }
 func (b *Block) ReceiptHash() common.Hash { return b.header.ReceiptHash }
 func (b *Block) UncleHash() common.Hash   { return b.header.UncleHash }
 func (b *Block) Extra() []byte            { return common.CopyBytes(b.header.Extra) }
+
+func (b *Block) GetTxDependency() [][]uint64 {
+	if len(b.header.Extra) < ExtraVanityLength+ExtraSealLength {
+		log.Error("length of extra less is than vanity and seal")
+		return nil
+	}
+
+	var blockExtraData BlockExtraData
+	if err := rlp.DecodeBytes(b.header.Extra[ExtraVanityLength:len(b.header.Extra)-ExtraSealLength], &blockExtraData); err != nil {
+		log.Debug("error while decoding block extra data", "err", err)
+		return nil
+	}
+
+	return blockExtraData.TxDependency
+}
+
+func (h *Header) GetValidatorBytes(config *params.BorConfig) []byte {
+	if !config.IsParallelUniverse(h.Number) {
+		return h.Extra[ExtraVanityLength : len(h.Extra)-ExtraSealLength]
+	}
+
+	if len(h.Extra) < ExtraVanityLength+ExtraSealLength {
+		log.Error("length of extra less is than vanity and seal")
+		return nil
+	}
+
+	var blockExtraData BlockExtraData
+	if err := rlp.DecodeBytes(h.Extra[ExtraVanityLength:len(h.Extra)-ExtraSealLength], &blockExtraData); err != nil {
+		log.Debug("error while decoding block extra data", "err", err)
+		return nil
+	}
+
+	return blockExtraData.ValidatorBytes
+}
 
 func (b *Block) BaseFee() *big.Int {
 	if b.header.BaseFee == nil {

@@ -36,7 +36,8 @@ import (
 // ReadCanonicalHash retrieves the hash assigned to a canonical block number.
 func ReadCanonicalHash(db ethdb.Reader, number uint64) common.Hash {
 	var data []byte
-	db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
+
+	_ = db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
 		data, _ = reader.Ancient(ChainFreezerHashTable, number)
 		if len(data) == 0 {
 			// Get it by hash from leveldb
@@ -347,7 +348,8 @@ func ReadHeaderRange(db ethdb.Reader, number uint64, count uint64) []rlp.RawValu
 // ReadHeaderRLP retrieves a block header in its raw RLP database encoding.
 func ReadHeaderRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValue {
 	var data []byte
-	db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
+
+	_ = db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
 		// First try to look up the data in ancient database. Extra hash
 		// comparison is necessary since ancient database only maintains
 		// the canonical data.
@@ -440,7 +442,8 @@ func ReadBodyRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValue 
 	// comparison is necessary since ancient database only maintains
 	// the canonical data.
 	var data []byte
-	db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
+
+	_ = db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
 		// Check if the data is in ancients
 		if isCanon(reader, number, hash) {
 			data, _ = reader.Ancient(ChainFreezerBodiesTable, number)
@@ -457,7 +460,8 @@ func ReadBodyRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValue 
 // block at number, in RLP encoding.
 func ReadCanonicalBodyRLP(db ethdb.Reader, number uint64) rlp.RawValue {
 	var data []byte
-	db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
+
+	_ = db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
 		data, _ = reader.Ancient(ChainFreezerBodiesTable, number)
 		if len(data) > 0 {
 			return nil
@@ -523,7 +527,8 @@ func DeleteBody(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 // ReadTdRLP retrieves a block's total difficulty corresponding to the hash in RLP encoding.
 func ReadTdRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValue {
 	var data []byte
-	db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
+
+	_ = db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
 		// Check if the data is in ancients
 		if isCanon(reader, number, hash) {
 			data, _ = reader.Ancient(ChainFreezerDifficultyTable, number)
@@ -583,7 +588,8 @@ func HasReceipts(db ethdb.Reader, hash common.Hash, number uint64) bool {
 // ReadReceiptsRLP retrieves all the transaction receipts belonging to a block in RLP encoding.
 func ReadReceiptsRLP(db ethdb.Reader, hash common.Hash, number uint64) rlp.RawValue {
 	var data []byte
-	db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
+
+	_ = db.ReadAncients(func(reader ethdb.AncientReaderOp) error {
 		// Check if the data is in ancients
 		if isCanon(reader, number, hash) {
 			data, _ = reader.Ancient(ChainFreezerReceiptTable, number)
@@ -732,6 +738,12 @@ func ReadLogs(db ethdb.Reader, hash common.Hash, number uint64, config *params.C
 	}
 	receipts := []*receiptLogs{}
 	if err := rlp.DecodeBytes(data, &receipts); err != nil {
+		// Receipts might be in the legacy format, try decoding that.
+		// TODO: to be removed after users migrated
+		if logs := readLegacyLogs(db, hash, number, config); logs != nil {
+			return logs
+		}
+
 		log.Error("Invalid receipt array RLP", "hash", hash, "err", err)
 		return nil
 	}
@@ -740,6 +752,24 @@ func ReadLogs(db ethdb.Reader, hash common.Hash, number uint64, config *params.C
 	for i, receipt := range receipts {
 		logs[i] = receipt.Logs
 	}
+
+	return logs
+}
+
+// readLegacyLogs is a temporary workaround for when trying to read logs
+// from a block which has its receipt stored in the legacy format. It'll
+// be removed after users have migrated their freezer databases.
+func readLegacyLogs(db ethdb.Reader, hash common.Hash, number uint64, config *params.ChainConfig) [][]*types.Log {
+	receipts := ReadReceipts(db, hash, number, config)
+	if receipts == nil {
+		return nil
+	}
+
+	logs := make([][]*types.Log, len(receipts))
+	for i, receipt := range receipts {
+		logs[i] = receipt.Logs
+	}
+
 	return logs
 }
 
@@ -768,10 +798,11 @@ func WriteBlock(db ethdb.KeyValueWriter, block *types.Block) {
 }
 
 // WriteAncientBlocks writes entire block data into ancient store and returns the total written size.
-func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, td *big.Int) (int64, error) {
+func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts []types.Receipts, borReceipts []types.Receipts, td *big.Int) (int64, error) {
 	var (
-		tdSum      = new(big.Int).Set(td)
-		stReceipts []*types.ReceiptForStorage
+		tdSum         = new(big.Int).Set(td)
+		stReceipts    []*types.ReceiptForStorage
+		borStReceipts []*types.ReceiptForStorage
 	)
 	return db.ModifyAncients(func(op ethdb.AncientWriteOp) error {
 		for i, block := range blocks {
@@ -780,11 +811,19 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 			for _, receipt := range receipts[i] {
 				stReceipts = append(stReceipts, (*types.ReceiptForStorage)(receipt))
 			}
+
+			// Convert bor receipts to storage format and sum up total difficulty.
+			borStReceipts = borStReceipts[:0]
+			for _, borReceipt := range borReceipts[i] {
+				borStReceipts = append(borStReceipts, (*types.ReceiptForStorage)(borReceipt))
+			}
+
 			header := block.Header()
 			if i > 0 {
 				tdSum.Add(tdSum, header.Difficulty)
 			}
-			if err := writeAncientBlock(op, block, header, stReceipts, tdSum); err != nil {
+
+			if err := writeAncientBlock(op, block, header, stReceipts, borStReceipts, tdSum); err != nil {
 				return err
 			}
 		}
@@ -792,7 +831,7 @@ func WriteAncientBlocks(db ethdb.AncientWriter, blocks []*types.Block, receipts 
 	})
 }
 
-func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *types.Header, receipts []*types.ReceiptForStorage, td *big.Int) error {
+func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *types.Header, receipts []*types.ReceiptForStorage, borReceipts []*types.ReceiptForStorage, td *big.Int) error {
 	num := block.NumberU64()
 	if err := op.AppendRaw(ChainFreezerHashTable, num, block.Hash().Bytes()); err != nil {
 		return fmt.Errorf("can't add block %d hash: %v", num, err)
@@ -809,6 +848,11 @@ func writeAncientBlock(op ethdb.AncientWriteOp, block *types.Block, header *type
 	if err := op.Append(ChainFreezerDifficultyTable, num, td); err != nil {
 		return fmt.Errorf("can't append block %d total difficulty: %v", num, err)
 	}
+
+	if err := op.Append(freezerBorReceiptTable, num, borReceipts); err != nil {
+		return fmt.Errorf("can't append block %d borReceipts: %v", num, err)
+	}
+
 	return nil
 }
 
@@ -818,6 +862,9 @@ func DeleteBlock(db ethdb.KeyValueWriter, hash common.Hash, number uint64) {
 	DeleteHeader(db, hash, number)
 	DeleteBody(db, hash, number)
 	DeleteTd(db, hash, number)
+
+	// delete bor receipt
+	DeleteBorReceipt(db, hash, number)
 }
 
 // DeleteBlockWithoutNumber removes all block data associated with a hash, except
@@ -827,6 +874,9 @@ func DeleteBlockWithoutNumber(db ethdb.KeyValueWriter, hash common.Hash, number 
 	deleteHeaderWithoutNumber(db, hash, number)
 	DeleteBody(db, hash, number)
 	DeleteTd(db, hash, number)
+
+	// delete bor receipt
+	DeleteBorReceipt(db, hash, number)
 }
 
 const badBlockToKeep = 10

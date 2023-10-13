@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
+	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
@@ -60,6 +61,17 @@ func (bc *BlockChain) CurrentFinalBlock() *types.Header {
 // chain. The block is retrieved from the blockchain's internal cache.
 func (bc *BlockChain) CurrentSafeBlock() *types.Header {
 	return bc.currentSafeBlock.Load()
+}
+
+// CurrentFinalizedBlock retrieves the current finalized block of the canonical
+// chain. The block is retrieved from the blockchain's internal cache.
+func (bc *BlockChain) CurrentFinalizedBlock(number uint64) *types.Block {
+	hash := rawdb.ReadCanonicalHash(bc.db, number)
+	if hash == (common.Hash{}) {
+		return nil
+	}
+
+	return bc.GetBlock(hash, number)
 }
 
 // HasHeader checks if a block header is present in the database or not, caching
@@ -410,4 +422,37 @@ func (bc *BlockChain) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscript
 // block processing has started while false means it has stopped.
 func (bc *BlockChain) SubscribeBlockProcessingEvent(ch chan<- bool) event.Subscription {
 	return bc.scope.Track(bc.blockProcFeed.Subscribe(ch))
+}
+
+// Snaps retrieves the snapshot tree.
+func (bc *BlockChain) Snaps() *snapshot.Tree {
+	return bc.snaps
+}
+
+// DB retrieves the blockchain database.
+func (bc *BlockChain) DB() ethdb.Database {
+	return bc.db
+}
+
+//
+// Bor related changes
+//
+
+type BorStateSyncer interface {
+	SetStateSync(stateData []*types.StateSyncData)
+	SubscribeStateSyncEvent(ch chan<- StateSyncEvent) event.Subscription
+}
+
+// SetStateSync set sync data in state_data
+func (bc *BlockChain) SetStateSync(stateData []*types.StateSyncData) {
+	bc.stateSyncData = stateData
+}
+
+func (bc *BlockChain) GetStateSync() []*types.StateSyncData {
+	return bc.stateSyncData
+}
+
+// SubscribeStateSyncEvent registers a subscription of StateSyncEvent.
+func (bc *BlockChain) SubscribeStateSyncEvent(ch chan<- StateSyncEvent) event.Subscription {
+	return bc.scope.Track(bc.stateSyncFeed.Subscribe(ch))
 }
