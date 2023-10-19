@@ -36,8 +36,8 @@
                 "--builder.genesis_validators_root=GENESIS_VALIDATORS_ROOT_PLACEHOLDER",
                 "--miner.extradata=The_Dev_version_of_builder",
                 "--builder.algotype=greedy",
-                "--metrics.builder=true",
-                "--metrics.expensive=true"
+                "--metrics.builder",
+                "--metrics.expensive"
             ],
             "validator_count": 0,
             "el_extra_env_vars": {
