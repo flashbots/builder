@@ -26,7 +26,7 @@
     "fiscalYearStartMonth": 0,
     "gnetId": 14053,
     "graphTooltip": 1,
-    "id": 3,
+    "id": 1,
     "links": [],
     "liveNow": false,
     "panels": [
@@ -67,7 +67,6 @@
                             "tooltip": false,
                             "viz": false
                         },
-                        "insertNulls": false,
                         "lineInterpolation": "linear",
                         "lineWidth": 1,
                         "pointSize": 5,
@@ -116,8 +115,8 @@
                     "showLegend": true
                 },
                 "tooltip": {
-                    "mode": "single",
-                    "sort": "none"
+                    "mode": "multi",
+                    "sort": "desc"
                 }
             },
             "targets": [
@@ -174,7 +173,6 @@
                             "tooltip": false,
                             "viz": false
                         },
-                        "insertNulls": false,
                         "lineInterpolation": "linear",
                         "lineWidth": 1,
                         "pointSize": 5,
@@ -223,8 +221,8 @@
                     "showLegend": true
                 },
                 "tooltip": {
-                    "mode": "single",
-                    "sort": "none"
+                    "mode": "multi",
+                    "sort": "desc"
                 }
             },
             "targets": [
@@ -282,7 +280,6 @@
                             "tooltip": false,
                             "viz": false
                         },
-                        "insertNulls": false,
                         "lineInterpolation": "linear",
                         "lineWidth": 1,
                         "pointSize": 5,
@@ -332,8 +329,8 @@
                     "showLegend": true
                 },
                 "tooltip": {
-                    "mode": "single",
-                    "sort": "none"
+                    "mode": "multi",
+                    "sort": "desc"
                 }
             },
             "targets": [
@@ -391,7 +388,6 @@
                             "tooltip": false,
                             "viz": false
                         },
-                        "insertNulls": false,
                         "lineInterpolation": "linear",
                         "lineWidth": 1,
                         "pointSize": 5,
@@ -440,8 +436,8 @@
                     "showLegend": true
                 },
                 "tooltip": {
-                    "mode": "single",
-                    "sort": "none"
+                    "mode": "multi",
+                    "sort": "desc"
                 }
             },
             "targets": [
@@ -496,7 +492,6 @@
                             "tooltip": false,
                             "viz": false
                         },
-                        "insertNulls": false,
                         "lineInterpolation": "linear",
                         "lineWidth": 1,
                         "pointSize": 5,
@@ -545,8 +540,8 @@
                     "showLegend": true
                 },
                 "tooltip": {
-                    "mode": "single",
-                    "sort": "none"
+                    "mode": "multi",
+                    "sort": "desc"
                 }
             },
             "targets": [
@@ -589,7 +584,6 @@
                             "tooltip": false,
                             "viz": false
                         },
-                        "insertNulls": false,
                         "lineInterpolation": "linear",
                         "lineWidth": 1,
                         "pointSize": 5,
@@ -638,8 +632,8 @@
                     "showLegend": true
                 },
                 "tooltip": {
-                    "mode": "single",
-                    "sort": "none"
+                    "mode": "multi",
+                    "sort": "desc"
                 }
             },
             "targets": [
@@ -695,7 +689,6 @@
                             "tooltip": false,
                             "viz": false
                         },
-                        "insertNulls": false,
                         "lineInterpolation": "linear",
                         "lineWidth": 1,
                         "pointSize": 5,
@@ -744,8 +737,8 @@
                     "showLegend": true
                 },
                 "tooltip": {
-                    "mode": "single",
-                    "sort": "none"
+                    "mode": "multi",
+                    "sort": "desc"
                 }
             },
             "targets": [
@@ -800,7 +793,6 @@
                             "tooltip": false,
                             "viz": false
                         },
-                        "insertNulls": false,
                         "lineInterpolation": "linear",
                         "lineWidth": 1,
                         "pointSize": 5,
@@ -849,8 +841,8 @@
                     "showLegend": true
                 },
                 "tooltip": {
-                    "mode": "single",
-                    "sort": "none"
+                    "mode": "multi",
+                    "sort": "desc"
                 }
             },
             "targets": [
@@ -893,7 +885,6 @@
                             "tooltip": false,
                             "viz": false
                         },
-                        "insertNulls": false,
                         "lineInterpolation": "linear",
                         "lineWidth": 1,
                         "pointSize": 5,
@@ -942,8 +933,8 @@
                     "showLegend": true
                 },
                 "tooltip": {
-                    "mode": "single",
-                    "sort": "none"
+                    "mode": "multi",
+                    "sort": "desc"
                 }
             },
             "targets": [
@@ -1026,7 +1017,7 @@
                 "alertThreshold": true
             },
             "percentage": false,
-            "pluginVersion": "10.1.2",
+            "pluginVersion": "9.5.12",
             "pointradius": 5,
             "points": false,
             "renderer": "flot",
@@ -1146,7 +1137,7 @@
                 "alertThreshold": true
             },
             "percentage": false,
-            "pluginVersion": "10.1.2",
+            "pluginVersion": "9.5.12",
             "pointradius": 5,
             "points": false,
             "renderer": "flot",
@@ -1266,7 +1257,7 @@
                 "alertThreshold": true
             },
             "percentage": false,
-            "pluginVersion": "10.1.2",
+            "pluginVersion": "9.5.12",
             "pointradius": 5,
             "points": false,
             "renderer": "flot",
@@ -1398,7 +1389,7 @@
                 "alertThreshold": true
             },
             "percentage": false,
-            "pluginVersion": "10.1.2",
+            "pluginVersion": "9.5.12",
             "pointradius": 5,
             "points": false,
             "renderer": "flot",
@@ -1504,7 +1495,7 @@
                 "alertThreshold": true
             },
             "percentage": false,
-            "pluginVersion": "10.1.2",
+            "pluginVersion": "9.5.12",
             "pointradius": 5,
             "points": false,
             "renderer": "flot",
@@ -1639,8 +1630,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "rgb(252, 252, 252)",
-                                "value": null
+                                "color": "rgb(252, 252, 252)"
                             }
                         ]
                     },
@@ -1739,8 +1729,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             }
                         ]
                     },
@@ -1841,8 +1830,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "rgb(255, 255, 255)",
-                                "value": null
+                                "color": "rgb(255, 255, 255)"
                             }
                         ]
                     },
@@ -1919,8 +1907,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "rgb(255, 255, 255)",
-                                "value": null
+                                "color": "rgb(255, 255, 255)"
                             }
                         ]
                     },
@@ -1997,8 +1984,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "rgb(255, 255, 255)",
-                                "value": null
+                                "color": "rgb(255, 255, 255)"
                             }
                         ]
                     },
@@ -2193,8 +2179,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "rgb(255, 255, 255)",
-                                "value": null
+                                "color": "rgb(255, 255, 255)"
                             }
                         ]
                     },
@@ -2271,8 +2256,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "rgb(255, 255, 255)",
-                                "value": null
+                                "color": "rgb(255, 255, 255)"
                             }
                         ]
                     },
@@ -3456,7 +3440,7 @@
                 "current": {
                     "selected": false,
                     "text": "Prometheus",
-                    "value": "PBFA97CFB590B2093"
+                    "value": "Prometheus"
                 },
                 "hide": 0,
                 "includeAll": false,
