@@ -1,0 +1,69 @@
+{
+    "mev_type": "full",
+    "participants": [
+        {
+            "el_client_type": "nethermind",
+            "el_client_image": "nethermind/nethermind:1.21.0",
+            "el_client_log_level": "",
+            "cl_client_type": "lighthouse",
+            "cl_client_log_level": "",
+            "cl_client_image": "sigp/lighthouse:v4.5.0",
+            "el_extra_params": [],
+            "beacon_extra_params": [
+                "--always-prefer-builder-payload",
+                "--disable-peer-scoring"
+            ]
+        },
+        {
+            "el_client_type": "REPLACE_WITH_BUILDER",
+            "el_client_image": "ethpandaops/flashbots-builder:main-45e865e",
+            "el_client_log_level": "",
+            "cl_client_type": "lighthouse",
+            "cl_client_image": "sigp/lighthouse:v4.5.0",
+            "cl_client_log_level": "",
+            "beacon_extra_params": [
+                "--always-prepare-payload",
+                "--prepare-payload-lookahead",
+                "12000",
+                "--disable-peer-scoring"
+            ],
+            "el_extra_params": [
+                "--builder",
+                "--builder.remote_relay_endpoint=http://mev-relay-api:9062",
+                "--builder.beacon_endpoints=http://cl-2-lighthouse-geth:4000",
+                "--builder.bellatrix_fork_version=0x30000038",
+                "--builder.genesis_fork_version=0x10000038",
+                "--builder.genesis_validators_root=GENESIS_VALIDATORS_ROOT_PLACEHOLDER",
+                "--miner.extradata=The_Dev_version_of_builder",
+                "--builder.algotype=greedy",
+				"--metrics.builder=true"
+            ],
+            "validator_count": 0,
+            "el_extra_env_vars": {
+                "BUILDER_TX_SIGNING_KEY": "0xef5177cd0b6b21c87db5a0bf35d4084a8a57a9d6a064f86d51ac85f2b873a4e2"
+            }
+        }
+    ],
+    "network_params": {"capella_fork_epoch": 1, "seconds_per_slot": 12},
+    "mev_params": {
+        "mev_flood_seconds_per_bundle": 13,
+        "launch_custom_flood": true,
+        "mev_flood_extra_args": ["--txsPerBundle=100"],
+        "mev_flood_image": "flashbots/mev-flood:0.0.9",
+        "mev_relay_image": "flashbots/mev-boost-relay:0.27",
+        "mev_boost_image": "flashbots/mev-boost:1.6",
+        "mev_builder_image": "flashbots/builder:latest"
+    },
+    "additional_services": [
+        "tx_spammer",
+        "blob_spammer",
+        "beacon_metrics_gazer",
+        "dora",
+        "prometheus_grafana"
+    ],
+    "tx_spammer_params": {"tx_spammer_extra_args": ["--txcount=100"]},
+    "grafana_additional_dashboards": [
+        "github.com/flashbots/builder-startup-script/data/grafana/dashboard.json",
+    	"github.com/flashbots/builder-startup-script/data/grafana"
+    ]
+}

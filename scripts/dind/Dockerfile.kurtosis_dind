@@ -1,0 +1,20 @@
+FROM mcr.microsoft.com/devcontainers/base:bullseye
+
+# Get Go
+RUN apt install git curl tar && \
+    curl https://dl.google.com/go/go1.21.3.linux-amd64.tar.gz -o go.tar.gz && \
+    tar -C /usr/local -xzf go.tar.gz && \
+    rm go.tar.gz
+
+# Set up Go environment variables
+ENV GOPATH /go
+ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
+RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
+
+# Install Kurtosis
+RUN echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | tee /etc/apt/sources.list.d/kurtosis.list
+RUN sudo apt update && \
+    sudo apt install kurtosis-cli
+
+WORKDIR /geth
+COPY ../ .

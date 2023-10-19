@@ -49,3 +49,4 @@ profile.cov
 **/yarn-error.log
 /ofac_blacklist.json
 /blacklist.json
+scripts/kurtosis/network_params_tmp.json
