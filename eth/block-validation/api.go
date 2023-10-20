@@ -221,6 +221,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV3(params *BuilderBlockV
 	// TODO: fuzztest, make sure the validation is sound
 	payload := params.ExecutionPayload
 	blobsBundle := params.BlobsBundle
+	log.Info("blobs bundle", "blobs", len(blobsBundle.Blobs), "commits", len(blobsBundle.Commitments), "proofs", len(blobsBundle.Proofs))
 	block, err := engine.ExecutionPayloadV3ToBlock(payload, blobsBundle, params.ParentBeaconBlockRoot)
 	if err != nil {
 		return err
@@ -228,10 +229,12 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV3(params *BuilderBlockV
 
 	err = api.validateBlock(block, params.Message, params.RegisteredGasLimit)
 	if err != nil {
+		log.Error("invalid payload", "hash", block.Hash, "number", block.NumberU64(), "parentHash", block.ParentHash, "err", err)
 		return err
 	}
 	err = validateBlobsBundle(block.Transactions(), blobsBundle)
 	if err != nil {
+		log.Error("invalid blobs bundle", "err", err)
 		return err
 	}
 	return nil
@@ -277,7 +280,6 @@ func (api *BlockValidationAPI) validateBlock(block *types.Block, msg *builderApi
 
 	err := api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, registeredGasLimit, vmconfig, api.useBalanceDiffProfit)
 	if err != nil {
-		log.Error("invalid payload", "hash", msg.BlockHash.String(), "number", block.NumberU64(), "parentHash", msg.ParentHash.String(), "err", err)
 		return err
 	}
 
@@ -315,5 +317,6 @@ func validateBlobsBundle(txs types.Transactions, blobsBundle *builderApiDeneb.Bl
 			return fmt.Errorf("invalid blob %d: %v", i, err)
 		}
 	}
+	log.Info("validated blobs bundle", "blobs", len(blobs), "commits", len(commits), "proofs", len(proofs))
 	return nil
 }
