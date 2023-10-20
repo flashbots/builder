@@ -14,21 +14,24 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-//go:build !((arm64 || amd64) && !openbsd)
+package bn256
 
-package rawdb
+import "testing"
 
-import (
-	"errors"
+func FuzzAdd(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte) {
+		fuzzAdd(data)
+	})
+}
 
-	"github.com/ethereum/go-ethereum/ethdb"
-)
+func FuzzMul(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte) {
+		fuzzMul(data)
+	})
+}
 
-// Pebble is unsuported on 32bit architecture
-const PebbleEnabled = false
-
-// NewPebbleDBDatabase creates a persistent key-value database without a freezer
-// moving immutable chain segments into cold storage.
-func NewPebbleDBDatabase(file string, cache int, handles int, namespace string, readonly, ephemeral bool) (ethdb.Database, error) {
-	return nil, errors.New("pebble is not supported on this platform")
+func FuzzPair(f *testing.F) {
+	f.Fuzz(func(t *testing.T, data []byte) {
+		fuzzPair(data)
+	})
 }
