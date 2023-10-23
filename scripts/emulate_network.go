@@ -186,7 +186,7 @@ Available commands:
 - build
   - -t : Image tag (optional, default: "flashbots/builder:dev")
   - -d : Image Build directory (optional, default: "..")
-  - -f : Build dockerfile path (optional, default: "../Dockerfile")
+  - -f : Build dockerfile path (optional, default: "./Dockerfile.debug")
 - run
   - -t : Image tag (optional, default: "flashbots/builder:dev")
   - -n : Enclave name (optional, default: "explorer")
@@ -214,7 +214,7 @@ func main() {
 	switch os.Args[1] {
 	case "build":
 		buildDir := flagSet.String("d", "..", "Build directory.")
-		buildDockerfilePath := flagSet.String("f", "../Dockerfile", "Build dockerfile path.")
+		buildDockerfilePath := flagSet.String("f", "./Dockerfile.debug", "Build dockerfile path.")
 		flagSet.Parse(os.Args[2:])
 		build(*imageTag, *buildDir, *buildDockerfilePath)
 	case "run":
