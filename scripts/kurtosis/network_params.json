@@ -36,7 +36,7 @@
                 "--builder.genesis_validators_root=GENESIS_VALIDATORS_ROOT_PLACEHOLDER",
                 "--miner.extradata=The_Dev_version_of_builder",
                 "--builder.algotype=greedy",
-				"--metrics.builder=true"
+                "--metrics.builder=true"
             ],
             "validator_count": 0,
             "el_extra_env_vars": {
@@ -44,11 +44,15 @@
             }
         }
     ],
-    "network_params": {"capella_fork_epoch": 1, "seconds_per_slot": 12},
+    "network_params": {
+        "capella_fork_epoch": 1,
+        "seconds_per_slot": 12
+    },
     "mev_params": {
         "mev_flood_seconds_per_bundle": 13,
-        "launch_custom_flood": true,
-        "mev_flood_extra_args": ["--txsPerBundle=100"],
+        "mev_flood_extra_args": [
+            "--txsPerBundle=250"
+        ],
         "mev_flood_image": "flashbots/mev-flood:0.0.9",
         "mev_relay_image": "flashbots/mev-boost-relay:0.27",
         "mev_boost_image": "flashbots/mev-boost:1.6",
@@ -57,13 +61,21 @@
     "additional_services": [
         "tx_spammer",
         "blob_spammer",
+        "custom_flood",
         "beacon_metrics_gazer",
         "dora",
         "prometheus_grafana"
     ],
-    "tx_spammer_params": {"tx_spammer_extra_args": ["--txcount=100"]},
+    "tx_spammer_params": {
+        "tx_spammer_extra_args": [
+            "--txcount=250"
+        ]
+    },
+    "custom_flood_params": {
+        "interval_between_transactions": 0.05
+    },
     "grafana_additional_dashboards": [
         "github.com/flashbots/builder-startup-script/data/grafana/dashboard.json",
-    	"github.com/flashbots/builder-startup-script/data/grafana"
+        "github.com/flashbots/builder-startup-script/data/grafana"
     ]
 }
