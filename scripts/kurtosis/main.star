@@ -2,7 +2,7 @@
 #Node: works only with config files local to ./kurtosis/ folder where kurtosis.yml is defined
 
 eth_pkg = import_module(
-    "github.com/kurtosis-tech/ethereum-package/main.star@0.6.1"
+    "github.com/kurtosis-tech/ethereum-package/main.star@cbermudez/builder-metrics"
 )
 
 def run(plan, file_to_read = "network_params_tmp.json"):

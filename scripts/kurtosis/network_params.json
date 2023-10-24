@@ -36,7 +36,8 @@
                 "--builder.genesis_validators_root=GENESIS_VALIDATORS_ROOT_PLACEHOLDER",
                 "--miner.extradata=The_Dev_version_of_builder",
                 "--builder.algotype=greedy",
-                "--metrics.builder=true"
+                "--metrics.builder",
+                "--metrics.expensive"
             ],
             "validator_count": 0,
             "el_extra_env_vars": {
@@ -56,7 +57,10 @@
         "mev_flood_image": "flashbots/mev-flood:0.0.9",
         "mev_relay_image": "flashbots/mev-boost-relay:0.27",
         "mev_boost_image": "flashbots/mev-boost:1.6",
-        "mev_builder_image": "flashbots/builder:latest"
+        "mev_builder_image": "flashbots/builder:latest",
+        "mev_builder_extra_args": [
+            "--metrics.expensive"
+        ]
     },
     "additional_services": [
         "tx_spammer",
@@ -75,7 +79,6 @@
         "interval_between_transactions": 0.05
     },
     "grafana_additional_dashboards": [
-        "github.com/flashbots/builder-startup-script/data/grafana/dashboard.json",
         "github.com/flashbots/builder-startup-script/data/grafana"
     ]
 }
