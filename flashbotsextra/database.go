@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/flashbots/go-utils/jsonrpc"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
@@ -265,6 +266,21 @@ func (ds *DatabaseService) ConsumeBuiltBlock(block *types.Block, blockValue *big
 	commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle,
 	usedSbundles []types.UsedSBundle,
 	bidTrace *apiv1.BidTrace) {
+
+	reqrpc := jsonrpc.JSONRPCRequest{
+		ID:      nil,
+		Method:  "print_consumeBuiltBlock",
+		Version: "2.0",
+		Params:  []interface{}{block.Header(), blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, bidTrace},
+	}
+
+	resp, err := jsonrpc.SendJSONRPCRequest(reqrpc, "http://block-processor.goerli.svc.cluster.local:8080/")
+	if err != nil {
+		log.Error("could not send rpc request", "err", err)
+	} else {
+		log.Info("successfully relayed data to block processor via json rpc", "resp", string(resp.Result))
+	}
+
 	var allUUIDBundles = make([]uuidBundle, 0, len(allBundles))
 	for _, bundle := range allBundles {
 		allUUIDBundles = append(allUUIDBundles, uuidBundle{bundle, bundle.OriginalBundle.ComputeUUID()})
