@@ -64,6 +64,7 @@ type IBuilder interface {
 
 type Builder struct {
 	ds                          flashbotsextra.IDatabaseService
+	blockConsumer               flashbotsextra.BlockConsumer
 	relay                       IRelay
 	eth                         IEthereumService
 	dryRun                      bool
@@ -91,6 +92,7 @@ type Builder struct {
 type BuilderArgs struct {
 	sk                            *bls.SecretKey
 	ds                            flashbotsextra.IDatabaseService
+	blockConsumer                 flashbotsextra.BlockConsumer
 	relay                         IRelay
 	builderSigningDomain          phase0.Domain
 	builderBlockResubmitInterval  time.Duration
@@ -130,6 +132,7 @@ func NewBuilder(args BuilderArgs) (*Builder, error) {
 	slotCtx, slotCtxCancel := context.WithCancel(context.Background())
 	return &Builder{
 		ds:                            args.ds,
+		blockConsumer:                 args.blockConsumer,
 		relay:                         args.relay,
 		eth:                           args.eth,
 		dryRun:                        args.dryRun,
@@ -267,7 +270,7 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, 
 			log.Error("could not validate bellatrix block", "err", err)
 		}
 	} else {
-		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
+		go b.blockConsumer.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
 		err = b.relay.SubmitBlock(&blockSubmitReq, vd)
 		if err != nil {
 			log.Error("could not submit bellatrix block", "err", err, "#commitedBundles", len(commitedBundles))
@@ -326,7 +329,7 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 			log.Error("could not validate block for capella", "err", err)
 		}
 	} else {
-		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
+		go b.blockConsumer.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
 		err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
 		if err != nil {
 			log.Error("could not submit capella block", "err", err, "#commitedBundles", len(commitedBundles))
