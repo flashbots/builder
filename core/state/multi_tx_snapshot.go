@@ -3,6 +3,7 @@ package state
 import (
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/crypto"
 	"math/big"
 	"reflect"
 
@@ -15,7 +16,7 @@ type MultiTxSnapshot struct {
 
 	numLogsAdded map[common.Hash]int
 
-	prevObjects map[common.Address]*stateObject
+	prevObjects map[common.Address]*resetObjectChange
 
 	accountStorage  map[common.Address]map[common.Hash]*common.Hash
 	accountBalance  map[common.Address]*big.Int
@@ -45,7 +46,7 @@ func NewMultiTxSnapshot() *MultiTxSnapshot {
 func newMultiTxSnapshot() MultiTxSnapshot {
 	return MultiTxSnapshot{
 		numLogsAdded:        make(map[common.Hash]int),
-		prevObjects:         make(map[common.Address]*stateObject),
+		prevObjects:         make(map[common.Address]*resetObjectChange),
 		accountStorage:      make(map[common.Address]map[common.Hash]*common.Hash),
 		accountBalance:      make(map[common.Address]*big.Int),
 		accountNonce:        make(map[common.Address]uint64),
@@ -94,8 +95,8 @@ func (s MultiTxSnapshot) Copy() MultiTxSnapshot {
 		newSnapshot.accountCodeHash[address] = codeHash
 	}
 
-	for address, suicided := range s.accountSelfDestruct {
-		newSnapshot.accountSelfDestruct[address] = suicided
+	for address, selfDestructed := range s.accountSelfDestruct {
+		newSnapshot.accountSelfDestruct[address] = selfDestructed
 	}
 
 	for address, deleted := range s.accountDeleted {
@@ -191,8 +192,10 @@ func (s *MultiTxSnapshot) updateFromJournal(journal *journal) {
 			s.updateCreateObjectChange(entry)
 		case resetObjectChange:
 			s.updateResetObjectChange(entry)
+		case storageChange:
+			s.updatePendingStorage(*entry.account, entry.key, entry.prevalue, true)
 		case selfDestructChange:
-			s.updateSuicideChange(entry)
+			s.updateSelfDestructChange(entry)
 		}
 	}
 }
@@ -242,8 +245,17 @@ func (s *MultiTxSnapshot) updateCodeChange(change codeChange) {
 func (s *MultiTxSnapshot) updateResetObjectChange(change resetObjectChange) {
 	s.touchedAccounts[change.prev.address] = struct{}{}
 	address := change.prev.address
-	if _, ok := s.prevObjects[address]; !ok {
-		s.prevObjects[address] = change.prev
+	if _, exists := s.prevObjects[address]; !exists {
+		s.prevObjects[address] = &resetObjectChange{
+			account:                change.account,
+			prev:                   change.prev,
+			prevdestruct:           change.prevdestruct,
+			prevAccount:            change.prevAccount,
+			prevStorage:            change.prevStorage,
+			prevAccountOriginExist: change.prevAccountOriginExist,
+			prevAccountOrigin:      change.prevAccountOrigin,
+			prevStorageOrigin:      change.prevStorageOrigin,
+		}
 	}
 }
 
@@ -255,8 +267,8 @@ func (s *MultiTxSnapshot) updateCreateObjectChange(change createObjectChange) {
 	}
 }
 
-// updateSuicideChange updates the snapshot with the suicide change.
-func (s *MultiTxSnapshot) updateSuicideChange(change selfDestructChange) {
+// updateSelfDestructChange updates the snapshot with the suicide change.
+func (s *MultiTxSnapshot) updateSelfDestructChange(change selfDestructChange) {
 	s.touchedAccounts[*change.account] = struct{}{}
 	if s.objectChanged(*change.account) {
 		return
@@ -451,12 +463,35 @@ func (s *MultiTxSnapshot) revertState(st *StateDB) {
 		st.logSize -= uint(numLogs)
 	}
 
+	keccaker := crypto.NewKeccakState()
 	// restore the objects
 	for address, object := range s.prevObjects {
 		if object == nil {
 			delete(st.stateObjects, address)
+			delete(st.stateObjectsDestruct, address)
+
+			addrHash := crypto.HashData(keccaker, address[:])
+			delete(st.accounts, addrHash)
+			delete(st.storages, addrHash)
+			delete(st.accountsOrigin, address)
+			delete(st.storagesOrigin, address)
 		} else {
-			st.stateObjects[address] = object
+			st.stateObjects[address] = object.prev
+			if object.prevAccount != nil {
+				st.accounts[object.prev.addrHash] = object.prevAccount
+			}
+
+			if object.prevStorage != nil {
+				st.storages[object.prev.addrHash] = object.prevStorage
+			}
+
+			if object.prevAccountOriginExist {
+				st.accountsOrigin[object.prev.address] = object.prevAccountOrigin
+			}
+
+			if object.prevStorageOrigin != nil {
+				st.storagesOrigin[object.prev.address] = object.prevStorageOrigin
+			}
 		}
 	}
 

@@ -66,40 +66,42 @@ func getObservableAccountState(s *StateDB, address common.Address, storageKeys [
 	return state
 }
 
-func verifyObservableAccountState(s *StateDB, state *observableAccountState) error {
-	if s.GetBalance(state.address).Cmp(state.balance) != 0 {
-		return fmt.Errorf("balance mismatch %v != %v", s.GetBalance(state.address), state.balance)
+func verifyObservableAccountState(s *StateDB, observed *observableAccountState) error {
+	if s.GetBalance(observed.address).Cmp(observed.balance) != 0 {
+		return fmt.Errorf("balance mismatch %v != %v", s.GetBalance(observed.address), observed.balance)
 	}
-	if s.GetNonce(state.address) != state.nonce {
-		return fmt.Errorf("nonce mismatch %v != %v", s.GetNonce(state.address), state.nonce)
+	if s.GetNonce(observed.address) != observed.nonce {
+		return fmt.Errorf("nonce mismatch %v != %v", s.GetNonce(observed.address), observed.nonce)
 	}
-	if !bytes.Equal(s.GetCode(state.address), state.code) {
-		return fmt.Errorf("code mismatch %v != %v", s.GetCode(state.address), state.code)
+	if !bytes.Equal(s.GetCode(observed.address), observed.code) {
+		return fmt.Errorf("code mismatch %v != %v", s.GetCode(observed.address), observed.code)
 	}
-	if s.GetCodeHash(state.address) != state.codeHash {
-		return fmt.Errorf("code hash mismatch %v != %v", s.GetCodeHash(state.address), state.codeHash)
+	if s.GetCodeHash(observed.address) != observed.codeHash {
+		return fmt.Errorf("code hash mismatch %v != %v", s.GetCodeHash(observed.address), observed.codeHash)
 	}
-	if s.GetCodeSize(state.address) != state.codeSize {
-		return fmt.Errorf("code size mismatch %v != %v", s.GetCodeSize(state.address), state.codeSize)
+	if s.GetCodeSize(observed.address) != observed.codeSize {
+		return fmt.Errorf("code size mismatch %v != %v", s.GetCodeSize(observed.address), observed.codeSize)
 	}
-	for key, value := range state.state {
-		if s.GetState(state.address, key) != value {
-			return fmt.Errorf("state mismatch %v != %v", s.GetState(state.address, key), value)
+	for key, value := range observed.state {
+		found := s.GetState(observed.address, key)
+		if found != value {
+			return fmt.Errorf("state mismatch [key: %s] value %v != %v", key.String(), found, value)
 		}
 	}
-	for key, value := range state.committedState {
-		if s.GetCommittedState(state.address, key) != value {
-			return fmt.Errorf("committed state mismatch %v != %v", s.GetCommittedState(state.address, key), value)
+	for key, value := range observed.committedState {
+		found := s.GetCommittedState(observed.address, key)
+		if found != value {
+			return fmt.Errorf("committed state mismatch %v != %v", found, value)
 		}
 	}
-	if s.HasSelfDestructed(state.address) != state.selfDestruct {
-		return fmt.Errorf("self destruct mismatch %v != %v", s.HasSelfDestructed(state.address), state.selfDestruct)
+	if s.HasSelfDestructed(observed.address) != observed.selfDestruct {
+		return fmt.Errorf("self destruct mismatch %v != %v", s.HasSelfDestructed(observed.address), observed.selfDestruct)
 	}
-	if s.Exist(state.address) != state.exist {
-		return fmt.Errorf("exist mismatch %v != %v", s.Exist(state.address), state.exist)
+	if s.Exist(observed.address) != observed.exist {
+		return fmt.Errorf("exist mismatch %v != %v", s.Exist(observed.address), observed.exist)
 	}
-	if s.Empty(state.address) != state.empty {
-		return fmt.Errorf("empty mismatch %v != %v", s.Empty(state.address), state.empty)
+	if s.Empty(observed.address) != observed.empty {
+		return fmt.Errorf("empty mismatch %v != %v", s.Empty(observed.address), observed.empty)
 	}
 	return nil
 }
