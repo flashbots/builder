@@ -273,7 +273,12 @@ func (r *LocalRelay) handleGetHeader(w http.ResponseWriter, req *http.Request) {
 	profit := r.profit
 	r.bestDataLock.Unlock()
 
-	if bestHeader == nil || bestHeader.ParentHash.String() != parentHashHex {
+	if bestHeader == nil {
+		respondError(w, http.StatusBadRequest, "no headers")
+		return
+	}
+
+	if bestHeader.ParentHash.String() != parentHashHex {
 		respondError(w, http.StatusBadRequest, "unknown payload")
 		return
 	}
