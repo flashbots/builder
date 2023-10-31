@@ -17,7 +17,7 @@ Before using the script, ensure you have the following installed:
 
 2. **Docker**: The build process needs Docker. Make sure Docker is installed and running. Check out the [Docker website](https://www.docker.com/get-started) for installation instructions.
 
-3. **Kurtosis**: The script interfaces with the Kurtosis platform. Ensure `kurtosis` is installed and available in your PATH. Refer to [Kurtosis's official documentation](https://docs.kurtosistech.com/installation.html) for installation details.
+3. **Kurtosis**: The script interfaces with the Kurtosis platform. Ensure `kurtosis` is installed and available in your PATH. Refer to [Kurtosis's official documentation](https://docs.kurtosis.com/install) for installation details.
 
 4. **ethereum-package**: This script utilizes a modified ethereum-package network configuration, which will be downloaded from [repo](github.com/kurtosis-tech/ethereum-package/) main brunch automatically.
 
