@@ -46,7 +46,8 @@
         }
     ],
     "network_params": {
-        "capella_fork_epoch": 1,
+        "capella_fork_epoch": 0,
+        "deneb_fork_epoch": 1,
         "seconds_per_slot": 12
     },
     "mev_params": {
@@ -55,7 +56,7 @@
             "--txsPerBundle=250"
         ],
         "mev_flood_image": "flashbots/mev-flood:0.0.9",
-        "mev_relay_image": "flashbots/mev-boost-relay:0.27",
+        "mev_relay_image": "flashbots/mev-boost-relay:0.28.0a5",
         "mev_boost_image": "flashbots/mev-boost:1.6",
         "mev_builder_image": "flashbots/builder:latest",
         "mev_builder_extra_args": [
