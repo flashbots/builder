@@ -521,13 +521,18 @@ func dumpState(ctx *cli.Context) error {
 		if err != nil {
 			return err
 		}
+
+		addr := common.BytesToAddress(accIt.Account())
 		da := &state.DumpAccount{
 			Balance:   account.Balance.String(),
 			Nonce:     account.Nonce,
 			Root:      account.Root,
 			CodeHash:  account.CodeHash,
 			SecureKey: accIt.Hash().Bytes(),
+			Address:   &addr,
 		}
+		log.Info("processing account address", "addr", addr.String())
+
 		if !conf.SkipCode && !bytes.Equal(account.CodeHash, types.EmptyCodeHash.Bytes()) {
 			da.Code = rawdb.ReadCode(db, common.BytesToHash(account.CodeHash))
 		}
