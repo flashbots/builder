@@ -51,9 +51,8 @@
     },
     "mev_params": {
         "mev_flood_seconds_per_bundle": 13,
-        "launch_custom_flood": true,
         "mev_flood_extra_args": [
-            "--txsPerBundle=100"
+            "--txsPerBundle=250"
         ],
         "mev_flood_image": "flashbots/mev-flood:0.0.9",
         "mev_relay_image": "flashbots/mev-boost-relay:0.27",
@@ -66,14 +65,18 @@
     "additional_services": [
         "tx_spammer",
         "blob_spammer",
+        "custom_flood",
         "beacon_metrics_gazer",
         "dora",
         "prometheus_grafana"
     ],
     "tx_spammer_params": {
         "tx_spammer_extra_args": [
-            "--txcount=100"
+            "--txcount=250"
         ]
+    },
+    "custom_flood_params": {
+        "interval_between_transactions": 0.05
     },
     "grafana_additional_dashboards": [
         "github.com/flashbots/builder-startup-script/data/grafana"
