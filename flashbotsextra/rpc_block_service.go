@@ -20,9 +20,8 @@ func NewRpcBlockClient(URL string) *RpcBlockClient {
 
 func (r *RpcBlockClient) ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time,
 	commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle,
-	usedSbundles []types.UsedSBundle,
-	bidTrace *apiv1.BidTrace) {
-
+	usedSbundles []types.UsedSBundle, bidTrace *apiv1.BidTrace,
+) {
 	reqrpc := jsonrpc.JSONRPCRequest{
 		ID:      nil,
 		Method:  "block_consumeBuiltBlock",
