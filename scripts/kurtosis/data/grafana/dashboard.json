@@ -126,10 +126,10 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(miner_bundle_simulate_success_count{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(miner_bundle_simulate_success_count{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
-                    "legendFormat": "success {{service}}",
+                    "legendFormat": "success {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -139,9 +139,9 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(miner_bundle_simulate_failed_count{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(miner_bundle_simulate_failed_count{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "legendFormat": "fail {{service}}",
+                    "legendFormat": "fail {{role}}",
                     "range": true,
                     "refId": "B"
                 }
@@ -232,10 +232,10 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(miner_block_build_count{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(miner_block_build_count{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
-                    "legendFormat": "build {{service}}",
+                    "legendFormat": "build {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -245,10 +245,10 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(miner_block_merge_count{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(miner_block_merge_count{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
-                    "legendFormat": "merge {{service}}",
+                    "legendFormat": "merge {{role}}",
                     "range": true,
                     "refId": "C"
                 }
@@ -341,9 +341,9 @@
                     },
                     "editorMode": "code",
                     "exemplar": false,
-                    "expr": "rate(miner_block_profit_gauge{client_name=~\"$client_name\", service=~\"$instance\"}[$rate]) / 1000000000",
+                    "expr": "rate(miner_block_profit_gauge{client_name=~\"$client_name\", role=~\"$instance\"}[$rate]) / 1000000000",
                     "hide": false,
-                    "legendFormat": "build {{service}}",
+                    "legendFormat": "build {{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -447,8 +447,8 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(rpc_duration_eth_callBundle_success_count{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
-                    "legendFormat": "success {{service}}",
+                    "expr": "rate(rpc_duration_eth_callBundle_success_count{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
+                    "legendFormat": "success {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -458,9 +458,9 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(rpc_duration_eth_callBundle_failure_count{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(rpc_duration_eth_callBundle_failure_count{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "hide": false,
-                    "legendFormat": "failure {{service}}",
+                    "legendFormat": "failure {{role}}",
                     "range": true,
                     "refId": "B"
                 }
@@ -551,8 +551,8 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rpc_duration_eth_callBundle_success{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"} / 1000",
-                    "legendFormat": "{{service}}",
+                    "expr": "rpc_duration_eth_callBundle_success{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"} / 1000",
+                    "legendFormat": "{{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -643,8 +643,8 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rpc_duration_eth_callBundle_failure{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"} / 1000",
-                    "legendFormat": "{{service}}",
+                    "expr": "rpc_duration_eth_callBundle_failure{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"} / 1000",
+                    "legendFormat": "{{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -748,8 +748,8 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(rpc_duration_flashbots_validateBuilderSubmissionV2_success_count{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
-                    "legendFormat": "success {{service}}",
+                    "expr": "rate(rpc_duration_flashbots_validateBuilderSubmissionV2_success_count{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
+                    "legendFormat": "success {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -759,9 +759,9 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(rpc_duration_flashbots_validateBuilderSubmissionV2_failure_count{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(rpc_duration_flashbots_validateBuilderSubmissionV2_failure_count{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "hide": false,
-                    "legendFormat": "failure {{service}}",
+                    "legendFormat": "failure {{role}}",
                     "range": true,
                     "refId": "B"
                 }
@@ -852,8 +852,8 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rpc_duration_flashbots_validateBuilderSubmissionV2_success{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"}/1000",
-                    "legendFormat": "{{service}}",
+                    "expr": "rpc_duration_flashbots_validateBuilderSubmissionV2_success{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}/1000",
+                    "legendFormat": "{{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -944,8 +944,8 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rpc_duration_flashbots_validateBuilderSubmissionV2_failure{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"} / 1000",
-                    "legendFormat": "{{service}}",
+                    "expr": "rpc_duration_flashbots_validateBuilderSubmissionV2_failure{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"} / 1000",
+                    "legendFormat": "{{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -1065,11 +1065,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "system_cpu_sysload{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "system_cpu_sysload{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "system {{service}}",
+                    "legendFormat": "system {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -1079,11 +1079,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "system_cpu_syswait{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "system_cpu_syswait{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "iowait {{service}}",
+                    "legendFormat": "iowait {{role}}",
                     "range": true,
                     "refId": "B"
                 },
@@ -1093,11 +1093,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "system_cpu_procload{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "system_cpu_procload{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "geth {{service}}",
+                    "legendFormat": "geth {{role}}",
                     "range": true,
                     "refId": "C"
                 }
@@ -1191,11 +1191,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(system_memory_allocs{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(system_memory_allocs{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "alloc {{service}}",
+                    "legendFormat": "alloc {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -1205,11 +1205,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "system_memory_used{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "system_memory_used{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "used {{service}}",
+                    "legendFormat": "used {{role}}",
                     "range": true,
                     "refId": "B"
                 },
@@ -1219,11 +1219,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "system_memory_held{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "system_memory_held{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "held {{service}}",
+                    "legendFormat": "held {{role}}",
                     "range": true,
                     "refId": "C"
                 }
@@ -1317,11 +1317,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(system_disk_readbytes{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(system_disk_readbytes{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "read {{service}}",
+                    "legendFormat": "read {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -1331,11 +1331,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(system_disk_writebytes{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(system_disk_writebytes{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "write {{service}}",
+                    "legendFormat": "write {{role}}",
                     "range": true,
                     "refId": "B"
                 }
@@ -1457,11 +1457,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(p2p_ingress{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(p2p_ingress{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "ingress {{service}}",
+                    "legendFormat": "ingress {{role}}",
                     "range": true,
                     "refId": "B"
                 },
@@ -1471,11 +1471,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(p2p_egress{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(p2p_egress{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "egress {{service}}",
+                    "legendFormat": "egress {{role}}",
                     "range": true,
                     "refId": "C"
                 }
@@ -1571,11 +1571,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "p2p_peers{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "p2p_peers{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "peers {{service}}",
+                    "legendFormat": "peers {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -1585,11 +1585,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(p2p_dials{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(p2p_dials{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "dials {{service}}",
+                    "legendFormat": "dials {{role}}",
                     "range": true,
                     "refId": "B"
                 },
@@ -1599,11 +1599,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(p2p_serves{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(p2p_serves{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "serves {{service}}",
+                    "legendFormat": "serves {{role}}",
                     "range": true,
                     "refId": "C"
                 }
@@ -1703,11 +1703,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "max(chain_head_header{client_name=~\"$client_name\", service=~\"$instance\"})",
+                    "expr": "max(chain_head_header{client_name=~\"$client_name\", role=~\"$instance\"})",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "{{service}}",
+                    "legendFormat": "{{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -1798,11 +1798,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "chain_head_header{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "chain_head_header{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "header {{service}}",
+                    "legendFormat": "header {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -1812,11 +1812,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "chain_head_receipt{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "chain_head_receipt{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "receipt {{service}}",
+                    "legendFormat": "receipt {{role}}",
                     "range": true,
                     "refId": "B"
                 },
@@ -1826,11 +1826,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "chain_head_block{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "chain_head_block{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "block {{service}}",
+                    "legendFormat": "block {{role}}",
                     "range": true,
                     "refId": "C"
                 }
@@ -1904,11 +1904,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "max(chain_head_receipt{client_name=~\"$client_name\", service=~\"$instance\"})",
+                    "expr": "max(chain_head_receipt{client_name=~\"$client_name\", role=~\"$instance\"})",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "{{service}}",
+                    "legendFormat": "{{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -1982,11 +1982,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "max(chain_head_block{client_name=~\"$client_name\", service=~\"$instance\"})",
+                    "expr": "max(chain_head_block{client_name=~\"$client_name\", role=~\"$instance\"})",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "{{service}}",
+                    "legendFormat": "{{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -2060,11 +2060,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "txpool_pending{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "txpool_pending{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "{{service}}",
+                    "legendFormat": "{{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -2158,11 +2158,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "txpool_pending{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "txpool_pending{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "executable {{service}}",
+                    "legendFormat": "executable {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -2172,11 +2172,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "txpool_queued{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "txpool_queued{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "gapped {{service}}",
+                    "legendFormat": "gapped {{role}}",
                     "range": true,
                     "refId": "B"
                 },
@@ -2186,11 +2186,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "txpool_local{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "txpool_local{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "local {{service}}",
+                    "legendFormat": "local {{role}}",
                     "range": true,
                     "refId": "C"
                 }
@@ -2264,11 +2264,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "txpool_queued{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "txpool_queued{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "{{service}}",
+                    "legendFormat": "{{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -2342,11 +2342,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "txpool_local{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "txpool_local{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "{{service}}",
+                    "legendFormat": "{{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -2444,11 +2444,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "chain_execution{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "chain_execution{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "execution (q=$quantile) {{service}}",
+                    "legendFormat": "execution (q=$quantile) {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -2458,12 +2458,12 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "chain_validation{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "chain_validation{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "hide": false,
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "validation (q=$quantile) {{service}}",
+                    "legendFormat": "validation (q=$quantile) {{role}}",
                     "range": true,
                     "refId": "B"
                 },
@@ -2473,12 +2473,12 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "chain_write{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "chain_write{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "hide": false,
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "commit (q=$quantile) {{service}}",
+                    "legendFormat": "commit (q=$quantile) {{role}}",
                     "range": true,
                     "refId": "C"
                 },
@@ -2488,11 +2488,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "chain_account_reads{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "chain_account_reads{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "account read (q=$quantile) {{service}}",
+                    "legendFormat": "account read (q=$quantile) {{role}}",
                     "range": true,
                     "refId": "D"
                 },
@@ -2502,11 +2502,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "chain_account_updates{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "chain_account_updates{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "account update (q=$quantile) {{service}}",
+                    "legendFormat": "account update (q=$quantile) {{role}}",
                     "range": true,
                     "refId": "E"
                 },
@@ -2516,11 +2516,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "chain_account_hashes{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "chain_account_hashes{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "account hashe (q=$quantile) {{service}}",
+                    "legendFormat": "account hashe (q=$quantile) {{role}}",
                     "range": true,
                     "refId": "F"
                 },
@@ -2530,11 +2530,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "chain_account_commits{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "chain_account_commits{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "account commit (q=$quantile) {{service}}",
+                    "legendFormat": "account commit (q=$quantile) {{role}}",
                     "range": true,
                     "refId": "G"
                 },
@@ -2544,11 +2544,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "chain_storage_reads{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "chain_storage_reads{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "storage read (q=$quantile) {{service}}",
+                    "legendFormat": "storage read (q=$quantile) {{role}}",
                     "range": true,
                     "refId": "H"
                 },
@@ -2558,11 +2558,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "chain_storage_updates{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "chain_storage_updates{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "storage update (q=$quantile) {{service}}",
+                    "legendFormat": "storage update (q=$quantile) {{role}}",
                     "range": true,
                     "refId": "I"
                 },
@@ -2572,11 +2572,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "chain_storage_hashes{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "chain_storage_hashes{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "storage hashe (q=$quantile) {{service}}",
+                    "legendFormat": "storage hashe (q=$quantile) {{role}}",
                     "range": true,
                     "refId": "J"
                 },
@@ -2586,11 +2586,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "chain_storage_commits{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "chain_storage_commits{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "storage commit (q=$quantile) {{service}}",
+                    "legendFormat": "storage commit (q=$quantile) {{role}}",
                     "range": true,
                     "refId": "K"
                 }
@@ -2688,11 +2688,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(txpool_valid{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(txpool_valid{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "valid {{service}}",
+                    "legendFormat": "valid {{role}}",
                     "range": true,
                     "refId": "K"
                 },
@@ -2702,11 +2702,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(txpool_invalid{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(txpool_invalid{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "invalid {{service}}",
+                    "legendFormat": "invalid {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -2716,12 +2716,12 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(txpool_underpriced{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(txpool_underpriced{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "underpriced {{service}}",
+                    "legendFormat": "underpriced {{role}}",
                     "range": true,
                     "refId": "B"
                 },
@@ -2731,12 +2731,12 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(txpool_pending_discard{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(txpool_pending_discard{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "executable discard {{service}}",
+                    "legendFormat": "executable discard {{role}}",
                     "range": true,
                     "refId": "C"
                 },
@@ -2746,11 +2746,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(txpool_pending_replace{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(txpool_pending_replace{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "executable replace {{service}}",
+                    "legendFormat": "executable replace {{role}}",
                     "range": true,
                     "refId": "D"
                 },
@@ -2760,11 +2760,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(txpool_pending_ratelimit{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(txpool_pending_ratelimit{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "executable ratelimit {{service}}",
+                    "legendFormat": "executable ratelimit {{role}}",
                     "range": true,
                     "refId": "E"
                 },
@@ -2774,11 +2774,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(txpool_pending_nofunds{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(txpool_pending_nofunds{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "executable nofunds {{service}}",
+                    "legendFormat": "executable nofunds {{role}}",
                     "range": true,
                     "refId": "F"
                 },
@@ -2788,12 +2788,12 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(txpool_queued_discard{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(txpool_queued_discard{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "gapped discard {{service}}",
+                    "legendFormat": "gapped discard {{role}}",
                     "range": true,
                     "refId": "G"
                 },
@@ -2803,12 +2803,12 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(txpool_queued_replace{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(txpool_queued_replace{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "gapped replace {{service}}",
+                    "legendFormat": "gapped replace {{role}}",
                     "range": true,
                     "refId": "H"
                 },
@@ -2818,12 +2818,12 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(txpool_queued_ratelimit{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(txpool_queued_ratelimit{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "gapped ratelimit {{service}}",
+                    "legendFormat": "gapped ratelimit {{role}}",
                     "range": true,
                     "refId": "I"
                 },
@@ -2833,12 +2833,12 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(txpool_queued_nofunds{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(txpool_queued_nofunds{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "gapped nofunds {{service}}",
+                    "legendFormat": "gapped nofunds {{role}}",
                     "range": true,
                     "refId": "J"
                 }
@@ -2958,11 +2958,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(eth_db_chaindata_disk_read{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(eth_db_chaindata_disk_read{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "leveldb read {{service}}",
+                    "legendFormat": "leveldb read {{role}}",
                     "range": true,
                     "refId": "B"
                 },
@@ -2972,11 +2972,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(eth_db_chaindata_disk_write{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(eth_db_chaindata_disk_write{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "leveldb write {{service}}",
+                    "legendFormat": "leveldb write {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -2986,11 +2986,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(eth_db_chaindata_ancient_read{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(eth_db_chaindata_ancient_read{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "ancient read {{service}}",
+                    "legendFormat": "ancient read {{role}}",
                     "range": true,
                     "refId": "C"
                 },
@@ -3000,11 +3000,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(eth_db_chaindata_ancient_write{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(eth_db_chaindata_ancient_write{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "ancient write {{service}}",
+                    "legendFormat": "ancient write {{role}}",
                     "range": true,
                     "refId": "D"
                 }
@@ -3098,11 +3098,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "eth_db_chaindata_disk_read{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "eth_db_chaindata_disk_read{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "leveldb read {{service}}",
+                    "legendFormat": "leveldb read {{role}}",
                     "range": true,
                     "refId": "B"
                 },
@@ -3112,11 +3112,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "eth_db_chaindata_disk_write{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "eth_db_chaindata_disk_write{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "leveldb write {{service}}",
+                    "legendFormat": "leveldb write {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -3126,11 +3126,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "eth_db_chaindata_ancient_read{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "eth_db_chaindata_ancient_read{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "ancient read {{service}}",
+                    "legendFormat": "ancient read {{role}}",
                     "range": true,
                     "refId": "C"
                 },
@@ -3140,11 +3140,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "eth_db_chaindata_ancient_write{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "eth_db_chaindata_ancient_write{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "ancient write {{service}}",
+                    "legendFormat": "ancient write {{role}}",
                     "range": true,
                     "refId": "D"
                 }
@@ -3238,11 +3238,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "eth_db_chaindata_disk_size{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "eth_db_chaindata_disk_size{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "leveldb {{service}}",
+                    "legendFormat": "leveldb {{role}}",
                     "range": true,
                     "refId": "B"
                 },
@@ -3252,11 +3252,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "eth_db_chaindata_ancient_size{client_name=~\"$client_name\", service=~\"$instance\"}",
+                    "expr": "eth_db_chaindata_ancient_size{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "ancient {{service}}",
+                    "legendFormat": "ancient {{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -3376,12 +3376,12 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(trie_memcache_clean_read{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(trie_memcache_clean_read{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "hit {{service}}",
+                    "legendFormat": "hit {{role}}",
                     "range": true,
                     "refId": "C"
                 },
@@ -3391,12 +3391,12 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(trie_memcache_clean_write{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(trie_memcache_clean_write{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "miss {{service}}",
+                    "legendFormat": "miss {{role}}",
                     "range": true,
                     "refId": "B"
                 }
@@ -3490,12 +3490,12 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(trie_memcache_gc_size{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(trie_memcache_gc_size{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "gc {{service}}",
+                    "legendFormat": "gc {{role}}",
                     "range": true,
                     "refId": "C"
                 },
@@ -3505,12 +3505,12 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(trie_memcache_flush_size{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(trie_memcache_flush_size{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "overflow {{service}}",
+                    "legendFormat": "overflow {{role}}",
                     "range": true,
                     "refId": "B"
                 },
@@ -3520,11 +3520,11 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(trie_memcache_commit_size{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(trie_memcache_commit_size{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "interval": "",
                     "intervalFactor": 1,
-                    "legendFormat": "commit {{service}}",
+                    "legendFormat": "commit {{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -3533,7 +3533,7 @@
             "type": "timeseries"
         }
     ],
-    "refresh": "10s",
+    "refresh": false,
     "revision": 1,
     "schemaVersion": 38,
     "style": "dark",
@@ -3573,7 +3573,7 @@
                     "type": "prometheus",
                     "uid": "${datasource}"
                 },
-                "definition": "label_values(chain_head_block{client_name=\"$client_name\"}, service)",
+                "definition": "label_values(chain_head_block{client_name=\"$client_name\"},role)",
                 "hide": 1,
                 "includeAll": true,
                 "label": "Instance",
@@ -3581,11 +3581,11 @@
                 "name": "instance",
                 "options": [],
                 "query": {
-                    "query": "label_values(chain_head_block{client_name=\"$client_name\"}, service)",
-                    "refId": "StandardVariableQuery"
+                    "query": "label_values(chain_head_block{client_name=\"$client_name\"},role)",
+                    "refId": "PrometheusVariableQueryEditor-VariableQuery"
                 },
                 "refresh": 1,
-                "regex": "",
+                "regex": "Builder.*",
                 "skipUrlSync": false,
                 "sort": 0,
                 "type": "query"

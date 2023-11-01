@@ -26,7 +26,7 @@
     "fiscalYearStartMonth": 0,
     "gnetId": 14053,
     "graphTooltip": 1,
-    "id": 4,
+    "id": 1,
     "links": [],
     "liveNow": false,
     "panels": [
@@ -83,8 +83,8 @@
                         "uid": "PBFA97CFB590B2093"
                     },
                     "editorMode": "code",
-                    "expr": "miner_block_profit_gauge{client_name=~\"$client_name\", service=~\"$instance\"}",
-                    "legendFormat": "{{service}}",
+                    "expr": "miner_block_profit_gauge{client_name=~\"$client_name\", role=~\"$instance\"}",
+                    "legendFormat": "{{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -180,9 +180,9 @@
                     },
                     "editorMode": "code",
                     "exemplar": false,
-                    "expr": "rate(miner_block_profit_gauge{client_name=~\"$client_name\", service=~\"$instance\"}[$rate]) / 1000000000",
+                    "expr": "rate(miner_block_profit_gauge{client_name=~\"$client_name\", role=~\"$instance\"}[$rate]) / 1000000000",
                     "hide": false,
-                    "legendFormat": "build {{service}}",
+                    "legendFormat": "build {{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -276,10 +276,10 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(miner_block_build_count{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(miner_block_build_count{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
-                    "legendFormat": "build {{service}}",
+                    "legendFormat": "build {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -289,10 +289,10 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(miner_block_merge_count{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(miner_block_merge_count{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
-                    "legendFormat": "merge {{service}}",
+                    "legendFormat": "merge {{role}}",
                     "range": true,
                     "refId": "C"
                 }
@@ -399,8 +399,8 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(rpc_duration_engine_newPayloadV2_success_count{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
-                    "legendFormat": "success {{service}}",
+                    "expr": "rate(rpc_duration_engine_newPayloadV2_success_count{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
+                    "legendFormat": "success {{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -410,9 +410,9 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rate(rpc_duration_engine_newPayloadV2_failure_count{client_name=~\"$client_name\", service=~\"$instance\"}[$rate])",
+                    "expr": "rate(rpc_duration_engine_newPayloadV2_failure_count{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "hide": false,
-                    "legendFormat": "failure {{service}}",
+                    "legendFormat": "failure {{role}}",
                     "range": true,
                     "refId": "B"
                 }
@@ -433,6 +433,7 @@
                     "custom": {
                         "axisCenteredZero": false,
                         "axisColorMode": "text",
+                        "axisLabel": "",
                         "axisPlacement": "auto",
                         "barAlignment": 0,
                         "drawStyle": "line",
@@ -506,8 +507,8 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rpc_duration_engine_newPayloadV2_success{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"}",
-                    "legendFormat": "{{service}}",
+                    "expr": "rpc_duration_engine_newPayloadV2_success{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
+                    "legendFormat": "{{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -528,6 +529,7 @@
                     "custom": {
                         "axisCenteredZero": false,
                         "axisColorMode": "text",
+                        "axisLabel": "",
                         "axisPlacement": "auto",
                         "barAlignment": 0,
                         "drawStyle": "line",
@@ -601,8 +603,8 @@
                         "uid": "${datasource}"
                     },
                     "editorMode": "code",
-                    "expr": "rpc_duration_flashbots_validateBuilderSubmissionV2_failure{quantile=\"$quantile\", client_name=~\"$client_name\", service=~\"$instance\"}",
-                    "legendFormat": "{{service}}",
+                    "expr": "rpc_duration_flashbots_validateBuilderSubmissionV2_failure{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
+                    "legendFormat": "{{role}}",
                     "range": true,
                     "refId": "A"
                 }
@@ -639,7 +641,7 @@
             },
             {
                 "current": {
-                    "selected": false,
+                    "selected": true,
                     "text": [
                         "All"
                     ],
@@ -651,26 +653,26 @@
                     "type": "prometheus",
                     "uid": "${datasource}"
                 },
-                "definition": "label_values(chain_head_block{client_name=\"$client_name\"}, service)",
-                "hide": 1,
+                "definition": "label_values(chain_head_block{client_name=\"$client_name\"},role)",
+                "hide": 0,
                 "includeAll": true,
                 "label": "Instance",
                 "multi": true,
                 "name": "instance",
                 "options": [],
                 "query": {
-                    "query": "label_values(chain_head_block{client_name=\"$client_name\"}, service)",
-                    "refId": "StandardVariableQuery"
+                    "query": "label_values(chain_head_block{client_name=\"$client_name\"},role)",
+                    "refId": "PrometheusVariableQueryEditor-VariableQuery"
                 },
                 "refresh": 1,
-                "regex": "el-[2|3]-geth-.*",
+                "regex": "Builder.*",
                 "skipUrlSync": false,
                 "sort": 0,
                 "type": "query"
             },
             {
                 "current": {
-                    "selected": false,
+                    "selected": true,
                     "text": "0.5",
                     "value": "0.5"
                 },
@@ -718,8 +720,8 @@
             {
                 "current": {
                     "selected": true,
-                    "text": "5m",
-                    "value": "5m"
+                    "text": "1m",
+                    "value": "1m"
                 },
                 "hide": 0,
                 "includeAll": false,
@@ -727,7 +729,7 @@
                 "name": "rate",
                 "options": [
                     {
-                        "selected": false,
+                        "selected": true,
                         "text": "1m",
                         "value": "1m"
                     },
@@ -737,7 +739,7 @@
                         "value": "2m"
                     },
                     {
-                        "selected": true,
+                        "selected": false,
                         "text": "5m",
                         "value": "5m"
                     }
@@ -773,7 +775,7 @@
         ]
     },
     "time": {
-        "from": "now-5m",
+        "from": "now-3h",
         "to": "now"
     },
     "timepicker": {
