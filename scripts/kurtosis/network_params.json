@@ -12,8 +12,11 @@
                 "--always-prefer-builder-payload",
                 "--disable-peer-scoring"
             ],
-            "prometheus_additional_labels": {
-                "role": "Proposer"
+            "prometheus_config": {
+                "scrape_interval": "1s",
+                "labels": {
+                    "role": "Proposer"
+                }
             }
         },
         {
@@ -48,7 +51,7 @@
             "prometheus_config": {
                 "scrape_interval": "1s",
                 "labels": {
-                    "role": "Builder Baseline"
+                    "role": "Builder Dev"
                 }
             }
         }

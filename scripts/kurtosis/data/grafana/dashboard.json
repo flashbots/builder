@@ -56,8 +56,7 @@
                     "custom": {
                         "axisCenteredZero": false,
                         "axisColorMode": "text",
-                        "axisLabel": "Gwei",
-                        "axisPlacement": "auto",
+                        "axisPlacement": "left",
                         "barAlignment": 0,
                         "drawStyle": "line",
                         "fillOpacity": 0,
@@ -90,16 +89,29 @@
                             {
                                 "color": "green",
                                 "value": null
-                            },
-                            {
-                                "color": "red",
-                                "value": 80
                             }
                         ]
                     },
-                    "unit": "locale"
+                    "unit": "none"
                 },
-                "overrides": []
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byFrameRefID",
+                            "options": "B"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.axisPlacement",
+                                "value": "right"
+                            },
+                            {
+                                "id": "custom.axisLabel",
+                                "value": "Slots"
+                            }
+                        ]
+                    }
+                ]
             },
             "gridPos": {
                 "h": 6,
@@ -108,13 +120,20 @@
                 "y": 1
             },
             "id": 126,
+            "interval": "1s",
             "options": {
                 "legend": {
-                    "calcs": [],
+                    "calcs": [
+                        "max",
+                        "mean"
+                    ],
                     "displayMode": "list",
                     "placement": "bottom",
                     "showLegend": true
                 },
+                "timezone": [
+                    ""
+                ],
                 "tooltip": {
                     "mode": "multi",
                     "sort": "desc"
@@ -128,9 +147,9 @@
                     },
                     "editorMode": "code",
                     "exemplar": false,
-                    "expr": "miner_block_profit_gauge{client_name=~\"$client_name\", role=~\"$instance\"} / 1000000000",
+                    "expr": "miner_block_profit_gauge{client_name=~\"$client_name\", role=~\"$instance\"} / 1000000000000000000",
                     "hide": false,
-                    "legendFormat": "build {{role}}",
+                    "legendFormat": "{{role}}",
                     "range": true,
                     "refId": "A"
                 },
@@ -144,12 +163,13 @@
                     "expr": "beacon_head_slot{role=~\"Proposer\"}",
                     "format": "time_series",
                     "hide": false,
+                    "instant": false,
                     "legendFormat": "Slot",
                     "range": true,
                     "refId": "B"
                 }
             ],
-            "title": "Bids Created Profit",
+            "title": "Bids Profit (Eth)",
             "type": "timeseries"
         },
         {
@@ -205,9 +225,27 @@
                                 "value": 80
                             }
                         ]
-                    }
+                    },
+                    "unit": "ns"
                 },
-                "overrides": []
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byFrameRefID",
+                            "options": "B"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.axisPlacement",
+                                "value": "right"
+                            },
+                            {
+                                "id": "custom.axisLabel",
+                                "value": "Slots"
+                            }
+                        ]
+                    }
+                ]
             },
             "gridPos": {
                 "h": 6,
@@ -216,9 +254,13 @@
                 "y": 1
             },
             "id": 125,
+            "interval": "1",
             "options": {
                 "legend": {
-                    "calcs": [],
+                    "calcs": [
+                        "max",
+                        "mean"
+                    ],
                     "displayMode": "list",
                     "placement": "bottom",
                     "showLegend": true
@@ -268,7 +310,260 @@
                     "refId": "B"
                 }
             ],
-            "title": "Bids Created",
+            "title": "Bids Creation Time",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 0,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "auto",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "red",
+                                "value": 80
+                            }
+                        ]
+                    },
+                    "unit": "none"
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byFrameRefID",
+                            "options": "B"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.axisPlacement",
+                                "value": "right"
+                            },
+                            {
+                                "id": "custom.axisLabel",
+                                "value": "Slots"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 6,
+                "w": 12,
+                "x": 0,
+                "y": 7
+            },
+            "id": 127,
+            "interval": "1s",
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "max",
+                        "mean"
+                    ],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "exemplar": false,
+                    "expr": "miner_block_txnum{client_name=~\"$client_name\", role=~\"$instance\"}",
+                    "hide": false,
+                    "legendFormat": "{{role}}",
+                    "range": true,
+                    "refId": "A"
+                },
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "exemplar": false,
+                    "expr": "beacon_head_slot{role=~\"Proposer\"}",
+                    "format": "time_series",
+                    "hide": false,
+                    "legendFormat": "Slot",
+                    "range": true,
+                    "refId": "B"
+                }
+            ],
+            "title": "Bids Txnum",
+            "type": "timeseries"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "palette-classic"
+                    },
+                    "custom": {
+                        "axisCenteredZero": false,
+                        "axisColorMode": "text",
+                        "axisLabel": "",
+                        "axisPlacement": "auto",
+                        "barAlignment": 0,
+                        "drawStyle": "line",
+                        "fillOpacity": 0,
+                        "gradientMode": "none",
+                        "hideFrom": {
+                            "legend": false,
+                            "tooltip": false,
+                            "viz": false
+                        },
+                        "lineInterpolation": "linear",
+                        "lineWidth": 1,
+                        "pointSize": 5,
+                        "scaleDistribution": {
+                            "type": "linear"
+                        },
+                        "showPoints": "auto",
+                        "spanNulls": false,
+                        "stacking": {
+                            "group": "A",
+                            "mode": "none"
+                        },
+                        "thresholdsStyle": {
+                            "mode": "off"
+                        }
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    },
+                    "unit": "none"
+                },
+                "overrides": [
+                    {
+                        "matcher": {
+                            "id": "byFrameRefID",
+                            "options": "B"
+                        },
+                        "properties": [
+                            {
+                                "id": "custom.axisPlacement",
+                                "value": "right"
+                            },
+                            {
+                                "id": "custom.axisLabel",
+                                "value": "Slots"
+                            }
+                        ]
+                    }
+                ]
+            },
+            "gridPos": {
+                "h": 6,
+                "w": 12,
+                "x": 12,
+                "y": 7
+            },
+            "id": 128,
+            "interval": "1",
+            "options": {
+                "legend": {
+                    "calcs": [
+                        "max",
+                        "mean"
+                    ],
+                    "displayMode": "list",
+                    "placement": "bottom",
+                    "showLegend": true
+                },
+                "tooltip": {
+                    "mode": "multi",
+                    "sort": "desc"
+                }
+            },
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "miner_block_gasused{client_name=~\"$client_name\", role=~\"$instance\"}",
+                    "format": "time_series",
+                    "hide": false,
+                    "legendFormat": "{{role}}",
+                    "range": true,
+                    "refId": "A"
+                },
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "beacon_head_slot{role=~\"Proposer\"}",
+                    "hide": false,
+                    "legendFormat": "Slot",
+                    "range": true,
+                    "refId": "B"
+                }
+            ],
+            "title": "Bids Gas used",
             "type": "timeseries"
         },
         {
@@ -281,7 +576,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 7
+                "y": 13
             },
             "id": 82,
             "panels": [],
@@ -359,7 +654,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 0,
-                "y": 8
+                "y": 14
             },
             "id": 106,
             "links": [],
@@ -485,7 +780,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 8,
-                "y": 8
+                "y": 14
             },
             "id": 86,
             "links": [],
@@ -611,7 +906,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 16,
-                "y": 8
+                "y": 14
             },
             "id": 85,
             "links": [],
@@ -671,7 +966,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 14
+                "y": 20
             },
             "id": 75,
             "panels": [],
@@ -749,7 +1044,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 0,
-                "y": 15
+                "y": 21
             },
             "id": 96,
             "links": [],
@@ -863,7 +1158,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 12,
-                "y": 15
+                "y": 21
             },
             "id": 77,
             "links": [],
@@ -939,7 +1234,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 21
+                "y": 27
             },
             "id": 4,
             "panels": [],
@@ -993,7 +1288,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 22
+                "y": 28
             },
             "id": 108,
             "links": [],
@@ -1092,7 +1387,7 @@
                 "h": 9,
                 "w": 18,
                 "x": 6,
-                "y": 22
+                "y": 28
             },
             "id": 110,
             "links": [],
@@ -1194,7 +1489,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 25
+                "y": 31
             },
             "id": 111,
             "links": [],
@@ -1272,7 +1567,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 28
+                "y": 34
             },
             "id": 109,
             "links": [],
@@ -1350,7 +1645,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 31
+                "y": 37
             },
             "id": 113,
             "links": [],
@@ -1452,7 +1747,7 @@
                 "h": 9,
                 "w": 18,
                 "x": 6,
-                "y": 31
+                "y": 37
             },
             "id": 116,
             "links": [],
@@ -1554,7 +1849,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 34
+                "y": 40
             },
             "id": 114,
             "links": [],
@@ -1632,7 +1927,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 37
+                "y": 43
             },
             "id": 115,
             "links": [],
@@ -1734,7 +2029,7 @@
                 "h": 11,
                 "w": 24,
                 "x": 0,
-                "y": 40
+                "y": 46
             },
             "id": 112,
             "links": [],
@@ -1961,7 +2256,8 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green"
+                                "color": "green",
+                                "value": null
                             },
                             {
                                 "color": "red",
@@ -1977,7 +2273,7 @@
                 "h": 10,
                 "w": 24,
                 "x": 0,
-                "y": 51
+                "y": 57
             },
             "id": 117,
             "links": [],
@@ -2173,7 +2469,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 61
+                "y": 67
             },
             "id": 17,
             "panels": [],
@@ -2234,7 +2530,8 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green"
+                                "color": "green",
+                                "value": null
                             },
                             {
                                 "color": "red",
@@ -2250,7 +2547,7 @@
                 "h": 8,
                 "w": 8,
                 "x": 0,
-                "y": 62
+                "y": 68
             },
             "id": 35,
             "links": [],
@@ -2373,7 +2670,8 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green"
+                                "color": "green",
+                                "value": null
                             },
                             {
                                 "color": "red",
@@ -2389,7 +2687,7 @@
                 "h": 8,
                 "w": 8,
                 "x": 8,
-                "y": 62
+                "y": 68
             },
             "id": 118,
             "links": [],
@@ -2512,7 +2810,8 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green"
+                                "color": "green",
+                                "value": null
                             },
                             {
                                 "color": "red",
@@ -2528,7 +2827,7 @@
                 "h": 8,
                 "w": 8,
                 "x": 16,
-                "y": 62
+                "y": 68
             },
             "id": 119,
             "links": [],
@@ -2588,7 +2887,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 70
+                "y": 76
             },
             "id": 37,
             "panels": [],
@@ -2649,7 +2948,8 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green"
+                                "color": "green",
+                                "value": null
                             },
                             {
                                 "color": "red",
@@ -2665,7 +2965,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 0,
-                "y": 71
+                "y": 77
             },
             "id": 120,
             "links": [],
@@ -2762,7 +3062,8 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green"
+                                "color": "green",
+                                "value": null
                             },
                             {
                                 "color": "red",
@@ -2778,7 +3079,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 12,
-                "y": 71
+                "y": 77
             },
             "id": 56,
             "links": [],
@@ -2904,7 +3205,7 @@
             },
             {
                 "current": {
-                    "selected": true,
+                    "selected": false,
                     "text": "0.5",
                     "value": "0.5"
                 },
@@ -2951,7 +3252,7 @@
             },
             {
                 "current": {
-                    "selected": true,
+                    "selected": false,
                     "text": "5m",
                     "value": "5m"
                 },
@@ -3007,8 +3308,8 @@
         ]
     },
     "time": {
-        "from": "2023-11-01T16:40:10.382Z",
-        "to": "2023-11-01T16:45:47.718Z"
+        "from": "now-30m",
+        "to": "now"
     },
     "timepicker": {
         "refresh_intervals": [
