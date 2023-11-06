@@ -97,6 +97,7 @@ func TestOnPayloadAttributes(t *testing.T) {
 		validator:                   nil,
 		beaconClient:                &testBeacon,
 		limiter:                     nil,
+		blockConsumer:               flashbotsextra.NilDbService{},
 	}
 	builder, err := NewBuilder(builderArgs)
 	require.NoError(t, err)
