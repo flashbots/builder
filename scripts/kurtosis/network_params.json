@@ -11,7 +11,13 @@
             "beacon_extra_params": [
                 "--always-prefer-builder-payload",
                 "--disable-peer-scoring"
-            ]
+            ],
+            "prometheus_config": {
+                "scrape_interval": "1s",
+                "labels": {
+                    "role": "Proposer"
+                }
+            }
         },
         {
             "el_client_type": "REPLACE_WITH_BUILDER",
@@ -41,6 +47,12 @@
             "validator_count": 0,
             "el_extra_env_vars": {
                 "BUILDER_TX_SIGNING_KEY": "0xef5177cd0b6b21c87db5a0bf35d4084a8a57a9d6a064f86d51ac85f2b873a4e2"
+            },
+            "prometheus_config": {
+                "scrape_interval": "1s",
+                "labels": {
+                    "role": "Builder Dev"
+                }
             }
         }
     ],
@@ -59,7 +71,13 @@
         "mev_builder_image": "flashbots/builder:1.13.2.4844.dev5-4d161de",
         "mev_builder_extra_args": [
             "--metrics.expensive"
-        ]
+        ],
+        "mev_builder_prometheus_config": {
+            "scrape_interval": "1s",
+            "labels": {
+                "role": "Builder Baseline"
+            }
+        }
     },
     "additional_services": [
         "tx_spammer",
