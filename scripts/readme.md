@@ -53,7 +53,7 @@ To run script `cd` into this (`./scripts`) folder.
       - `-k`: (Optional) Path to `kurtosis` executable. Defaults to `kurtosis`.
    - Example:
      ```
-     go run emulate_network.go run -t=imageTag -a=imageArgs -n=enclaveName -k=/path/to/kurtosis
+     go run emulate_network.go run -t=test-builder -a=imageArgs -n=enclaveName -k=/path/to/kurtosis
      ```
 
 3. **stop**:

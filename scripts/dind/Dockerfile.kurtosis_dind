@@ -1,20 +1,28 @@
-FROM mcr.microsoft.com/devcontainers/base:bullseye
+FROM docker:dind
 
-# Get Go
-RUN apt install git curl tar && \
-    curl https://dl.google.com/go/go1.21.3.linux-amd64.tar.gz -o go.tar.gz && \
+# Create the /etc/machine-id file
+RUN apk add --no-cache dbus && \
+    dbus-uuidgen > /etc/machine-id
+
+# Install required packages
+RUN apk add --no-cache git curl tar
+
+# Download and install Go
+RUN curl https://dl.google.com/go/go1.21.3.linux-amd64.tar.gz -o go.tar.gz && \
     tar -C /usr/local -xzf go.tar.gz && \
     rm go.tar.gz
 
 # Set up Go environment variables
 ENV GOPATH /go
 ENV PATH $GOPATH/bin:/usr/local/go/bin:$PATH
-RUN mkdir -p "$GOPATH/src" "$GOPATH/bin" && chmod -R 777 "$GOPATH"
+RUN mkdir -p "${GOPATH}/src" "${GOPATH}/bin" && chmod -R 777 "${GOPATH}"
 
-# Install Kurtosis
-RUN echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | tee /etc/apt/sources.list.d/kurtosis.list
-RUN sudo apt update && \
-    sudo apt install kurtosis-cli
+# Download and install Kurtosis CLI
+RUN curl -L "https://github.com/kurtosis-tech/kurtosis-cli-release-artifacts/releases/download/0.85.3/kurtosis-cli_0.85.3_linux_amd64.tar.gz" -o kurtosis-cli.tar.gz && \
+    tar -xzvf kurtosis-cli.tar.gz -C /usr/local/bin && \
+    rm kurtosis-cli.tar.gz
 
-WORKDIR /geth
-COPY ../ .
+ADD . /go-ethereum
+WORKDIR /go-ethereum/scripts/
+
+ENV DOCKER_HOST=unix:///var/run/docker.sock
