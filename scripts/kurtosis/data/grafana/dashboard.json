@@ -26,7 +26,7 @@
     "fiscalYearStartMonth": 0,
     "gnetId": 14053,
     "graphTooltip": 1,
-    "id": 2,
+    "id": 3,
     "links": [],
     "liveNow": false,
     "panels": [
@@ -56,6 +56,7 @@
                     "custom": {
                         "axisCenteredZero": false,
                         "axisColorMode": "text",
+                        "axisLabel": "",
                         "axisPlacement": "left",
                         "barAlignment": 0,
                         "drawStyle": "line",
@@ -242,6 +243,10 @@
                             {
                                 "id": "custom.axisLabel",
                                 "value": "Slots"
+                            },
+                            {
+                                "id": "unit",
+                                "value": "none"
                             }
                         ]
                     }
@@ -326,6 +331,7 @@
                     "custom": {
                         "axisCenteredZero": false,
                         "axisColorMode": "text",
+                        "axisLabel": "",
                         "axisPlacement": "auto",
                         "barAlignment": 0,
                         "drawStyle": "line",
@@ -1027,8 +1033,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -1141,8 +1146,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -1275,8 +1279,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "rgb(252, 252, 252)",
-                                "value": null
+                                "color": "rgb(252, 252, 252)"
                             }
                         ]
                     },
@@ -1374,8 +1377,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             }
                         ]
                     },
@@ -1476,8 +1478,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "rgb(255, 255, 255)",
-                                "value": null
+                                "color": "rgb(255, 255, 255)"
                             }
                         ]
                     },
@@ -1554,8 +1555,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "rgb(255, 255, 255)",
-                                "value": null
+                                "color": "rgb(255, 255, 255)"
                             }
                         ]
                     },
@@ -1632,8 +1632,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "rgb(255, 255, 255)",
-                                "value": null
+                                "color": "rgb(255, 255, 255)"
                             }
                         ]
                     },
@@ -1730,8 +1729,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -1836,8 +1834,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "rgb(255, 255, 255)",
-                                "value": null
+                                "color": "rgb(255, 255, 255)"
                             }
                         ]
                     },
@@ -1914,8 +1911,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "rgb(255, 255, 255)",
-                                "value": null
+                                "color": "rgb(255, 255, 255)"
                             }
                         ]
                     },
@@ -2012,8 +2008,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -2256,8 +2251,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -2530,8 +2524,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -2670,8 +2663,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -2810,8 +2802,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -2948,8 +2939,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -3062,8 +3052,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
