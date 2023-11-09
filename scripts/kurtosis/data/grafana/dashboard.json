@@ -26,7 +26,7 @@
                 },
                 "enable": true,
                 "expr": "beacon_head_slot{role=\"Proposer\"} <= 128",
-                "hide": true,
+                "hide": false,
                 "iconColor": "#F2495C",
                 "name": "Epoch 4",
                 "step": "1s",
@@ -40,17 +40,109 @@
     "fiscalYearStartMonth": 0,
     "gnetId": 14053,
     "graphTooltip": 1,
-    "id": 4,
+    "id": 2,
     "links": [],
     "liveNow": false,
     "panels": [
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "PBFA97CFB590B2093"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [
+                        {
+                            "options": {
+                                "from": 128,
+                                "result": {
+                                    "color": "green",
+                                    "index": 0,
+                                    "text": "Yes"
+                                }
+                            },
+                            "type": "range"
+                        },
+                        {
+                            "options": {
+                                "result": {
+                                    "color": "red",
+                                    "index": 1,
+                                    "text": "No"
+                                },
+                                "to": 127
+                            },
+                            "type": "range"
+                        }
+                    ],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "red",
+                                "value": 80
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 4,
+                "w": 7,
+                "x": 0,
+                "y": 0
+            },
+            "id": 129,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "last"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "text": {
+                    "titleSize": 1
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "9.5.12",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "PBFA97CFB590B2093"
+                    },
+                    "editorMode": "code",
+                    "expr": "beacon_head_slot{role=\"Proposer\"}",
+                    "interval": "1s",
+                    "legendFormat": "__auto",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Epoch 4 Reached",
+            "type": "stat"
+        },
         {
             "collapsed": false,
             "gridPos": {
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 0
+                "y": 4
             },
             "id": 122,
             "panels": [],
@@ -132,7 +224,7 @@
                 "h": 7,
                 "w": 12,
                 "x": 0,
-                "y": 1
+                "y": 5
             },
             "id": 126,
             "interval": "1s",
@@ -271,7 +363,7 @@
                 "h": 7,
                 "w": 12,
                 "x": 12,
-                "y": 1
+                "y": 5
             },
             "id": 125,
             "interval": "1",
@@ -412,7 +504,7 @@
                 "h": 7,
                 "w": 12,
                 "x": 0,
-                "y": 8
+                "y": 12
             },
             "id": 127,
             "interval": "1s",
@@ -538,7 +630,7 @@
                 "h": 7,
                 "w": 12,
                 "x": 12,
-                "y": 8
+                "y": 12
             },
             "id": 128,
             "interval": "1",
@@ -597,7 +689,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 15
+                "y": 19
             },
             "id": 82,
             "panels": [],
@@ -675,7 +767,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 0,
-                "y": 16
+                "y": 20
             },
             "id": 106,
             "links": [],
@@ -801,7 +893,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 8,
-                "y": 16
+                "y": 20
             },
             "id": 86,
             "links": [],
@@ -927,7 +1019,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 16,
-                "y": 16
+                "y": 20
             },
             "id": 85,
             "links": [],
@@ -987,7 +1079,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 22
+                "y": 26
             },
             "id": 75,
             "panels": [],
@@ -1065,7 +1157,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 0,
-                "y": 23
+                "y": 27
             },
             "id": 96,
             "links": [],
@@ -1179,7 +1271,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 12,
-                "y": 23
+                "y": 27
             },
             "id": 77,
             "links": [],
@@ -1255,7 +1347,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 29
+                "y": 33
             },
             "id": 4,
             "panels": [],
@@ -1309,7 +1401,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 30
+                "y": 34
             },
             "id": 108,
             "links": [],
@@ -1408,7 +1500,7 @@
                 "h": 9,
                 "w": 18,
                 "x": 6,
-                "y": 30
+                "y": 34
             },
             "id": 110,
             "links": [],
@@ -1510,7 +1602,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 33
+                "y": 37
             },
             "id": 111,
             "links": [],
@@ -1588,7 +1680,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 36
+                "y": 40
             },
             "id": 109,
             "links": [],
@@ -1666,7 +1758,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 39
+                "y": 43
             },
             "id": 113,
             "links": [],
@@ -1768,7 +1860,7 @@
                 "h": 9,
                 "w": 18,
                 "x": 6,
-                "y": 39
+                "y": 43
             },
             "id": 116,
             "links": [],
@@ -1870,7 +1962,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 42
+                "y": 46
             },
             "id": 114,
             "links": [],
@@ -1948,7 +2040,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 45
+                "y": 49
             },
             "id": 115,
             "links": [],
@@ -2050,7 +2142,7 @@
                 "h": 11,
                 "w": 24,
                 "x": 0,
-                "y": 48
+                "y": 52
             },
             "id": 112,
             "links": [],
@@ -2294,7 +2386,7 @@
                 "h": 10,
                 "w": 24,
                 "x": 0,
-                "y": 59
+                "y": 63
             },
             "id": 117,
             "links": [],
@@ -2490,7 +2582,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 69
+                "y": 73
             },
             "id": 17,
             "panels": [],
@@ -2568,7 +2660,7 @@
                 "h": 8,
                 "w": 8,
                 "x": 0,
-                "y": 70
+                "y": 74
             },
             "id": 35,
             "links": [],
@@ -2708,7 +2800,7 @@
                 "h": 8,
                 "w": 8,
                 "x": 8,
-                "y": 70
+                "y": 74
             },
             "id": 118,
             "links": [],
@@ -2848,7 +2940,7 @@
                 "h": 8,
                 "w": 8,
                 "x": 16,
-                "y": 70
+                "y": 74
             },
             "id": 119,
             "links": [],
@@ -2908,7 +3000,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 78
+                "y": 82
             },
             "id": 37,
             "panels": [],
@@ -2986,7 +3078,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 0,
-                "y": 79
+                "y": 83
             },
             "id": 120,
             "links": [],
@@ -3100,7 +3192,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 12,
-                "y": 79
+                "y": 83
             },
             "id": 56,
             "links": [],
@@ -3167,7 +3259,7 @@
             "type": "timeseries"
         }
     ],
-    "refresh": false,
+    "refresh": "5s",
     "revision": 1,
     "schemaVersion": 38,
     "style": "dark",
