@@ -3,7 +3,7 @@
     "participants": [
         {
             "el_client_type": "nethermind",
-            "el_client_image": "nethermind/nethermind:1.21.0",
+            "el_client_image": "nethermind/nethermind:1.21.1",
             "el_client_log_level": "",
             "cl_client_type": "lighthouse",
             "cl_client_log_level": "",
