@@ -20,7 +20,7 @@ func build(imageTag string, buildDir string, buildDockerfilePath string) {
 	runCommand(cmd)
 }
 
-func update_config(imageTag string, imageArgs string, kurtosisNetworkScriptFolder string, filename ...string) {
+func update_config(imageTag string, imageArgs string, kurtosisNetworkScriptFolder string, slotTime int64, filename ...string) {
 	// Determine the filename. If not provided, default to "network_params.json".
 	var file string
 	if len(filename) > 0 {
@@ -42,6 +42,15 @@ func update_config(imageTag string, imageArgs string, kurtosisNetworkScriptFolde
 		fmt.Println("Error unmarshalling the JSON:", err)
 		return
 	}
+
+	if slotTime != 0 { 
+        if networkParams, ok := data["network_params"].(map[string]interface{}); ok {
+            networkParams["seconds_per_slot"] = slotTime
+            fmt.Printf("Seconds per slot updated to %d\n", slotTime)
+        } else {
+            fmt.Println("network_params object not found or is not a JSON object")
+        }
+    }
 
 	// Navigate to the participants array
 	if participants, ok := data["participants"].([]interface{}); ok {
@@ -184,19 +193,20 @@ func help() {
 	fmt.Println(`Emulate Network script
 Available commands:
 - build
-  - -t : Image tag (optional, default: "flashbots/builder:dev")
-  - -d : Image Build directory (optional, default: "..")
-  - -f : Build dockerfile path (optional, default: "./Dockerfile.debug")
+  - -t 			: Image tag (optional, default: "flashbots/builder:dev")
+  - -d 			: Image Build directory (optional, default: "..")
+  - -f 			: Build dockerfile path (optional, default: "./Dockerfile.debug")
 - run
-  - -t : Image tag (optional, default: "flashbots/builder:dev")
-  - -n : Enclave name (optional, default: "explorer")
-  - -a : Additional builder arguments (optional)
-  - -s : Max steps (optional, default: -1)
-  - -k : Kurtosis path (optional, default: "kurtosis")
-  - -c : Kurtosis network config (optional, default: "./kurtosis")
+  - -t 			: Image tag (optional, default: "flashbots/builder:dev")
+  - -n 			: Enclave name (optional, default: "explorer")
+  - -a 			: Additional builder arguments (optional)
+  - -s 			: Max steps (optional, default: -1)
+  - -k 			: Kurtosis path (optional, default: "kurtosis")
+  - -c 			: Kurtosis network config (optional, default: "./kurtosis")
+  - --slotTime	: Seconds per slot applied on local devnet (optional, default: 5)
 - stop
-  - -k : Kurtosis path (optional, default: "kurtosis")
-  - -n : Enclave name (required)
+  - -k 			: Kurtosis path (optional, default: "kurtosis")
+  - -n 			: Enclave name (required)
 `)
 }
 
@@ -223,6 +233,7 @@ func main() {
 		kurtosisNetworkConfigScriptFolder := flagSet.String("f", "./kurtosis", "Kurtosis network config for run.")
 		kurtosisNetConfigPath := flagSet.String("c", "./kurtosis/network_params.json", "Kurtosis network params "+
 			"configuration path. Note that run command modifies it with provided imageTag and imageArgs.")
+		slotTime := flagSet.Int64("slotTime", 5, "Seconds per slot to update in the JSON config.")
 		flagSet.Parse(os.Args[2:])
 		run(*imageTag, *imageArgs, *enclaveName, *maxSteps, *kurtosisPath, *kurtosisNetworkConfigScriptFolder, *kurtosisNetConfigPath)
 	case "stop":
