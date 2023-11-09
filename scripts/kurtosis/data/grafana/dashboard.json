@@ -45,9 +45,22 @@
     "liveNow": false,
     "panels": [
         {
+            "collapsed": false,
+            "gridPos": {
+                "h": 1,
+                "w": 24,
+                "x": 0,
+                "y": 0
+            },
+            "id": 122,
+            "panels": [],
+            "title": "Builder",
+            "type": "row"
+        },
+        {
             "datasource": {
                 "type": "prometheus",
-                "uid": "PBFA97CFB590B2093"
+                "uid": "${datasource}"
             },
             "fieldConfig": {
                 "defaults": {
@@ -97,10 +110,10 @@
                 "overrides": []
             },
             "gridPos": {
-                "h": 4,
-                "w": 7,
+                "h": 5,
+                "w": 12,
                 "x": 0,
-                "y": 0
+                "y": 1
             },
             "id": 129,
             "options": {
@@ -125,7 +138,7 @@
                 {
                     "datasource": {
                         "type": "prometheus",
-                        "uid": "PBFA97CFB590B2093"
+                        "uid": "${datasource}"
                     },
                     "editorMode": "code",
                     "expr": "beacon_head_slot{role=\"Proposer\"}",
@@ -139,17 +152,66 @@
             "type": "stat"
         },
         {
-            "collapsed": false,
-            "gridPos": {
-                "h": 1,
-                "w": 24,
-                "x": 0,
-                "y": 4
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
             },
-            "id": 122,
-            "panels": [],
-            "title": "Builder",
-            "type": "row"
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 5,
+                "w": 12,
+                "x": 12,
+                "y": 1
+            },
+            "id": 131,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "horizontal",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "9.5.12",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "miner_block_build_count{role=~\"$instance\"}",
+                    "interval": "1s",
+                    "legendFormat": "{{role}}",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Bids Built Count",
+            "type": "stat"
         },
         {
             "datasource": {
@@ -226,7 +288,7 @@
                 "h": 7,
                 "w": 12,
                 "x": 0,
-                "y": 5
+                "y": 6
             },
             "id": 126,
             "interval": "1s",
@@ -365,7 +427,7 @@
                 "h": 7,
                 "w": 12,
                 "x": 12,
-                "y": 5
+                "y": 6
             },
             "id": 125,
             "interval": "1",
@@ -506,7 +568,7 @@
                 "h": 7,
                 "w": 12,
                 "x": 0,
-                "y": 12
+                "y": 13
             },
             "id": 127,
             "interval": "1s",
@@ -632,7 +694,7 @@
                 "h": 7,
                 "w": 12,
                 "x": 12,
-                "y": 12
+                "y": 13
             },
             "id": 128,
             "interval": "1",
@@ -691,7 +753,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 19
+                "y": 20
             },
             "id": 82,
             "panels": [],
@@ -769,7 +831,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 0,
-                "y": 20
+                "y": 21
             },
             "id": 106,
             "links": [],
@@ -895,7 +957,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 8,
-                "y": 20
+                "y": 21
             },
             "id": 86,
             "links": [],
@@ -1021,7 +1083,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 16,
-                "y": 20
+                "y": 21
             },
             "id": 85,
             "links": [],
@@ -1081,7 +1143,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 26
+                "y": 27
             },
             "id": 75,
             "panels": [],
@@ -1159,7 +1221,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 0,
-                "y": 27
+                "y": 28
             },
             "id": 96,
             "links": [],
@@ -1273,7 +1335,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 12,
-                "y": 27
+                "y": 28
             },
             "id": 77,
             "links": [],
@@ -1349,7 +1411,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 33
+                "y": 34
             },
             "id": 4,
             "panels": [],
@@ -1403,7 +1465,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 34
+                "y": 35
             },
             "id": 108,
             "links": [],
@@ -1502,7 +1564,7 @@
                 "h": 9,
                 "w": 18,
                 "x": 6,
-                "y": 34
+                "y": 35
             },
             "id": 110,
             "links": [],
@@ -1604,7 +1666,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 37
+                "y": 38
             },
             "id": 111,
             "links": [],
@@ -1682,7 +1744,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 40
+                "y": 41
             },
             "id": 109,
             "links": [],
@@ -1760,7 +1822,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 43
+                "y": 44
             },
             "id": 113,
             "links": [],
@@ -1862,7 +1924,7 @@
                 "h": 9,
                 "w": 18,
                 "x": 6,
-                "y": 43
+                "y": 44
             },
             "id": 116,
             "links": [],
@@ -1964,7 +2026,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 46
+                "y": 47
             },
             "id": 114,
             "links": [],
@@ -2042,7 +2104,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 49
+                "y": 50
             },
             "id": 115,
             "links": [],
@@ -2144,7 +2206,7 @@
                 "h": 11,
                 "w": 24,
                 "x": 0,
-                "y": 52
+                "y": 53
             },
             "id": 112,
             "links": [],
@@ -2371,8 +2433,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -2388,7 +2449,7 @@
                 "h": 10,
                 "w": 24,
                 "x": 0,
-                "y": 63
+                "y": 64
             },
             "id": 117,
             "links": [],
@@ -2584,7 +2645,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 73
+                "y": 74
             },
             "id": 17,
             "panels": [],
@@ -2645,8 +2706,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -2662,7 +2722,7 @@
                 "h": 8,
                 "w": 8,
                 "x": 0,
-                "y": 74
+                "y": 75
             },
             "id": 35,
             "links": [],
@@ -2785,8 +2845,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -2802,7 +2861,7 @@
                 "h": 8,
                 "w": 8,
                 "x": 8,
-                "y": 74
+                "y": 75
             },
             "id": 118,
             "links": [],
@@ -2925,8 +2984,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -2942,7 +3000,7 @@
                 "h": 8,
                 "w": 8,
                 "x": 16,
-                "y": 74
+                "y": 75
             },
             "id": 119,
             "links": [],
@@ -3002,7 +3060,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 82
+                "y": 83
             },
             "id": 37,
             "panels": [],
@@ -3063,8 +3121,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -3080,7 +3137,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 0,
-                "y": 83
+                "y": 84
             },
             "id": 120,
             "links": [],
@@ -3177,8 +3234,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -3194,7 +3250,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 12,
-                "y": 83
+                "y": 84
             },
             "id": 56,
             "links": [],
@@ -3320,7 +3376,7 @@
             },
             {
                 "current": {
-                    "selected": false,
+                    "selected": true,
                     "text": "0.5",
                     "value": "0.5"
                 },
@@ -3423,7 +3479,7 @@
         ]
     },
     "time": {
-        "from": "now-5m",
+        "from": "now-3h",
         "to": "now"
     },
     "timepicker": {
