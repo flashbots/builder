@@ -62,12 +62,14 @@
                                     "color": "green",
                                     "index": 0,
                                     "text": "Yes"
-                                }
+                                },
+                                "to": null
                             },
                             "type": "range"
                         },
                         {
                             "options": {
+                                "from": null,
                                 "result": {
                                     "color": "red",
                                     "index": 1,
