@@ -60,7 +60,7 @@
     ],
     "network_params": {
         "capella_fork_epoch": 0,
-        "seconds_per_slot": 12
+        "seconds_per_slot": 5
     },
     "mev_params": {
         "mev_flood_seconds_per_bundle": 11,
@@ -70,7 +70,7 @@
         "mev_flood_image": "flashbots/mev-flood:0.0.9",
         "mev_relay_image": "flashbots/mev-boost-relay:0.27",
         "mev_boost_image": "flashbots/mev-boost:1.6",
-        "mev_builder_image": "flashbots/builder:1.13.2.4844.dev5-4d161de",
+        "mev_builder_image": "flashbots/builder:latest",
         "mev_builder_extra_args": [
             "--metrics.expensive",
             "--maxpeers 0"
