@@ -108,7 +108,7 @@ func update_config(imageTag string, imageArgs string, kurtosisNetworkScriptFolde
 	}
 }
 
-func run(imageTag, imageArgs, enclaveName string, maxSteps int, kurtosisPath, kurtosisNetworkScriptFolder string, kurtosisNetConfigPath string) {
+func run(imageTag, imageArgs, enclaveName string, maxSteps int, kurtosisPath, kurtosisNetworkScriptFolder string, kurtosisNetConfigPath string, slotTime int64) {
 	/*	params := map[string]interface{}{
 		"image_tag":               imageTag,
 		"image_args":              imageArgs,
@@ -117,7 +117,7 @@ func run(imageTag, imageArgs, enclaveName string, maxSteps int, kurtosisPath, ku
 		"kurtosis_path":           kurtosisPath,
 		"kurtosis_network_config": kurtosisNetworkScriptFolder,
 	}*/
-	update_config(imageTag, imageArgs, kurtosisNetworkScriptFolder, kurtosisNetConfigPath)
+	update_config(imageTag, imageArgs, kurtosisNetworkScriptFolder, slotTime, kurtosisNetConfigPath)
 
 	cmd := fmt.Sprintf("%s run --enclave %s %s", kurtosisPath, enclaveName, kurtosisNetworkScriptFolder)
 	runCommand(cmd)
@@ -235,7 +235,7 @@ func main() {
 			"configuration path. Note that run command modifies it with provided imageTag and imageArgs.")
 		slotTime := flagSet.Int64("slotTime", 5, "Seconds per slot to update in the JSON config.")
 		flagSet.Parse(os.Args[2:])
-		run(*imageTag, *imageArgs, *enclaveName, *maxSteps, *kurtosisPath, *kurtosisNetworkConfigScriptFolder, *kurtosisNetConfigPath)
+		run(*imageTag, *imageArgs, *enclaveName, *maxSteps, *kurtosisPath, *kurtosisNetworkConfigScriptFolder, *kurtosisNetConfigPath, *slotTime)
 	case "stop":
 		flagSet.Parse(os.Args[2:])
 		stop(*kurtosisPath, *enclaveName)
