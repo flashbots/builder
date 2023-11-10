@@ -22,7 +22,7 @@
         },
         {
             "el_client_type": "REPLACE_WITH_BUILDER",
-            "el_client_image": "flashbots/builder:1.13.2.4844.dev5-4d161de",
+            "el_client_image": "flashbots/builder:dev",
             "el_client_log_level": "",
             "cl_client_type": "lighthouse",
             "cl_client_image": "sigp/lighthouse:v4.5.0",
