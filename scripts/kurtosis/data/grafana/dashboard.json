@@ -18,6 +18,20 @@
                     "type": "dashboard"
                 },
                 "type": "dashboard"
+            },
+            {
+                "datasource": {
+                    "type": "prometheus",
+                    "uid": "PBFA97CFB590B2093"
+                },
+                "enable": true,
+                "expr": "beacon_head_slot{role=\"Proposer\"} <= 128",
+                "hide": false,
+                "iconColor": "#F2495C",
+                "name": "Epoch 4",
+                "step": "1s",
+                "textFormat": "Builder blocks are not being used during the first 4 epochs",
+                "titleFormat": "Epoch 4"
             }
         ]
     },
@@ -51,11 +65,168 @@
             "fieldConfig": {
                 "defaults": {
                     "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [
+                        {
+                            "options": {
+                                "from": 128,
+                                "result": {
+                                    "color": "green",
+                                    "index": 0,
+                                    "text": "Yes"
+                                },
+                                "to": null
+                            },
+                            "type": "range"
+                        },
+                        {
+                            "options": {
+                                "from": null,
+                                "result": {
+                                    "color": "red",
+                                    "index": 1,
+                                    "text": "No"
+                                },
+                                "to": 127
+                            },
+                            "type": "range"
+                        }
+                    ],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            },
+                            {
+                                "color": "red",
+                                "value": 80
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 5,
+                "w": 12,
+                "x": 0,
+                "y": 1
+            },
+            "id": 129,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "auto",
+                "reduceOptions": {
+                    "calcs": [
+                        "last"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "text": {
+                    "titleSize": 1
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "9.5.12",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "beacon_head_slot{role=\"Proposer\"}",
+                    "interval": "1s",
+                    "legendFormat": "__auto",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Epoch 4 Reached",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
+                        "mode": "thresholds"
+                    },
+                    "mappings": [],
+                    "thresholds": {
+                        "mode": "absolute",
+                        "steps": [
+                            {
+                                "color": "green",
+                                "value": null
+                            }
+                        ]
+                    }
+                },
+                "overrides": []
+            },
+            "gridPos": {
+                "h": 5,
+                "w": 12,
+                "x": 12,
+                "y": 1
+            },
+            "id": 131,
+            "options": {
+                "colorMode": "value",
+                "graphMode": "none",
+                "justifyMode": "auto",
+                "orientation": "horizontal",
+                "reduceOptions": {
+                    "calcs": [
+                        "lastNotNull"
+                    ],
+                    "fields": "",
+                    "values": false
+                },
+                "textMode": "auto"
+            },
+            "pluginVersion": "9.5.12",
+            "targets": [
+                {
+                    "datasource": {
+                        "type": "prometheus",
+                        "uid": "${datasource}"
+                    },
+                    "editorMode": "code",
+                    "expr": "miner_block_build_count{role=~\"$instance\"}",
+                    "interval": "1s",
+                    "legendFormat": "{{role}}",
+                    "range": true,
+                    "refId": "A"
+                }
+            ],
+            "title": "Bids Built Count",
+            "type": "stat"
+        },
+        {
+            "datasource": {
+                "type": "prometheus",
+                "uid": "${datasource}"
+            },
+            "fieldConfig": {
+                "defaults": {
+                    "color": {
                         "mode": "palette-classic"
                     },
                     "custom": {
                         "axisCenteredZero": false,
                         "axisColorMode": "text",
+                        "axisLabel": "",
                         "axisPlacement": "left",
                         "barAlignment": 0,
                         "drawStyle": "line",
@@ -114,10 +285,10 @@
                 ]
             },
             "gridPos": {
-                "h": 6,
+                "h": 7,
                 "w": 12,
                 "x": 0,
-                "y": 1
+                "y": 6
             },
             "id": 126,
             "interval": "1s",
@@ -125,9 +296,10 @@
                 "legend": {
                     "calcs": [
                         "max",
-                        "mean"
+                        "mean",
+                        "sum"
                     ],
-                    "displayMode": "list",
+                    "displayMode": "table",
                     "placement": "bottom",
                     "showLegend": true
                 },
@@ -242,16 +414,20 @@
                             {
                                 "id": "custom.axisLabel",
                                 "value": "Slots"
+                            },
+                            {
+                                "id": "unit",
+                                "value": "none"
                             }
                         ]
                     }
                 ]
             },
             "gridPos": {
-                "h": 6,
+                "h": 7,
                 "w": 12,
                 "x": 12,
-                "y": 1
+                "y": 6
             },
             "id": 125,
             "interval": "1",
@@ -261,7 +437,7 @@
                         "max",
                         "mean"
                     ],
-                    "displayMode": "list",
+                    "displayMode": "table",
                     "placement": "bottom",
                     "showLegend": true
                 },
@@ -326,6 +502,7 @@
                     "custom": {
                         "axisCenteredZero": false,
                         "axisColorMode": "text",
+                        "axisLabel": "",
                         "axisPlacement": "auto",
                         "barAlignment": 0,
                         "drawStyle": "line",
@@ -388,10 +565,10 @@
                 ]
             },
             "gridPos": {
-                "h": 6,
+                "h": 7,
                 "w": 12,
                 "x": 0,
-                "y": 7
+                "y": 13
             },
             "id": 127,
             "interval": "1s",
@@ -401,7 +578,7 @@
                         "max",
                         "mean"
                     ],
-                    "displayMode": "list",
+                    "displayMode": "table",
                     "placement": "bottom",
                     "showLegend": true
                 },
@@ -514,10 +691,10 @@
                 ]
             },
             "gridPos": {
-                "h": 6,
+                "h": 7,
                 "w": 12,
                 "x": 12,
-                "y": 7
+                "y": 13
             },
             "id": 128,
             "interval": "1",
@@ -527,7 +704,7 @@
                         "max",
                         "mean"
                     ],
-                    "displayMode": "list",
+                    "displayMode": "table",
                     "placement": "bottom",
                     "showLegend": true
                 },
@@ -576,7 +753,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 13
+                "y": 20
             },
             "id": 82,
             "panels": [],
@@ -654,7 +831,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 0,
-                "y": 14
+                "y": 21
             },
             "id": 106,
             "links": [],
@@ -680,7 +857,7 @@
                     "editorMode": "code",
                     "expr": "system_cpu_sysload{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "system {{role}}",
                     "range": true,
@@ -694,7 +871,7 @@
                     "editorMode": "code",
                     "expr": "system_cpu_syswait{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "iowait {{role}}",
                     "range": true,
@@ -708,7 +885,7 @@
                     "editorMode": "code",
                     "expr": "system_cpu_procload{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "geth {{role}}",
                     "range": true,
@@ -780,7 +957,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 8,
-                "y": 14
+                "y": 21
             },
             "id": 86,
             "links": [],
@@ -806,7 +983,7 @@
                     "editorMode": "code",
                     "expr": "rate(system_memory_allocs{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "alloc {{role}}",
                     "range": true,
@@ -820,7 +997,7 @@
                     "editorMode": "code",
                     "expr": "system_memory_used{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "used {{role}}",
                     "range": true,
@@ -834,7 +1011,7 @@
                     "editorMode": "code",
                     "expr": "system_memory_held{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "held {{role}}",
                     "range": true,
@@ -906,7 +1083,7 @@
                 "h": 6,
                 "w": 8,
                 "x": 16,
-                "y": 14
+                "y": 21
             },
             "id": 85,
             "links": [],
@@ -932,7 +1109,7 @@
                     "editorMode": "code",
                     "expr": "rate(system_disk_readbytes{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "read {{role}}",
                     "range": true,
@@ -946,7 +1123,7 @@
                     "editorMode": "code",
                     "expr": "rate(system_disk_writebytes{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "write {{role}}",
                     "range": true,
@@ -966,7 +1143,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 20
+                "y": 27
             },
             "id": 75,
             "panels": [],
@@ -1044,7 +1221,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 0,
-                "y": 21
+                "y": 28
             },
             "id": 96,
             "links": [],
@@ -1072,7 +1249,7 @@
                     "editorMode": "code",
                     "expr": "rate(p2p_ingress{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "ingress {{role}}",
                     "range": true,
@@ -1086,7 +1263,7 @@
                     "editorMode": "code",
                     "expr": "rate(p2p_egress{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "egress {{role}}",
                     "range": true,
@@ -1158,7 +1335,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 12,
-                "y": 21
+                "y": 28
             },
             "id": 77,
             "links": [],
@@ -1234,7 +1411,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 27
+                "y": 34
             },
             "id": 4,
             "panels": [],
@@ -1288,7 +1465,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 28
+                "y": 35
             },
             "id": 108,
             "links": [],
@@ -1387,7 +1564,7 @@
                 "h": 9,
                 "w": 18,
                 "x": 6,
-                "y": 28
+                "y": 35
             },
             "id": 110,
             "links": [],
@@ -1489,7 +1666,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 31
+                "y": 38
             },
             "id": 111,
             "links": [],
@@ -1567,7 +1744,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 34
+                "y": 41
             },
             "id": 109,
             "links": [],
@@ -1645,7 +1822,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 37
+                "y": 44
             },
             "id": 113,
             "links": [],
@@ -1747,7 +1924,7 @@
                 "h": 9,
                 "w": 18,
                 "x": 6,
-                "y": 37
+                "y": 44
             },
             "id": 116,
             "links": [],
@@ -1773,7 +1950,7 @@
                     "editorMode": "code",
                     "expr": "txpool_pending{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "executable {{role}}",
                     "range": true,
@@ -1787,7 +1964,7 @@
                     "editorMode": "code",
                     "expr": "txpool_queued{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "gapped {{role}}",
                     "range": true,
@@ -1801,7 +1978,7 @@
                     "editorMode": "code",
                     "expr": "txpool_local{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "local {{role}}",
                     "range": true,
@@ -1849,7 +2026,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 40
+                "y": 47
             },
             "id": 114,
             "links": [],
@@ -1927,7 +2104,7 @@
                 "h": 3,
                 "w": 6,
                 "x": 0,
-                "y": 43
+                "y": 50
             },
             "id": 115,
             "links": [],
@@ -2029,7 +2206,7 @@
                 "h": 11,
                 "w": 24,
                 "x": 0,
-                "y": 46
+                "y": 53
             },
             "id": 112,
             "links": [],
@@ -2059,7 +2236,7 @@
                     "editorMode": "code",
                     "expr": "chain_execution{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "execution (q=$quantile) {{role}}",
                     "range": true,
@@ -2074,7 +2251,7 @@
                     "expr": "chain_validation{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "hide": false,
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "validation (q=$quantile) {{role}}",
                     "range": true,
@@ -2089,7 +2266,7 @@
                     "expr": "chain_write{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
                     "hide": false,
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "commit (q=$quantile) {{role}}",
                     "range": true,
@@ -2103,7 +2280,7 @@
                     "editorMode": "code",
                     "expr": "chain_account_reads{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "account read (q=$quantile) {{role}}",
                     "range": true,
@@ -2117,7 +2294,7 @@
                     "editorMode": "code",
                     "expr": "chain_account_updates{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "account update (q=$quantile) {{role}}",
                     "range": true,
@@ -2131,7 +2308,7 @@
                     "editorMode": "code",
                     "expr": "chain_account_hashes{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "account hashe (q=$quantile) {{role}}",
                     "range": true,
@@ -2145,7 +2322,7 @@
                     "editorMode": "code",
                     "expr": "chain_account_commits{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "account commit (q=$quantile) {{role}}",
                     "range": true,
@@ -2159,7 +2336,7 @@
                     "editorMode": "code",
                     "expr": "chain_storage_reads{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "storage read (q=$quantile) {{role}}",
                     "range": true,
@@ -2173,7 +2350,7 @@
                     "editorMode": "code",
                     "expr": "chain_storage_updates{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "storage update (q=$quantile) {{role}}",
                     "range": true,
@@ -2187,7 +2364,7 @@
                     "editorMode": "code",
                     "expr": "chain_storage_hashes{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "storage hashe (q=$quantile) {{role}}",
                     "range": true,
@@ -2201,7 +2378,7 @@
                     "editorMode": "code",
                     "expr": "chain_storage_commits{quantile=\"$quantile\", client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "storage commit (q=$quantile) {{role}}",
                     "range": true,
@@ -2256,8 +2433,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -2273,7 +2449,7 @@
                 "h": 10,
                 "w": 24,
                 "x": 0,
-                "y": 57
+                "y": 64
             },
             "id": 117,
             "links": [],
@@ -2303,7 +2479,7 @@
                     "editorMode": "code",
                     "expr": "rate(txpool_valid{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "valid {{role}}",
                     "range": true,
@@ -2317,7 +2493,7 @@
                     "editorMode": "code",
                     "expr": "rate(txpool_invalid{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "invalid {{role}}",
                     "range": true,
@@ -2332,7 +2508,7 @@
                     "expr": "rate(txpool_underpriced{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "underpriced {{role}}",
                     "range": true,
@@ -2347,7 +2523,7 @@
                     "expr": "rate(txpool_pending_discard{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "executable discard {{role}}",
                     "range": true,
@@ -2361,7 +2537,7 @@
                     "editorMode": "code",
                     "expr": "rate(txpool_pending_replace{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "executable replace {{role}}",
                     "range": true,
@@ -2375,7 +2551,7 @@
                     "editorMode": "code",
                     "expr": "rate(txpool_pending_ratelimit{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "executable ratelimit {{role}}",
                     "range": true,
@@ -2389,7 +2565,7 @@
                     "editorMode": "code",
                     "expr": "rate(txpool_pending_nofunds{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "executable nofunds {{role}}",
                     "range": true,
@@ -2404,7 +2580,7 @@
                     "expr": "rate(txpool_queued_discard{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "gapped discard {{role}}",
                     "range": true,
@@ -2419,7 +2595,7 @@
                     "expr": "rate(txpool_queued_replace{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "gapped replace {{role}}",
                     "range": true,
@@ -2434,7 +2610,7 @@
                     "expr": "rate(txpool_queued_ratelimit{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "gapped ratelimit {{role}}",
                     "range": true,
@@ -2449,7 +2625,7 @@
                     "expr": "rate(txpool_queued_nofunds{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "gapped nofunds {{role}}",
                     "range": true,
@@ -2469,7 +2645,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 67
+                "y": 74
             },
             "id": 17,
             "panels": [],
@@ -2530,8 +2706,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -2547,7 +2722,7 @@
                 "h": 8,
                 "w": 8,
                 "x": 0,
-                "y": 68
+                "y": 75
             },
             "id": 35,
             "links": [],
@@ -2573,7 +2748,7 @@
                     "editorMode": "code",
                     "expr": "rate(eth_db_chaindata_disk_read{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "leveldb read {{role}}",
                     "range": true,
@@ -2587,7 +2762,7 @@
                     "editorMode": "code",
                     "expr": "rate(eth_db_chaindata_disk_write{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "leveldb write {{role}}",
                     "range": true,
@@ -2601,7 +2776,7 @@
                     "editorMode": "code",
                     "expr": "rate(eth_db_chaindata_ancient_read{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "ancient read {{role}}",
                     "range": true,
@@ -2615,7 +2790,7 @@
                     "editorMode": "code",
                     "expr": "rate(eth_db_chaindata_ancient_write{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "ancient write {{role}}",
                     "range": true,
@@ -2670,8 +2845,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -2687,7 +2861,7 @@
                 "h": 8,
                 "w": 8,
                 "x": 8,
-                "y": 68
+                "y": 75
             },
             "id": 118,
             "links": [],
@@ -2713,7 +2887,7 @@
                     "editorMode": "code",
                     "expr": "eth_db_chaindata_disk_read{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "leveldb read {{role}}",
                     "range": true,
@@ -2727,7 +2901,7 @@
                     "editorMode": "code",
                     "expr": "eth_db_chaindata_disk_write{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "leveldb write {{role}}",
                     "range": true,
@@ -2741,7 +2915,7 @@
                     "editorMode": "code",
                     "expr": "eth_db_chaindata_ancient_read{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "ancient read {{role}}",
                     "range": true,
@@ -2755,7 +2929,7 @@
                     "editorMode": "code",
                     "expr": "eth_db_chaindata_ancient_write{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "ancient write {{role}}",
                     "range": true,
@@ -2810,8 +2984,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -2827,7 +3000,7 @@
                 "h": 8,
                 "w": 8,
                 "x": 16,
-                "y": 68
+                "y": 75
             },
             "id": 119,
             "links": [],
@@ -2853,7 +3026,7 @@
                     "editorMode": "code",
                     "expr": "eth_db_chaindata_disk_size{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "leveldb {{role}}",
                     "range": true,
@@ -2867,7 +3040,7 @@
                     "editorMode": "code",
                     "expr": "eth_db_chaindata_ancient_size{client_name=~\"$client_name\", role=~\"$instance\"}",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "ancient {{role}}",
                     "range": true,
@@ -2887,7 +3060,7 @@
                 "h": 1,
                 "w": 24,
                 "x": 0,
-                "y": 76
+                "y": 83
             },
             "id": 37,
             "panels": [],
@@ -2948,8 +3121,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -2965,7 +3137,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 0,
-                "y": 77
+                "y": 84
             },
             "id": 120,
             "links": [],
@@ -2992,7 +3164,7 @@
                     "expr": "rate(trie_memcache_clean_read{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "hit {{role}}",
                     "range": true,
@@ -3007,7 +3179,7 @@
                     "expr": "rate(trie_memcache_clean_write{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "miss {{role}}",
                     "range": true,
@@ -3062,8 +3234,7 @@
                         "mode": "absolute",
                         "steps": [
                             {
-                                "color": "green",
-                                "value": null
+                                "color": "green"
                             },
                             {
                                 "color": "red",
@@ -3079,7 +3250,7 @@
                 "h": 6,
                 "w": 12,
                 "x": 12,
-                "y": 77
+                "y": 84
             },
             "id": 56,
             "links": [],
@@ -3106,7 +3277,7 @@
                     "expr": "rate(trie_memcache_gc_size{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
                     "hide": false,
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "gc {{role}}",
                     "range": true,
@@ -3135,7 +3306,7 @@
                     "editorMode": "code",
                     "expr": "rate(trie_memcache_commit_size{client_name=~\"$client_name\", role=~\"$instance\"}[$rate])",
                     "format": "time_series",
-                    "interval": "",
+                    "interval": "1s",
                     "intervalFactor": 1,
                     "legendFormat": "commit {{role}}",
                     "range": true,
@@ -3146,7 +3317,7 @@
             "type": "timeseries"
         }
     ],
-    "refresh": false,
+    "refresh": "5s",
     "revision": 1,
     "schemaVersion": 38,
     "style": "dark",
@@ -3205,7 +3376,7 @@
             },
             {
                 "current": {
-                    "selected": false,
+                    "selected": true,
                     "text": "0.5",
                     "value": "0.5"
                 },
@@ -3308,7 +3479,7 @@
         ]
     },
     "time": {
-        "from": "now-30m",
+        "from": "now-3h",
         "to": "now"
     },
     "timepicker": {
