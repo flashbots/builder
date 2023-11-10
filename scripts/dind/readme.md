@@ -60,6 +60,6 @@ Utilizing a DinD setup allows developers to create a contained environment where
 **Note**: Replace `builder-dind-container` with a descriptive name relevant to your project, and `builder-dind-image` with the image name you've prepared for the DinD environment. The `custom-builder-tag` should be replaced with the actual tag name you wish to assign to your builder image.
 
 ## Known Issues and Solutions
-Guess the ports
+Ports control is missing in ethereum-package.
 
 By following these instructions, developers can leverage a Docker-in-Docker approach to emulate networks and test builder performance in a controlled and isolated manner.

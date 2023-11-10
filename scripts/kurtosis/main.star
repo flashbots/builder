@@ -2,7 +2,7 @@
 #Node: works only with config files local to ./kurtosis/ folder where kurtosis.yml is defined
 
 eth_pkg = import_module(
-    "github.com/kurtosis-tech/ethereum-package/main.star@cbermudez/prometheus-additional-labels"
+    "github.com/kurtosis-tech/ethereum-package/main.star"
 )
 
 def run(plan, file_to_read = "network_params_tmp.json"):
