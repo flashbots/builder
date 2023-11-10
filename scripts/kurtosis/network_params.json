@@ -2,7 +2,8 @@
     "mev_type": "full",
     "participants": [
         {
-            "el_client_type": "geth",
+            "el_client_type": "nethermind",
+            "el_client_image": "nethermind/nethermind:1.21.1",
             "el_client_log_level": "",
             "cl_client_type": "lighthouse",
             "cl_client_log_level": "",
@@ -36,7 +37,8 @@
                 "--miner.extradata=The_Dev_version_of_builder",
                 "--builder.algotype=greedy",
                 "--metrics.builder",
-                "--metrics.expensive"
+                "--metrics.expensive",
+                "--maxpeers 0"
             ],
             "validator_count": 0,
             "el_extra_env_vars": {
@@ -49,19 +51,21 @@
         "seconds_per_slot": 12
     },
     "mev_params": {
-        "mev_flood_seconds_per_bundle": 13,
+        "mev_flood_seconds_per_bundle": 11,
         "mev_flood_extra_args": [
-            "--txsPerBundle=250"
+            "--txsPerBundle=130"
         ],
         "mev_flood_image": "flashbots/mev-flood:0.0.9",
         "mev_relay_image": "flashbots/mev-boost-relay:0.27",
         "mev_boost_image": "flashbots/mev-boost:1.6",
         "mev_builder_image": "flashbots/builder:1.13.2.4844.dev5-4d161de",
         "mev_builder_extra_args": [
-            "--metrics.expensive"
+            "--metrics.expensive",
+            "--maxpeers 0"
         ]
     },
     "additional_services": [
+        "broadcaster",
         "tx_spammer",
         "blob_spammer",
         "custom_flood",
@@ -71,11 +75,11 @@
     ],
     "tx_spammer_params": {
         "tx_spammer_extra_args": [
-            "--txcount=250"
+            "--txcount=1"
         ]
     },
     "custom_flood_params": {
-        "interval_between_transactions": 0.05
+        "interval_between_transactions": 0.1
     },
     "grafana_additional_dashboards": [
         "github.com/flashbots/builder-startup-script/data/grafana"
