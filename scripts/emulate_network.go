@@ -123,7 +123,7 @@ func getBlockNumber(url string) (int64, error) {
 	defer resp.Body.Close()
 
 	// Read the response
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0, fmt.Errorf("error reading response body: %w", err)
 	}
@@ -165,7 +165,7 @@ func update_config(imageTag string, imageArgs string, kurtosisNetworkScriptFolde
 	}
 
 	// Read the file
-	fileContent, err := ioutil.ReadFile(file)
+	fileContent, err := os.ReadFile(file)
 	if err != nil {
 		fmt.Println("Error reading the file:", err)
 		return
@@ -237,7 +237,7 @@ func update_config(imageTag string, imageArgs string, kurtosisNetworkScriptFolde
 	fmt.Println(string(modifiedContent))
 
 	// Save the modified content back to the file
-	err = ioutil.WriteFile(kurtosisNetworkScriptFolder+"/network_params_tmp.json", modifiedContent, os.ModePerm)
+	err = os.WriteFile(kurtosisNetworkScriptFolder+"/network_params_tmp.json", modifiedContent, os.ModePerm)
 	if err != nil {
 		fmt.Println("Error writing the modified content to the file:", err)
 	}
