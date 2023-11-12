@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -393,24 +392,23 @@ func runCommand(cmd string) (string, string, error) {
 }
 
 func help() {
-	fmt.Println(`Emulate Network script
+    fmt.Println(`Emulate Network script
 Available commands:
 - build
-  - -t 			: Image tag (optional, default: "flashbots/builder:dev")
-  - -d 			: Image Build directory (optional, default: "..")
-  - -f 			: Build dockerfile path (optional, default: "./Dockerfile.debug")
+  - -t           : Image tag (optional, default: "flashbots/builder:dev")
+  - -d           : Image Build directory (optional, default: "..")
+  - -f           : Build dockerfile path (optional, default: "./Dockerfile.debug")
 - run
-  - -t 			: Image tag (optional, default: "flashbots/builder:dev")
-  - -n 			: Enclave name (optional, default: "explorer")
-  - -a 			: Additional builder arguments (optional)
-  - -s 			: Max steps (optional, default: -1)
-  - -k 			: Kurtosis path (optional, default: "kurtosis")
-  - -c 			: Kurtosis network config (optional, default: "./kurtosis")
-  - --slotTime	: Seconds per slot applied on local devnet (optional, default: 5)
+  - -t           : Image tag (optional, default: "flashbots/builder:dev")
+  - -n           : Enclave name (optional, default: "explorer")
+  - -a           : Additional builder arguments (optional)
+  - -s           : Max steps (optional, default: -1)
+  - -k           : Kurtosis path (optional, default: "kurtosis")
+  - -c           : Kurtosis network config (optional, default: "./kurtosis")
+  - --slotTime   : Seconds per slot applied on local devnet (optional, default: 5)
 - stop
-  - -k 			: Kurtosis path (optional, default: "kurtosis")
-  - -n 			: Enclave name (required)
-`)
+  - -k           : Kurtosis path (optional, default: "kurtosis")
+  - -n           : Enclave name (required)`)
 }
 
 func main() {
