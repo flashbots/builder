@@ -342,7 +342,7 @@ func run(imageTag, imageArgs, enclaveName string, maxSteps int, kurtosisPath, ku
 	printSummary(services)
 }
 
-func printSummary(services) {
+func printSummary(services []ServiceInfo) {
 	fmt.Println("Please visit monitoring services:")
 	for _, service := range services {
 		if service.Name == "grafana" || service.Name == "dora" {
@@ -397,7 +397,7 @@ func runCommand(cmd string) (string, string, error) {
 }
 
 func help() {
-    fmt.Println(`Emulate Network script
+	fmt.Println(`Emulate Network script
 Available commands:
 - build
   - -t           : Image tag (optional, default: "flashbots/builder:dev")
