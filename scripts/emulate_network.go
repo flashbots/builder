@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -124,7 +123,7 @@ func getBlockNumber(url string) (int64, error) {
 	defer resp.Body.Close()
 
 	// Read the response
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return 0, fmt.Errorf("error reading response body: %w", err)
 	}
@@ -166,7 +165,7 @@ func update_config(imageTag string, imageArgs string, kurtosisNetworkScriptFolde
 	}
 
 	// Read the file
-	fileContent, err := ioutil.ReadFile(file)
+	fileContent, err := os.ReadFile(file)
 	if err != nil {
 		fmt.Println("Error reading the file:", err)
 		return
@@ -238,7 +237,7 @@ func update_config(imageTag string, imageArgs string, kurtosisNetworkScriptFolde
 	fmt.Println(string(modifiedContent))
 
 	// Save the modified content back to the file
-	err = ioutil.WriteFile(kurtosisNetworkScriptFolder+"/network_params_tmp.json", modifiedContent, os.ModePerm)
+	err = os.WriteFile(kurtosisNetworkScriptFolder+"/network_params_tmp.json", modifiedContent, os.ModePerm)
 	if err != nil {
 		fmt.Println("Error writing the modified content to the file:", err)
 	}
@@ -393,24 +392,23 @@ func runCommand(cmd string) (string, string, error) {
 }
 
 func help() {
-	fmt.Println(`Emulate Network script
+    fmt.Println(`Emulate Network script
 Available commands:
 - build
-  - -t 			: Image tag (optional, default: "flashbots/builder:dev")
-  - -d 			: Image Build directory (optional, default: "..")
-  - -f 			: Build dockerfile path (optional, default: "./Dockerfile.debug")
+  - -t           : Image tag (optional, default: "flashbots/builder:dev")
+  - -d           : Image Build directory (optional, default: "..")
+  - -f           : Build dockerfile path (optional, default: "./Dockerfile.debug")
 - run
-  - -t 			: Image tag (optional, default: "flashbots/builder:dev")
-  - -n 			: Enclave name (optional, default: "explorer")
-  - -a 			: Additional builder arguments (optional)
-  - -s 			: Max steps (optional, default: -1)
-  - -k 			: Kurtosis path (optional, default: "kurtosis")
-  - -c 			: Kurtosis network config (optional, default: "./kurtosis")
-  - --slotTime	: Seconds per slot applied on local devnet (optional, default: 5)
+  - -t           : Image tag (optional, default: "flashbots/builder:dev")
+  - -n           : Enclave name (optional, default: "explorer")
+  - -a           : Additional builder arguments (optional)
+  - -s           : Max steps (optional, default: -1)
+  - -k           : Kurtosis path (optional, default: "kurtosis")
+  - -c           : Kurtosis network config (optional, default: "./kurtosis")
+  - --slotTime   : Seconds per slot applied on local devnet (optional, default: 5)
 - stop
-  - -k 			: Kurtosis path (optional, default: "kurtosis")
-  - -n 			: Enclave name (required)
-`)
+  - -k           : Kurtosis path (optional, default: "kurtosis")
+  - -n           : Enclave name (required)`)
 }
 
 func main() {
