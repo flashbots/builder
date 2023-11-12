@@ -267,6 +267,7 @@ func run(imageTag, imageArgs, enclaveName string, maxSteps int, kurtosisPath, ku
 	}
 
 	if maxSteps <= 0 {
+		printSummary(services)
 		return
 	}
 
@@ -338,6 +339,10 @@ func run(imageTag, imageArgs, enclaveName string, maxSteps int, kurtosisPath, ku
 		}
 	}
 	fmt.Println("Stopped transaction spamming and block building services.")
+	printSummary(services)
+}
+
+func printSummary(services) {
 	fmt.Println("Please visit monitoring services:")
 	for _, service := range services {
 		if service.Name == "grafana" || service.Name == "dora" {
@@ -402,7 +407,7 @@ Available commands:
   - -t           : Image tag (optional, default: "flashbots/builder:dev")
   - -n           : Enclave name (optional, default: "explorer")
   - -a           : Additional builder arguments (optional)
-  - -s           : Max steps (optional, default: -1)
+  - -s           : Max steps (optional, default: 1000)
   - -k           : Kurtosis path (optional, default: "kurtosis")
   - -c           : Kurtosis network config (optional, default: "./kurtosis")
   - --slotTime   : Seconds per slot applied on local devnet (optional, default: 5)
@@ -430,7 +435,7 @@ func main() {
 		build(*imageTag, *buildDir, *buildDockerfilePath)
 	case "run":
 		imageArgs := flagSet.String("a", "", "Image arguments for run.")
-		maxSteps := flagSet.Int("s", -1, "Max steps for run.")
+		maxSteps := flagSet.Int("s", 1000, "Max steps for run.")
 		kurtosisNetworkConfigScriptFolder := flagSet.String("f", "./kurtosis", "Kurtosis network config for run.")
 		kurtosisNetConfigPath := flagSet.String("c", "./kurtosis/network_params.json", "Kurtosis network params "+
 			"configuration path. Note that run command modifies it with provided imageTag and imageArgs.")

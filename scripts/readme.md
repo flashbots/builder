@@ -37,7 +37,7 @@ To run script `cd` into this (`./scripts`) folder.
 1. **build**:
    - Purpose: Builds a Docker image of the builder.
    - Options:
-      - `-t`: (Optional) Image tag for the Docker build. Defaults to `flashbots/builder:dev`.
+      - `-t`:           (Optional) Image tag for the Docker build. Defaults to `flashbots/builder:dev`.
    - Example:
      ```
      go run emulate_network.go build -t=test-builder
@@ -46,11 +46,12 @@ To run script `cd` into this (`./scripts`) folder.
 2. **run**:
    - Purpose: Prepares configurations and starts a Kurtosis enclave.
    - Options:
-      - `-t`: (Optional) Image tag. Defaults to `flashbots/builder:dev`.
-      - `-n`: (Optional) Enclave name. Defaults to `explorer`.
-      - `-a`: (Optional) Additional builder arguments.
-      - `-s`: (Optional) Max steps (integer). Default `-1` for "unlimited".
-      - `-k`: (Optional) Path to `kurtosis` executable. Defaults to `kurtosis`.
+      - `-t`:           (Optional) Image tag. Defaults to `flashbots/builder:dev`.
+      - `-n`:           (Optional) Enclave name. Defaults to `explorer`.
+      - `-a`:           (Optional) Additional builder arguments.
+      - `-s`:           (Optional) Max steps (integer). Defaults to `1000`. Set for `-1` for "unlimited".
+      - `-k`:           (Optional) Path to `kurtosis` executable. Defaults to `kurtosis`.
+      - `--slotTime`:   (Optional) Seconds per slot applied on local devnet. Defaults to 5.
    - Example:
      ```
      go run emulate_network.go run -t=imageTag -a=imageArgs -n=enclaveName -k=/path/to/kurtosis
@@ -59,8 +60,8 @@ To run script `cd` into this (`./scripts`) folder.
 3. **stop**:
    - Purpose: Stops an active Kurtosis enclave.
    - Options:
-      - `-k`: (Optional) Path to `kurtosis` executable. Defaults to `kurtosis`.
-      - `-n`: (Required) Enclave name.
+      - `-k`:           (Optional) Path to `kurtosis` executable. Defaults to `kurtosis`.
+      - `-n`:           (Required) Enclave name.
    - Example:
      ```
      go run emulate_network.go stop -k=/path/to/kurtosis -n=enclaveName
