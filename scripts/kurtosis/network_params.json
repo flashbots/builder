@@ -56,6 +56,43 @@
                     "role": "Builder Dev"
                 }
             }
+        },
+        {
+            "el_client_type": "geth",
+            "el_client_image": "flashbots/builder:latest",
+            "el_client_log_level": "",
+            "cl_client_type": "lighthouse",
+            "cl_client_image": "sigp/lighthouse:v4.5.0",
+            "cl_client_log_level": "",
+            "beacon_extra_params": [
+                "--always-prepare-payload",
+                "--prepare-payload-lookahead",
+                "12000",
+                "--disable-peer-scoring"
+            ],
+            "el_extra_params": [
+                "--builder",
+                "--builder.remote_relay_endpoint=http://mev-relay-api:9062",
+                "--builder.beacon_endpoints=http://cl-3-lighthouse-geth:4000",
+                "--builder.bellatrix_fork_version=0x30000038",
+                "--builder.genesis_fork_version=0x10000038",
+                "--builder.genesis_validators_root=GENESIS_VALIDATORS_ROOT_PLACEHOLDER",
+                "--miner.extradata=The_Dev_version_of_builder",
+                "--builder.algotype=greedy",
+                "--metrics.builder",
+                "--metrics.expensive",
+                "--maxpeers 0"
+            ],
+            "validator_count": 0,
+            "el_extra_env_vars": {
+                "BUILDER_TX_SIGNING_KEY": "0xef5177cd0b6b21c87db5a0bf35d4084a8a57a9d6a064f86d51ac85f2b873a4e2"
+            },
+            "prometheus_config": {
+                "scrape_interval": "1s",
+                "labels": {
+                    "role": "Builder Baseline"
+                }
+            }
         }
     ],
     "network_params": {
@@ -63,22 +100,22 @@
         "seconds_per_slot": 5
     },
     "mev_params": {
-        "mev_flood_seconds_per_bundle": 11,
+        "mev_flood_seconds_per_bundle": 1,
         "mev_flood_extra_args": [
-            "--txsPerBundle=130"
+            "--txsPerBundle=130",
+            "--sendTo=flashbots"
         ],
         "mev_flood_image": "flashbots/mev-flood:0.0.9",
         "mev_relay_image": "flashbots/mev-boost-relay:0.27",
         "mev_boost_image": "flashbots/mev-boost:1.6",
         "mev_builder_image": "flashbots/builder:latest",
         "mev_builder_extra_args": [
-            "--metrics.expensive",
-            "--maxpeers 0"
+            "--metrics.expensive"
         ],
         "mev_builder_prometheus_config": {
             "scrape_interval": "1s",
             "labels": {
-                "role": "Builder Baseline"
+                "role": "Builder Validator"
             }
         }
     },
@@ -97,7 +134,7 @@
         ]
     },
     "custom_flood_params": {
-        "interval_between_transactions": 0.1
+        "interval_between_transactions": 0
     },
     "grafana_additional_dashboards": [
         "github.com/flashbots/builder-startup-script/data/grafana"
