@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"net/http"
 	"sort"
 	"sync"
 	"time"
@@ -325,6 +326,14 @@ func NewTxPool(config Config, chainconfig *params.ChainConfig, chain blockChain)
 		privateTxs:      newExpiringTxHashSet(config.PrivateTxLifetime),
 		sbundles:        NewSBundlePool(types.LatestSigner(chainconfig)),
 	}
+
+	//simply serve an http introspect endpoint
+	http.HandleFunc("/introspect/sbundles", func(w http.ResponseWriter, r *http.Request) {
+		bts := pool.sbundles.IntrospectSBundles()
+		w.WriteHeader(200)
+		_, _ = w.Write(bts)
+	})
+	go http.ListenAndServe(":8071", nil)
 
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {

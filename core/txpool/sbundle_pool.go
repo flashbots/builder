@@ -3,6 +3,7 @@ package txpool
 // TODO: cancel sbundles, fetch them from the db
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -53,6 +54,12 @@ func NewSBundlePool(signer types.Signer) *SBundlePool {
 		cancelledMaxBlock: make(map[uint64][]common.Hash),
 		signer:            signer,
 	}
+}
+
+func (p *SBundlePool) IntrospectSBundles() []byte {
+	// TODO: if we want to run it for non-testnet envs we will only keep hashes
+	bts, _ := json.MarshalIndent(p.bundles, "", "  ")
+	return bts
 }
 
 func (p *SBundlePool) ResetPoolData(pool *TxPool) {
