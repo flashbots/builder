@@ -290,7 +290,6 @@ func run(imageTag, imageArgs, enclaveName string, maxSteps int, kurtosisPath, ku
 	web3url = "http://" + web3url
 
 	targetBlock := int64(maxSteps)
-	fmt.Println("Network test running...")
 
 	block, err := getBlockNumber(web3url)
 
@@ -350,6 +349,10 @@ func printSummary(services []ServiceInfo) {
 			for _, port := range service.Ports {
 				web3url := port.ForwardedServiceAddress // Assuming ForwardedServiceAddress is the correct field
 				web3url = strings.TrimSpace(web3url)
+				// TODO: make the dashboard accessible at root
+				if service.Name == "grafana" {
+					web3url += "/d/geth-builder-overview/geth-builder-overview"
+				}
 				fmt.Printf("%s: %s   ", service.Name, web3url)
 			}
 		}
