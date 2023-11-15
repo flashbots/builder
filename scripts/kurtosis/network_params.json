@@ -114,7 +114,7 @@
         "mev_builder_prometheus_config": {
             "scrape_interval": "1s",
             "labels": {
-                "role": "Builder Validator"
+                "role": "Validator"
             }
         }
     },
