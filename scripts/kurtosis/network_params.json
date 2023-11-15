@@ -3,11 +3,11 @@
     "participants": [
         {
             "el_client_type": "nethermind",
-            "el_client_image": "nethermind/nethermind:1.21.1",
+            "el_client_image": "nethermind/nethermind:latest",
             "el_client_log_level": "",
             "cl_client_type": "lighthouse",
             "cl_client_log_level": "",
-            "cl_client_image": "sigp/lighthouse:v4.5.0",
+            "cl_client_image": "sigp/lighthouse:latest",
             "el_extra_params": [],
             "beacon_extra_params": [
                 "--always-prefer-builder-payload",
@@ -25,7 +25,7 @@
             "el_client_image": "flashbots/builder:dev",
             "el_client_log_level": "",
             "cl_client_type": "lighthouse",
-            "cl_client_image": "sigp/lighthouse:v4.5.0",
+            "cl_client_image": "sigp/lighthouse:latest",
             "cl_client_log_level": "",
             "beacon_extra_params": [
                 "--always-prepare-payload",
@@ -62,7 +62,7 @@
             "el_client_image": "flashbots/builder:latest",
             "el_client_log_level": "",
             "cl_client_type": "lighthouse",
-            "cl_client_image": "sigp/lighthouse:v4.5.0",
+            "cl_client_image": "sigp/lighthouse:latest",
             "cl_client_log_level": "",
             "beacon_extra_params": [
                 "--always-prepare-payload",
@@ -77,7 +77,7 @@
                 "--builder.bellatrix_fork_version=0x30000038",
                 "--builder.genesis_fork_version=0x10000038",
                 "--builder.genesis_validators_root=GENESIS_VALIDATORS_ROOT_PLACEHOLDER",
-                "--miner.extradata=The_Dev_version_of_builder",
+                "--miner.extradata=Baseline_version_of_builder",
                 "--builder.algotype=greedy",
                 "--metrics.builder",
                 "--metrics.expensive",
@@ -100,10 +100,9 @@
         "seconds_per_slot": 5
     },
     "mev_params": {
-        "mev_flood_seconds_per_bundle": 1,
+        "mev_flood_seconds_per_bundle": 11,
         "mev_flood_extra_args": [
-            "--txsPerBundle=130",
-            "--sendTo=flashbots"
+            "--txsPerBundle=130"
         ],
         "mev_flood_image": "flashbots/mev-flood:0.0.9",
         "mev_relay_image": "flashbots/mev-boost-relay:0.27",
@@ -134,7 +133,7 @@
         ]
     },
     "custom_flood_params": {
-        "interval_between_transactions": 0
+        "interval_between_transactions": 0.1
     },
     "grafana_additional_dashboards": [
         "github.com/flashbots/builder-startup-script/data/grafana"
