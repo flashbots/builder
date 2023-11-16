@@ -266,8 +266,8 @@ func run(imageTag, imageArgs, enclaveName string, maxSteps int, kurtosisPath, ku
 		log.Fatalf("Error parsing services: %v", errParse)
 	}
 
+	printSummary(services)
 	if maxSteps <= 0 {
-		printSummary(services)
 		return
 	}
 
@@ -290,7 +290,6 @@ func run(imageTag, imageArgs, enclaveName string, maxSteps int, kurtosisPath, ku
 	web3url = "http://" + web3url
 
 	targetBlock := int64(maxSteps)
-	fmt.Println("Network test running...")
 
 	block, err := getBlockNumber(web3url)
 
@@ -343,16 +342,22 @@ func run(imageTag, imageArgs, enclaveName string, maxSteps int, kurtosisPath, ku
 }
 
 func printSummary(services []ServiceInfo) {
-	fmt.Println("Please visit monitoring services:")
+	fmt.Printf("\033[1m")
+	fmt.Println("Please visit monitoring services for results:")
 	for _, service := range services {
 		if service.Name == "grafana" || service.Name == "dora" {
 			for _, port := range service.Ports {
 				web3url := port.ForwardedServiceAddress // Assuming ForwardedServiceAddress is the correct field
 				web3url = strings.TrimSpace(web3url)
-				fmt.Printf("Service: %s, URL: %s\n", service.Name, web3url)
+				// TODO: make the dashboard accessible at root
+				if service.Name == "grafana" {
+					web3url += "/d/geth-builder-overview/geth-builder-overview"
+				}
+				fmt.Printf("%s: %s   ", service.Name, web3url)
 			}
 		}
 	}
+	fmt.Printf("\033[0m\n")
 }
 
 func stop(kurtosisPath, enclaveName string) {
@@ -407,7 +412,7 @@ Available commands:
   - -t           : Image tag (optional, default: "flashbots/builder:dev")
   - -n           : Enclave name (optional, default: "explorer")
   - -a           : Additional builder arguments (optional)
-  - -s           : Max steps (optional, default: 1000)
+  - -s           : Max steps. Use -1 to run permanently (optional, default: 1000)
   - -k           : Kurtosis path (optional, default: "kurtosis")
   - -c           : Kurtosis network config (optional, default: "./kurtosis")
   - --slotTime   : Seconds per slot applied on local devnet (optional, default: 5)
