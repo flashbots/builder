@@ -7,7 +7,6 @@
             "el_client_log_level": "",
             "cl_client_type": "lighthouse",
             "cl_client_log_level": "",
-            "cl_client_image": "sigp/lighthouse:latest",
             "el_extra_params": [],
             "beacon_extra_params": [
                 "--always-prefer-builder-payload",
@@ -25,7 +24,6 @@
             "el_client_image": "flashbots/builder:dev",
             "el_client_log_level": "",
             "cl_client_type": "lighthouse",
-            "cl_client_image": "sigp/lighthouse:latest",
             "cl_client_log_level": "",
             "beacon_extra_params": [
                 "--always-prepare-payload",
@@ -62,7 +60,6 @@
             "el_client_image": "flashbots/builder:latest",
             "el_client_log_level": "",
             "cl_client_type": "lighthouse",
-            "cl_client_image": "sigp/lighthouse:latest",
             "cl_client_log_level": "",
             "beacon_extra_params": [
                 "--always-prepare-payload",
