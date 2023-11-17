@@ -37,11 +37,16 @@ To run script `cd` into this (`./scripts`) folder.
 1. **build**:
    - Purpose: Builds a Docker image of the builder.
    - Options:
-      - `-t`:           (Optional) Image tag for the Docker build. Defaults to `flashbots/builder:dev`.
+      - `-t`:          (Optional) Image tag for the Docker build. Defaults to `flashbots/builder:dev`.
+      - `-d`           (Optional) Image Build directory. Defaults to `".."`
+      - `-f`           (Optional) Build dockerfile path. Defaults to `"../Dockerfile"`. Use `"./Dockerfile.debug"` for debug capabilities.
+      
    - Example:
-     ```
-     go run emulate_network.go build -t=test-builder
-     ```
+      ```
+	  go run emulate_network.go build -t=test-builder -f="../Dockerfile" -d=".."
+      ```
+
+
 
 2. **run**:
    - Purpose: Prepares configurations and starts a Kurtosis enclave.
