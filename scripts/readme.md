@@ -78,6 +78,10 @@ To run script `cd` into this (`./scripts`) folder.
      ```
      go run emulate_network.go help
      ```
+## Architecture
+Test network consists of 3 builders and a regular client. Dev and baseline are builders being compared. Dev builder is a candidate to be merged to main while baseline is the current version of builder. The 2 remaining clients are validator which is a builder connected to the relay as validator and a regular el client which submits blocks in epochs 0-3.
+![image](https://github.com/NethermindEth/fb-builder/assets/11379770/54d4a8cf-f64c-4f69-9e32-b35bf43dba0c)
+
 
 ## Known issues
 ### Kurtosis errors on network start
