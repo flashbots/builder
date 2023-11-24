@@ -1,14 +1,3 @@
-docker build -f ./Dockerfile.kurtosis_dind -t my-dind-env ../../
-
-docker stop my-running-script
-docker rm my-running-script 
-
-docker run -dit --privileged --name my-running-script my-dind-env
-
-docker exec my-running-script go run emulate_network.go build -t=test-builder
-docker exec my-running-script go run emulate_network.go run -n=enclaveName
-docker exec my-running-script go run emulate_network.go stop -n=enclaveName
-
 # Emulate Network Using Docker-in-Docker (DinD)
 
 This documentation details the use of Docker-in-Docker (DinD) to emulate network environments for testing builder performance. This method provides an isolated environment, removing the need for Go or Kurtosis installations on the host system.
@@ -26,8 +15,9 @@ Utilizing a DinD setup allows developers to create a contained environment where
 ### Setup and Execution
 
 1. **Create the DinD Environment**:
-    - Run a DinD container for an isolated build environment named `builder-dind-container`:
+    - Run a DinD container for an isolated build environment named `builder-dind-container` assuming you are currently in this folder:
       ```shell
+      docker build -f ./Dockerfile.kurtosis_dind -t builder-dind-image ../../
       docker run -dit --privileged --name builder-dind-container builder-dind-image
       ```
       ***note:*** privileged mode that is not needed when using local hosting in your docker described [here](../)
