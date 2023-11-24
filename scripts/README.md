@@ -91,5 +91,5 @@ In case of system resource related errors or on windows docker restore after sle
 3. To clean up docker run `docker rm -vf $(docker ps -aq)`
 
 
-## Running in Docker in Docker
-See this note for refrence here
+## Running in Docker in Docker (WIP)
+See [README](./dind#readme).
