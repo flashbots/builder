@@ -98,8 +98,8 @@ The architecture consists of fuzzer layer, broadcaster, network, MEV services an
 
 Fuzzer layer:
 * [mev-flood](https://github.com/flashbots/mev-flood) - Spams the network with uniswap swaps 
-* (tx-fuzz)[https://github.com/MariusVanDerWijden/tx-fuzz/tree/master] - generates random transactions and deploys by utilizing (FuzzyVM)[https://github.com/MariusVanDerWijden/FuzzyVM]
-* [Custom flood(https://github.com/kurtosis-tech/ethereum-package/blob/c558cb2eab25cc8c3718b1fda6759a0819e6f942/src/mev_custom_flood/sender.py)] - Simple fuzzer sending tokens between two accounts
+* [tx-fuzz](https://github.com/MariusVanDerWijden/tx-fuzz/tree/master) - generates random transactions and deploys by utilizing [FuzzyVM](https://github.com/MariusVanDerWijden/FuzzyVM)
+* [Custom flood](https://github.com/kurtosis-tech/ethereum-package/blob/c558cb2eab25cc8c3718b1fda6759a0819e6f942/src/mev_custom_flood/sender.py)] - Simple fuzzer sending tokens between two accounts
 
 Fuzzer layer sends transactions to the broadcaster which replicate those and broadcast them to all nodes in parallel.
 
