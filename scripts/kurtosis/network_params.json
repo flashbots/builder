@@ -131,10 +131,7 @@
     "custom_flood_params": {
         "interval_between_transactions": 0
     },
-    "grafana_params" : {
-        "additional_dashboards": [
-            "github.com/flashbots/builder-startup-script/data/grafana"
-        ],
-        "public_http_port": 4567
-    }
+    "grafana_additional_dashboards": [
+        "github.com/flashbots/builder-startup-script/data/grafana"
+    ]
 }
