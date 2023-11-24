@@ -59,7 +59,7 @@ To run script `cd` into this (`./scripts`) folder.
       - `--slotTime`:   (Optional) Seconds per slot applied on local devnet. Defaults to 5.
    - Example:
      ```
-     go run emulate_network.go run -t=test-builder -a=imageArgs -n=enclaveName -k=/path/to/kurtosis
+     go run emulate_network.go run -t=imageTag -a=imageArgs -n=enclaveName -k=/path/to/kurtosis
      ```
 
 3. **stop**:
