@@ -92,4 +92,4 @@ In case of system resource related errors or on windows docker restore after sle
 
 
 ## Running in Docker in Docker (WIP)
-See this note for refrence [here, work is in progress.](./dind/)
+See [README](./dind#readme).
