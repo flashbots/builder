@@ -37,20 +37,26 @@ To run script `cd` into this (`./scripts`) folder.
 1. **build**:
    - Purpose: Builds a Docker image of the builder.
    - Options:
-      - `-t`: (Optional) Image tag for the Docker build. Defaults to `flashbots/builder:dev`.
+      - `-t`:          (Optional) Image tag for the Docker build. Defaults to `flashbots/builder:dev`.
+      - `-d`           (Optional) Image Build directory. Defaults to `".."`
+      - `-f`           (Optional) Build dockerfile path. Defaults to `"../Dockerfile"`. Use `"./Dockerfile.debug"` for debug capabilities.
+      
    - Example:
-     ```
-     go run emulate_network.go build -t=test-builder
-     ```
+      ```
+	  go run emulate_network.go build -t=test-builder -f="../Dockerfile" -d=".."
+      ```
+
+
 
 2. **run**:
    - Purpose: Prepares configurations and starts a Kurtosis enclave.
    - Options:
-      - `-t`: (Optional) Image tag. Defaults to `flashbots/builder:dev`.
-      - `-n`: (Optional) Enclave name. Defaults to `explorer`.
-      - `-a`: (Optional) Additional builder arguments.
-      - `-s`: (Optional) Max steps (integer). Default `-1` for "unlimited".
-      - `-k`: (Optional) Path to `kurtosis` executable. Defaults to `kurtosis`.
+      - `-t`:           (Optional) Image tag. Defaults to `flashbots/builder:dev`.
+      - `-n`:           (Optional) Enclave name. Defaults to `explorer`.
+      - `-a`:           (Optional) Additional builder arguments.
+      - `-s`:           (Optional) Max steps (integer). Defaults to `1000`. Set for `-1` for "unlimited".
+      - `-k`:           (Optional) Path to `kurtosis` executable. Defaults to `kurtosis`.
+      - `--slotTime`:   (Optional) Seconds per slot applied on local devnet. Defaults to 5.
    - Example:
      ```
      go run emulate_network.go run -t=test-builder -a=imageArgs -n=enclaveName -k=/path/to/kurtosis
@@ -59,8 +65,8 @@ To run script `cd` into this (`./scripts`) folder.
 3. **stop**:
    - Purpose: Stops an active Kurtosis enclave.
    - Options:
-      - `-k`: (Optional) Path to `kurtosis` executable. Defaults to `kurtosis`.
-      - `-n`: (Required) Enclave name.
+      - `-k`:           (Optional) Path to `kurtosis` executable. Defaults to `kurtosis`.
+      - `-n`:           (Required) Enclave name.
    - Example:
      ```
      go run emulate_network.go stop -k=/path/to/kurtosis -n=enclaveName
@@ -72,6 +78,10 @@ To run script `cd` into this (`./scripts`) folder.
      ```
      go run emulate_network.go help
      ```
+## Architecture
+Test network consists of 3 builders and a regular client. Dev and baseline are builders being compared. Dev builder is a candidate to be merged to main while baseline is the current version of builder. The 2 remaining clients are validator which is a builder connected to the relay as validator and a regular el client which submits blocks in epochs 0-3.
+![image](https://github.com/NethermindEth/fb-builder/assets/11379770/54d4a8cf-f64c-4f69-9e32-b35bf43dba0c)
+
 
 ## Known issues
 ### Kurtosis errors on network start
