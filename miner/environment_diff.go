@@ -82,7 +82,7 @@ func (envDiff *environmentDiff) commitBlobTx(tx *types.Transaction, chData chain
 	if (envDiff.newBlobs+len(sc.Blobs))*params.BlobTxBlobGasPerBlob > params.MaxBlobGasPerBlock {
 		return nil, popTx, errors.New("max data blobs reached")
 	}
-	receipt, txType, err := envDiff.commitLegacyTx(tx, chData)
+	receipt, txType, err := envDiff.commitTxCommon(tx, chData)
 	if err != nil {
 		return nil, txType, err
 	}
@@ -94,8 +94,8 @@ func (envDiff *environmentDiff) commitBlobTx(tx *types.Transaction, chData chain
 	return receipt, txType, nil
 }
 
-// commitLegacyTx commits a legacy transaction to envDiff
-func (envDiff *environmentDiff) commitLegacyTx(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
+// commitTxCommon is common logic to commit transaction to envDiff
+func (envDiff *environmentDiff) commitTxCommon(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
 	header := envDiff.header
 	coinbase := &envDiff.baseEnvironment.coinbase
 	signer := envDiff.baseEnvironment.signer
@@ -136,6 +136,11 @@ func (envDiff *environmentDiff) commitLegacyTx(tx *types.Transaction, chData cha
 			from, _ := types.Sender(signer, tx)
 			log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
 			return receipt, popTx, err
+		
+		case errors.Is(err, core.ErrBlobFeeCapTooLow):
+			from, _ := types.Sender(signer, tx)
+			log.Trace("Skipping blob transaction with fee cap less than block blob gas fee", "sender", from, "err", err.Error())
+			return receipt, popTx, err
 
 		default:
 			// Strange error, discard the transaction and get the next in line (note, the
@@ -156,7 +161,7 @@ func (envDiff *environmentDiff) commitTx(tx *types.Transaction, chData chainData
 	if tx.Type() == types.BlobTxType {
 		return envDiff.commitBlobTx(tx, chData)
 	}
-	receipt, skip, err := envDiff.commitLegacyTx(tx, chData)
+	receipt, skip, err := envDiff.commitTxCommon(tx, chData)
 	if err != nil {
 		return nil, skip, err
 	}
