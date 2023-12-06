@@ -380,8 +380,8 @@ func TestValidateBuilderSubmissionV3(t *testing.T) {
 			},
 			ExecutionPayload: payload,
 			BlobsBundle: &builderApiDeneb.BlobsBundle{
-				Commitments: make([]deneb.KzgCommitment, 0),
-				Proofs:      make([]deneb.KzgProof, 0),
+				Commitments: make([]deneb.KZGCommitment, 0),
+				Proofs:      make([]deneb.KZGProof, 0),
 				Blobs:       make([]deneb.Blob, 0),
 			},
 		},

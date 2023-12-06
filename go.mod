@@ -6,8 +6,8 @@ require (
 	github.com/Azure/azure-sdk-for-go/sdk/storage/azblob v1.2.0
 	github.com/Microsoft/go-winio v0.6.1
 	github.com/VictoriaMetrics/fastcache v1.12.1
-	github.com/attestantio/go-builder-client v0.3.2-0.20230809093013-1fa02af241e1
-	github.com/attestantio/go-eth2-client v0.18.3
+	github.com/attestantio/go-builder-client v0.4.2-0.20231122091430-0eafc4522bf2
+	github.com/attestantio/go-eth2-client v0.19.7-0.20231205092204-3087274ef2ac
 	github.com/aws/aws-sdk-go-v2 v1.21.2
 	github.com/aws/aws-sdk-go-v2/config v1.18.45
 	github.com/aws/aws-sdk-go-v2/credentials v1.13.43
@@ -24,7 +24,7 @@ require (
 	github.com/docker/docker v24.0.5+incompatible
 	github.com/dop251/goja v0.0.0-20230806174421-c933cf95e127
 	github.com/ethereum/c-kzg-4844 v0.3.2-0.20231019020040-748283cced54
-	github.com/fatih/color v1.13.0
+	github.com/fatih/color v1.15.0
 	github.com/fjl/gencodec v0.0.0-20230517082657-f9840df7b83e
 	github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5
 	github.com/flashbots/go-boost-utils v1.7.2-0.20230914170129-53972d4d3d85
@@ -57,7 +57,7 @@ require (
 	github.com/kylelemons/godebug v1.1.0
 	github.com/lib/pq v1.2.0
 	github.com/mattn/go-colorable v0.1.13
-	github.com/mattn/go-isatty v0.0.17
+	github.com/mattn/go-isatty v0.0.20
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/peterh/liner v1.1.1-0.20190123174540-a2c9a5303de7
 	github.com/protolambda/bls12-381-util v0.0.0-20220416220906-d8552aa452c7
@@ -84,16 +84,16 @@ require (
 
 require (
 	github.com/getsentry/sentry-go v0.18.0 // indirect
-	github.com/goccy/go-yaml v1.9.2 // indirect
-	github.com/klauspost/cpuid/v2 v2.1.2 // indirect
-	github.com/minio/sha256-simd v1.0.0 // indirect
+	github.com/goccy/go-yaml v1.11.2 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
+	github.com/minio/sha256-simd v1.0.1 // indirect
 	github.com/naoina/go-stringutil v0.1.0 // indirect
 	github.com/prysmaticlabs/go-bitfield v0.0.0-20210809151128-385d8c5e3fb7 // indirect
 	github.com/sirupsen/logrus v1.9.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.23.0 // indirect
-	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
+	golang.org/x/xerrors v0.0.0-20231012003039-104605ab7028 // indirect
 	gopkg.in/cenkalti/backoff.v1 v1.1.0 // indirect
 	gotest.tools/v3 v3.5.1 // indirect
 )
@@ -166,3 +166,7 @@ require (
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )
+
+replace github.com/attestantio/go-eth2-client => github.com/avalonche/go-eth2-client v0.0.0-20231121172650-f072b1d01026
+
+replace github.com/attestantio/go-builder-client => github.com/avalonche/go-builder-client v0.0.0-20231111000900-7bf594d0ffd3
