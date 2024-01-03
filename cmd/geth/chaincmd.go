@@ -50,6 +50,8 @@ var (
 		ArgsUsage: "<genesisPath>",
 		Flags: flags.Merge([]cli.Flag{
 			utils.CachePreimagesFlag,
+			utils.OverrideCancun,
+			utils.OverrideVerkle,
 		}, utils.DatabaseFlags),
 		Description: `
 The init command initializes a new genesis block and definition for the network.
@@ -136,20 +138,7 @@ The import-preimages command imports hash preimages from an RLP encoded stream.
 It's deprecated, please use "geth db import" instead.
 `,
 	}
-	exportPreimagesCommand = &cli.Command{
-		Action:    exportPreimages,
-		Name:      "export-preimages",
-		Usage:     "Export the preimage database into an RLP stream",
-		ArgsUsage: "<dumpfile>",
-		Flags: flags.Merge([]cli.Flag{
-			utils.CacheFlag,
-			utils.SyncModeFlag,
-		}, utils.DatabaseFlags),
-		Description: `
-The export-preimages command exports hash preimages to an RLP encoded stream.
-It's deprecated, please use "geth db export" instead.
-`,
-	}
+
 	dumpCommand = &cli.Command{
 		Action:    dump,
 		Name:      "dump",
@@ -194,6 +183,15 @@ func initGenesis(ctx *cli.Context) error {
 	stack, _ := makeConfigNode(ctx)
 	defer stack.Close()
 
+	var overrides core.ChainOverrides
+	if ctx.IsSet(utils.OverrideCancun.Name) {
+		v := ctx.Uint64(utils.OverrideCancun.Name)
+		overrides.OverrideCancun = &v
+	}
+	if ctx.IsSet(utils.OverrideVerkle.Name) {
+		v := ctx.Uint64(utils.OverrideVerkle.Name)
+		overrides.OverrideVerkle = &v
+	}
 	for _, name := range []string{"chaindata", "lightchaindata"} {
 		chaindb, err := stack.OpenDatabaseWithFreezer(name, 0, 0, ctx.String(utils.AncientFlag.Name), "", false)
 		if err != nil {
@@ -201,10 +199,10 @@ func initGenesis(ctx *cli.Context) error {
 		}
 		defer chaindb.Close()
 
-		triedb := utils.MakeTrieDatabase(ctx, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false)
+		triedb := utils.MakeTrieDatabase(ctx, chaindb, ctx.Bool(utils.CachePreimagesFlag.Name), false, genesis.IsVerkle())
 		defer triedb.Close()
 
-		_, hash, err := core.SetupGenesisBlock(chaindb, triedb, genesis)
+		_, hash, err := core.SetupGenesisBlockWithOverride(chaindb, triedb, genesis, &overrides)
 		if err != nil {
 			utils.Fatalf("Failed to write genesis block: %v", err)
 		}
@@ -214,14 +212,21 @@ func initGenesis(ctx *cli.Context) error {
 }
 
 func dumpGenesis(ctx *cli.Context) error {
-	// if there is a testnet preset enabled, dump that
+	// check if there is a testnet preset enabled
+	var genesis *core.Genesis
 	if utils.IsNetworkPreset(ctx) {
-		genesis := utils.MakeGenesis(ctx)
+		genesis = utils.MakeGenesis(ctx)
+	} else if ctx.IsSet(utils.DeveloperFlag.Name) && !ctx.IsSet(utils.DataDirFlag.Name) {
+		genesis = core.DeveloperGenesisBlock(11_500_000, nil)
+	}
+
+	if genesis != nil {
 		if err := json.NewEncoder(os.Stdout).Encode(genesis); err != nil {
 			utils.Fatalf("could not encode genesis: %s", err)
 		}
 		return nil
 	}
+
 	// dump whatever already exists in the datadir
 	stack, _ := makeConfigNode(ctx)
 	for _, name := range []string{"chaindata", "lightchaindata"} {
@@ -246,7 +251,7 @@ func dumpGenesis(ctx *cli.Context) error {
 	if ctx.IsSet(utils.DataDirFlag.Name) {
 		utils.Fatalf("no existing datadir at %s", stack.Config().DataDir)
 	}
-	utils.Fatalf("no network preset provided, no existing genesis in the default datadir")
+	utils.Fatalf("no network preset provided, and no genesis exists in the default datadir")
 	return nil
 }
 
@@ -369,6 +374,9 @@ func exportChain(ctx *cli.Context) error {
 }
 
 // importPreimages imports preimage data from the specified file.
+// it is deprecated, and the export function has been removed, but
+// the import function is kept around for the time being so that
+// older file formats can still be imported.
 func importPreimages(ctx *cli.Context) error {
 	if ctx.Args().Len() < 1 {
 		utils.Fatalf("This command requires an argument.")
@@ -385,25 +393,6 @@ func importPreimages(ctx *cli.Context) error {
 		utils.Fatalf("Import error: %v\n", err)
 	}
 	fmt.Printf("Import done in %v\n", time.Since(start))
-	return nil
-}
-
-// exportPreimages dumps the preimage data to specified json file in streaming way.
-func exportPreimages(ctx *cli.Context) error {
-	if ctx.Args().Len() < 1 {
-		utils.Fatalf("This command requires an argument.")
-	}
-	stack, _ := makeConfigNode(ctx)
-	defer stack.Close()
-
-	db := utils.MakeChainDatabase(ctx, stack, true)
-	defer db.Close()
-	start := time.Now()
-
-	if err := utils.ExportPreimages(db, ctx.Args().First()); err != nil {
-		utils.Fatalf("Export error: %v\n", err)
-	}
-	fmt.Printf("Export done in %v\n", time.Since(start))
 	return nil
 }
 
@@ -475,7 +464,7 @@ func dump(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
-	triedb := utils.MakeTrieDatabase(ctx, db, true, true) // always enable preimage lookup
+	triedb := utils.MakeTrieDatabase(ctx, db, true, true, false) // always enable preimage lookup
 	defer triedb.Close()
 
 	state, err := state.New(root, state.NewDatabaseWithNodeDB(db, triedb), nil)
@@ -485,11 +474,6 @@ func dump(ctx *cli.Context) error {
 	if ctx.Bool(utils.IterativeOutputFlag.Name) {
 		state.IterativeDump(conf, json.NewEncoder(os.Stdout))
 	} else {
-		if conf.OnlyWithAddresses {
-			fmt.Fprintf(os.Stderr, "If you want to include accounts with missing preimages, you need iterative output, since"+
-				" otherwise the accounts will overwrite each other in the resulting mapping.")
-			return errors.New("incompatible options")
-		}
 		fmt.Println(string(state.Dump(conf)))
 	}
 	return nil

@@ -191,6 +191,7 @@ func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consens
 }
 
 func TestGenerateAndImportBlock(t *testing.T) {
+	t.Parallel()
 	var (
 		db     = rawdb.NewMemoryDatabase()
 		config = *params.AllCliqueProtocolChanges
@@ -234,10 +235,12 @@ func TestGenerateAndImportBlock(t *testing.T) {
 }
 
 func TestEmptyWorkEthash(t *testing.T) {
+	t.Parallel()
 	testEmptyWork(t, ethashChainConfig, ethash.NewFaker())
 }
 
 func TestEmptyWorkClique(t *testing.T) {
+	t.Parallel()
 	testEmptyWork(t, cliqueChainConfig, clique.New(cliqueChainConfig.Clique, rawdb.NewMemoryDatabase()))
 }
 
@@ -277,10 +280,12 @@ func testEmptyWork(t *testing.T, chainConfig *params.ChainConfig, engine consens
 }
 
 func TestAdjustIntervalEthash(t *testing.T) {
+	t.Parallel()
 	testAdjustInterval(t, ethashChainConfig, ethash.NewFaker())
 }
 
 func TestAdjustIntervalClique(t *testing.T) {
+	t.Parallel()
 	testAdjustInterval(t, cliqueChainConfig, clique.New(cliqueChainConfig.Clique, rawdb.NewMemoryDatabase()))
 }
 
@@ -371,14 +376,17 @@ func testAdjustInterval(t *testing.T, chainConfig *params.ChainConfig, engine co
 }
 
 func TestGetSealingWorkEthash(t *testing.T) {
+	t.Parallel()
 	testGetSealingWork(t, ethashChainConfig, ethash.NewFaker())
 }
 
 func TestGetSealingWorkClique(t *testing.T) {
+	t.Parallel()
 	testGetSealingWork(t, cliqueChainConfig, clique.New(cliqueChainConfig.Clique, rawdb.NewMemoryDatabase()))
 }
 
 func TestGetSealingWorkPostMerge(t *testing.T) {
+	t.Parallel()
 	local := new(params.ChainConfig)
 	*local = *ethashChainConfig
 	local.TerminalTotalDifficulty = big.NewInt(0)
