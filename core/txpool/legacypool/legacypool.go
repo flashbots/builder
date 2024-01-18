@@ -323,6 +323,7 @@ func (pool *LegacyPool) Init(gasTip *big.Int, head *types.Header, reserve txpool
 	pool.currentHead.Store(head)
 	pool.currentState = statedb
 	pool.pendingNonces = newNoncer(statedb)
+	pool.sbundles.ResetPoolData(pool)
 
 	// Start the reorg loop early, so it can handle requests generated during
 	// journal loading.
