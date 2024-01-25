@@ -1,7 +1,6 @@
 package main
 
 import (
-	"os"
 	"time"
 
 	"github.com/ethereum/go-ethereum/core/types"
@@ -11,7 +10,7 @@ import (
 
 func main() {
 	// Test bundle fetcher
-	log.Root().SetHandler(log.LvlFilterHandler(log.LvlInfo, log.StreamHandler(os.Stderr, log.TerminalFormat(true))))
+	// log.Root().SetHandler(log.LvlFilterHandler(log.LvlInfo, log.StreamHandler(os.Stderr, log.TerminalFormat(true))))
 	mevBundleCh := make(chan []types.MevBundle)
 	blockNumCh := make(chan int64)
 	db, err := flashbotsextra.NewDatabaseService("postgres://postgres:postgres@localhost:5432/test?sslmode=disable")

@@ -28,7 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/trie"
 )
 
@@ -406,14 +406,9 @@ func ExecutionPayloadV3ToBlock(payload *deneb.ExecutionPayload, blobsBundle *den
 	hasher := sha256.New()
 	versionedHashes := make([]common.Hash, len(blobsBundle.Commitments))
 	for i, commitment := range blobsBundle.Commitments {
-		hasher.Write(commitment[:])
-		hash := hasher.Sum(nil)
-		hasher.Reset()
-
-		var vhash common.Hash
-		vhash[0] = params.BlobTxHashVersion
-		copy(vhash[1:], hash[1:])
-		versionedHashes[i] = vhash
+		c := kzg4844.Commitment(commitment)
+		computed := kzg4844.CalcBlobHashV1(hasher, &c)
+		versionedHashes[i] = common.Hash(computed)
 	}
 
 	executableData := ExecutableData{

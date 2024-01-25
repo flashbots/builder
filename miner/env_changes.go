@@ -49,7 +49,7 @@ func (c *envChanges) commitPayoutTx(
 		CommitFn:      c.commitTx,
 		Receiver:      receiver,
 		Sender:        sender,
-		SenderBalance: c.env.state.GetBalance(sender),
+		SenderBalance: c.env.state.GetBalance(sender).ToBig(),
 		SenderNonce:   c.env.state.GetNonce(sender),
 		Signer:        c.env.signer,
 		PrivateKey:    prv,
@@ -110,7 +110,7 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainData, algoConf algorithmConfig) error {
 	var (
 		profitBefore   = new(big.Int).Set(c.profit)
-		coinbaseBefore = new(big.Int).Set(c.env.state.GetBalance(c.env.coinbase))
+		coinbaseBefore = new(big.Int).Set(c.env.state.GetBalance(c.env.coinbase).ToBig())
 		gasUsedBefore  = c.usedGas
 		gasPoolBefore  = new(core.GasPool).AddGas(c.gasPool.Gas())
 		txsBefore      = c.txs[:]
@@ -181,7 +181,7 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 	}
 
 	var (
-		bundleProfit = new(big.Int).Sub(c.env.state.GetBalance(c.env.coinbase), coinbaseBefore)
+		bundleProfit = new(big.Int).Sub(c.env.state.GetBalance(c.env.coinbase).ToBig(), coinbaseBefore)
 		gasUsed      = c.usedGas - gasUsedBefore
 
 		// EGP = Effective Gas Price (Profit / GasUsed)
@@ -221,7 +221,7 @@ func (c *envChanges) CommitSBundle(sbundle *types.SimSBundle, chData chainData, 
 	}
 
 	var (
-		coinbaseBefore = new(big.Int).Set(c.env.state.GetBalance(c.env.coinbase))
+		coinbaseBefore = new(big.Int).Set(c.env.state.GetBalance(c.env.coinbase).ToBig())
 		gasPoolBefore  = new(core.GasPool).AddGas(c.gasPool.Gas())
 		gasBefore      = c.usedGas
 		txsBefore      = c.txs[:]
@@ -235,7 +235,7 @@ func (c *envChanges) CommitSBundle(sbundle *types.SimSBundle, chData chainData, 
 	}
 
 	var (
-		coinbaseAfter = c.env.state.GetBalance(c.env.header.Coinbase)
+		coinbaseAfter = c.env.state.GetBalance(c.env.header.Coinbase).ToBig()
 		gasAfter      = c.usedGas
 
 		coinbaseDelta = new(big.Int).Sub(coinbaseAfter, coinbaseBefore)
@@ -315,7 +315,7 @@ func (c *envChanges) commitSBundle(sbundle *types.SBundle, chData chainData, key
 	// insert body and check it
 	for i, el := range sbundle.Body {
 		coinbaseDelta.Set(common.Big0)
-		coinbaseBefore = c.env.state.GetBalance(c.env.coinbase)
+		coinbaseBefore = c.env.state.GetBalance(c.env.coinbase).ToBig()
 
 		if el.Tx != nil {
 			receipt, _, err := c.commitTx(el.Tx, chData)
@@ -341,7 +341,7 @@ func (c *envChanges) commitSBundle(sbundle *types.SBundle, chData chainData, key
 			return errors.New("invalid body element")
 		}
 
-		coinbaseDelta.Set(c.env.state.GetBalance(c.env.coinbase))
+		coinbaseDelta.Set(c.env.state.GetBalance(c.env.coinbase).ToBig())
 		coinbaseDelta.Sub(coinbaseDelta, coinbaseBefore)
 
 		totalProfit.Add(totalProfit, coinbaseDelta)
@@ -352,7 +352,7 @@ func (c *envChanges) commitSBundle(sbundle *types.SBundle, chData chainData, key
 
 	// enforce constraints
 	coinbaseDelta.Set(common.Big0)
-	coinbaseBefore = c.env.state.GetBalance(c.env.header.Coinbase)
+	coinbaseBefore = c.env.state.GetBalance(c.env.header.Coinbase).ToBig()
 	for i, el := range refundPercents {
 		if !refundIdx[i] {
 			continue
@@ -386,7 +386,7 @@ func (c *envChanges) commitSBundle(sbundle *types.SBundle, chData chainData, key
 			log.Trace("Committed kickback", "payout", ethIntToFloat(allocatedValue), "receiver", refundReceiver)
 		}
 	}
-	coinbaseDelta.Set(c.env.state.GetBalance(c.env.header.Coinbase))
+	coinbaseDelta.Set(c.env.state.GetBalance(c.env.header.Coinbase).ToBig())
 	coinbaseDelta.Sub(coinbaseDelta, coinbaseBefore)
 	totalProfit.Add(totalProfit, coinbaseDelta)
 

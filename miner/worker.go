@@ -1965,7 +1965,7 @@ func (w *worker) computeBundleGas(
 		}
 
 		state.SetTxContext(tx.Hash(), i+currentTxCount)
-		coinbaseBalanceBefore := state.GetBalance(env.coinbase)
+		coinbaseBalanceBefore := state.GetBalance(env.coinbase).ToBig()
 
 		config := *w.chain.GetVMConfig()
 		var tracer *logger.AccountTouchTracer
@@ -2014,7 +2014,7 @@ func (w *worker) computeBundleGas(
 			return simulatedBundle{}, err
 		}
 		gasFeesTx := gasUsed.Mul(gasUsed, gasPrice)
-		coinbaseBalanceAfter := state.GetBalance(env.coinbase)
+		coinbaseBalanceAfter := state.GetBalance(env.coinbase).ToBig()
 		coinbaseDelta := big.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
 		coinbaseDelta.Sub(coinbaseDelta, gasFeesTx)
 		ethSentToCoinbase.Add(ethSentToCoinbase, coinbaseDelta)
@@ -2082,7 +2082,7 @@ func (w *worker) proposerTxPrepare(env *environment, validatorCoinbase *common.A
 	w.mu.Lock()
 	sender := w.coinbase
 	w.mu.Unlock()
-	builderBalance := env.state.GetBalance(sender)
+	builderBalance := env.state.GetBalance(sender).ToBig()
 
 	chainData := chainData{w.chainConfig, w.chain, w.blockList}
 	gas, isEOA, err := estimatePayoutTxGas(env, sender, *validatorCoinbase, w.config.BuilderTxSigningKey, chainData)
@@ -2109,7 +2109,7 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 	w.mu.Lock()
 	sender := w.coinbase
 	w.mu.Unlock()
-	builderBalance := env.state.GetBalance(sender)
+	builderBalance := env.state.GetBalance(sender).ToBig()
 
 	availableFunds := new(big.Int).Sub(builderBalance, reserve.builderBalance)
 	if availableFunds.Sign() <= 0 {

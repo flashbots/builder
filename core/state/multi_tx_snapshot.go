@@ -3,9 +3,10 @@ package state
 import (
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/crypto"
-	"math/big"
 	"reflect"
+
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -19,7 +20,7 @@ type MultiTxSnapshot struct {
 	prevObjects map[common.Address]*resetObjectChange
 
 	accountStorage  map[common.Address]map[common.Hash]*common.Hash
-	accountBalance  map[common.Address]*big.Int
+	accountBalance  map[common.Address]*uint256.Int
 	accountNonce    map[common.Address]uint64
 	accountCode     map[common.Address][]byte
 	accountCodeHash map[common.Address][]byte
@@ -48,7 +49,7 @@ func newMultiTxSnapshot() MultiTxSnapshot {
 		numLogsAdded:        make(map[common.Hash]int),
 		prevObjects:         make(map[common.Address]*resetObjectChange),
 		accountStorage:      make(map[common.Address]map[common.Hash]*common.Hash),
-		accountBalance:      make(map[common.Address]*big.Int),
+		accountBalance:      make(map[common.Address]*uint256.Int),
 		accountNonce:        make(map[common.Address]uint64),
 		accountCode:         make(map[common.Address][]byte),
 		accountCodeHash:     make(map[common.Address][]byte),

@@ -174,7 +174,7 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	coinbase := envDiff.baseEnvironment.coinbase
 	tmpEnvDiff := envDiff.copy()
 
-	coinbaseBalanceBefore := tmpEnvDiff.state.GetBalance(coinbase)
+	coinbaseBalanceBefore := tmpEnvDiff.state.GetBalance(coinbase).ToBig()
 
 	profitBefore := new(big.Int).Set(tmpEnvDiff.newProfit)
 	var gasUsed uint64
@@ -240,7 +240,7 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 
 		gasUsed += receipt.GasUsed
 	}
-	coinbaseBalanceAfter := tmpEnvDiff.state.GetBalance(coinbase)
+	coinbaseBalanceAfter := tmpEnvDiff.state.GetBalance(coinbase).ToBig()
 	coinbaseBalanceDelta := new(big.Int).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
 	tmpEnvDiff.newProfit.Add(profitBefore, coinbaseBalanceDelta)
 
@@ -286,7 +286,7 @@ func (envDiff *environmentDiff) commitPayoutTx(amount *big.Int, sender, receiver
 		CommitFn:      envDiff.commitTx,
 		Receiver:      receiver,
 		Sender:        sender,
-		SenderBalance: envDiff.state.GetBalance(sender),
+		SenderBalance: envDiff.state.GetBalance(sender).ToBig(),
 		SenderNonce:   envDiff.state.GetNonce(sender),
 		Signer:        envDiff.baseEnvironment.signer,
 		PrivateKey:    prv,
@@ -302,14 +302,14 @@ func (envDiff *environmentDiff) commitSBundle(b *types.SimSBundle, chData chainD
 
 	tmpEnvDiff := envDiff.copy()
 
-	coinbaseBefore := tmpEnvDiff.state.GetBalance(tmpEnvDiff.header.Coinbase)
+	coinbaseBefore := tmpEnvDiff.state.GetBalance(tmpEnvDiff.header.Coinbase).ToBig()
 	gasBefore := tmpEnvDiff.gasPool.Gas()
 
 	if err := tmpEnvDiff.commitSBundleInner(b.Bundle, chData, interrupt, key, algoConf); err != nil {
 		return err
 	}
 
-	coinbaseAfter := tmpEnvDiff.state.GetBalance(tmpEnvDiff.header.Coinbase)
+	coinbaseAfter := tmpEnvDiff.state.GetBalance(tmpEnvDiff.header.Coinbase).ToBig()
 	gasAfter := tmpEnvDiff.gasPool.Gas()
 
 	coinbaseDelta := new(big.Int).Sub(coinbaseAfter, coinbaseBefore)
@@ -384,7 +384,7 @@ func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chai
 	// insert body and check it
 	for i, el := range b.Body {
 		coinbaseDelta.Set(common.Big0)
-		coinbaseBefore = envDiff.state.GetBalance(envDiff.header.Coinbase)
+		coinbaseBefore = envDiff.state.GetBalance(envDiff.header.Coinbase).ToBig()
 
 		if el.Tx != nil {
 			receipt, _, err := envDiff.commitTx(el.Tx, chData)
@@ -410,7 +410,7 @@ func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chai
 			return errors.New("invalid body element")
 		}
 
-		coinbaseDelta.Set(envDiff.state.GetBalance(envDiff.header.Coinbase))
+		coinbaseDelta.Set(envDiff.state.GetBalance(envDiff.header.Coinbase).ToBig())
 		coinbaseDelta.Sub(coinbaseDelta, coinbaseBefore)
 
 		totalProfit.Add(totalProfit, coinbaseDelta)
@@ -421,7 +421,7 @@ func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chai
 
 	// enforce constraints
 	coinbaseDelta.Set(common.Big0)
-	coinbaseBefore = envDiff.state.GetBalance(envDiff.header.Coinbase)
+	coinbaseBefore = envDiff.state.GetBalance(envDiff.header.Coinbase).ToBig()
 	for i, el := range refundPercents {
 		if !refundIdx[i] {
 			continue
@@ -455,7 +455,7 @@ func (envDiff *environmentDiff) commitSBundleInner(b *types.SBundle, chData chai
 			log.Trace("Committed kickback", "payout", ethIntToFloat(allocatedValue), "receiver", refundReceiver)
 		}
 	}
-	coinbaseDelta.Set(envDiff.state.GetBalance(envDiff.header.Coinbase))
+	coinbaseDelta.Set(envDiff.state.GetBalance(envDiff.header.Coinbase).ToBig())
 	coinbaseDelta.Sub(coinbaseDelta, coinbaseBefore)
 	totalProfit.Add(totalProfit, coinbaseDelta)
 

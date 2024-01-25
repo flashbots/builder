@@ -73,7 +73,7 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 		}
 
 		stateDB.SetTxContext(tx.Hash(), i+env.tcount)
-		coinbaseBalanceBefore := stateDB.GetBalance(env.coinbase)
+		coinbaseBalanceBefore := stateDB.GetBalance(env.coinbase).ToBig()
 
 		var tempGasUsed uint64
 		receipt, err := core.ApplyTransaction(chData.chainConfig, chData.chain, &env.coinbase, gasPool, stateDB, env.header, tx, &tempGasUsed, *chData.chain.GetVMConfig(), nil)
@@ -111,7 +111,7 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 			return types.SimulatedBundle{}, err
 		}
 		gasFeesTx := gasUsed.Mul(gasUsed, gasPrice)
-		coinbaseBalanceAfter := stateDB.GetBalance(env.coinbase)
+		coinbaseBalanceAfter := stateDB.GetBalance(env.coinbase).ToBig()
 		coinbaseDelta := big.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
 		coinbaseDelta.Sub(coinbaseDelta, gasFeesTx)
 		ethSentToCoinbase.Add(ethSentToCoinbase, coinbaseDelta)
@@ -566,9 +566,9 @@ func TestPayoutTxUtils(t *testing.T) {
 	require.NoError(t, err)
 
 	expectedPayment := new(big.Int).Sub(availableFunds, big.NewInt(21000))
-	balanceBefore := env.state.GetBalance(signers.addresses[2])
+	balanceBefore := env.state.GetBalance(signers.addresses[2]).ToBig()
 	rec, err := insertPayoutTx(env, signers.addresses[1], signers.addresses[2], gas, isEOA, availableFunds, signers.signers[1], chData)
-	balanceAfter := env.state.GetBalance(signers.addresses[2])
+	balanceAfter := env.state.GetBalance(signers.addresses[2]).ToBig()
 	require.NoError(t, err)
 	require.NotNil(t, rec)
 	require.Equal(t, types.ReceiptStatusSuccessful, rec.Status)
@@ -583,9 +583,9 @@ func TestPayoutTxUtils(t *testing.T) {
 	require.NoError(t, err)
 
 	expectedPayment = new(big.Int).Sub(availableFunds, big.NewInt(22025))
-	balanceBefore = env.state.GetBalance(logContractAddress)
+	balanceBefore = env.state.GetBalance(logContractAddress).ToBig()
 	rec, err = insertPayoutTx(env, signers.addresses[1], logContractAddress, gas, isEOA, availableFunds, signers.signers[1], chData)
-	balanceAfter = env.state.GetBalance(logContractAddress)
+	balanceAfter = env.state.GetBalance(logContractAddress).ToBig()
 	require.NoError(t, err)
 	require.NotNil(t, rec)
 	require.Equal(t, types.ReceiptStatusSuccessful, rec.Status)
@@ -595,9 +595,9 @@ func TestPayoutTxUtils(t *testing.T) {
 
 	// Try requesting less gas for contract tx. We request 21k gas, but we must pay 22025
 	expectedPayment = new(big.Int).Sub(availableFunds, big.NewInt(22025))
-	balanceBefore = env.state.GetBalance(logContractAddress)
+	balanceBefore = env.state.GetBalance(logContractAddress).ToBig()
 	rec, err = insertPayoutTx(env, signers.addresses[1], logContractAddress, 21000, isEOA, availableFunds, signers.signers[1], chData)
-	balanceAfter = env.state.GetBalance(logContractAddress)
+	balanceAfter = env.state.GetBalance(logContractAddress).ToBig()
 	require.NoError(t, err)
 	require.NotNil(t, rec)
 	require.Equal(t, types.ReceiptStatusSuccessful, rec.Status)

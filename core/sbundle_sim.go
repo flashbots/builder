@@ -75,7 +75,7 @@ func SimBundle(config *params.ChainConfig, bc *BlockChain, author *common.Addres
 	)
 	for i, el := range b.Body {
 		coinbaseDelta.Set(common.Big0)
-		coinbaseBefore = statedb.GetBalance(header.Coinbase)
+		coinbaseBefore = statedb.GetBalance(header.Coinbase).ToBig()
 
 		if el.Tx != nil {
 			statedb.SetTxContext(el.Tx.Hash(), txIdx)
@@ -104,7 +104,8 @@ func SimBundle(config *params.ChainConfig, bc *BlockChain, author *common.Addres
 			return res, ErrInvalidBundle
 		}
 
-		coinbaseDelta.Set(statedb.GetBalance(header.Coinbase))
+		coinbaseAfter := statedb.GetBalance(header.Coinbase)
+		coinbaseDelta.Set(coinbaseAfter.ToBig())
 		coinbaseDelta.Sub(coinbaseDelta, coinbaseBefore)
 
 		res.TotalProfit.Add(res.TotalProfit, coinbaseDelta)

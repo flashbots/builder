@@ -53,19 +53,19 @@ func TestBuildPayload(t *testing.T) {
 		payload := outer.ExecutionPayload
 		builderCoinbase := w.coinbase
 		if payload.ParentHash != b.chain.CurrentBlock().Hash() {
-			t.Fatal("Unexpect parent hash")
+			t.Fatal("Unexpected parent hash")
 		}
 		if payload.Random != (common.Hash{}) {
-			t.Fatal("Unexpect random value")
+			t.Fatal("Unexpected random value")
 		}
 		if payload.Timestamp != timestamp {
-			t.Fatal("Unexpect timestamp")
+			t.Fatal("Unexpected timestamp")
 		}
 		if payload.FeeRecipient != builderCoinbase {
 			t.Fatal("Unexpect fee recipient")
 		}
 		if len(payload.Transactions) != txs {
-			t.Fatal("Unexpect transaction set")
+			t.Fatal("Unexpected transaction set")
 		}
 	}
 	empty := payload.ResolveEmpty()

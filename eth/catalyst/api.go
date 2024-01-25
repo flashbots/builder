@@ -20,7 +20,6 @@ package catalyst
 import (
 	"errors"
 	"fmt"
-	"math/big"
 	"sync"
 	"time"
 
@@ -34,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/miner"
 	"github.com/ethereum/go-ethereum/node"
+	"github.com/ethereum/go-ethereum/params/forks"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -171,17 +171,16 @@ func newConsensusAPIWithoutHeartbeat(eth *eth.Ethereum) *ConsensusAPI {
 //
 // If there are payloadAttributes: we try to assemble a block with the payloadAttributes
 // and return its payloadID.
-func (api *ConsensusAPI) ForkchoiceUpdatedV1(update engine.ForkchoiceStateV1, attr *engine.PayloadAttributes) (engine.ForkChoiceResponse, error) {
-	if attr != nil {
-		if attr.Withdrawals != nil {
+func (api *ConsensusAPI) ForkchoiceUpdatedV1(update engine.ForkchoiceStateV1, payloadAttributes *engine.PayloadAttributes) (engine.ForkChoiceResponse, error) {
+	if payloadAttributes != nil {
+		if payloadAttributes.Withdrawals != nil {
 			return engine.STATUS_INVALID, engine.InvalidParams.With(errors.New("withdrawals not supported in V1"))
 		}
-		c := api.eth.BlockChain().Config()
-		if c.IsShanghai(c.LondonBlock, attr.Timestamp) {
-			return engine.STATUS_INVALID, engine.UnsupportedFork.With(errors.New("forkchoiceUpdateV1 called after shanghai"))
+		if api.eth.BlockChain().Config().IsShanghai(api.eth.BlockChain().Config().LondonBlock, payloadAttributes.Timestamp) {
+			return engine.STATUS_INVALID, engine.InvalidParams.With(errors.New("forkChoiceUpdateV1 called post-shanghai"))
 		}
 	}
-	return api.forkchoiceUpdated(update, attr, engine.PayloadV1)
+	return api.forkchoiceUpdated(update, payloadAttributes, engine.PayloadV1, false)
 }
 
 // ForkchoiceUpdatedV2 is equivalent to V1 with the addition of withdrawals in the payload attributes.
@@ -193,32 +192,38 @@ func (api *ConsensusAPI) ForkchoiceUpdatedV2(update engine.ForkchoiceStateV1, pa
 		if params.BeaconRoot != nil {
 			return engine.STATUS_INVALID, engine.InvalidParams.With(errors.New("unexpected beacon root"))
 		}
-		c := api.eth.BlockChain().Config()
-		if !active(c.IsShanghai, c.IsCancun, c.LondonBlock, params.Timestamp) {
+		if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Shanghai {
 			return engine.STATUS_INVALID, engine.UnsupportedFork.With(errors.New("forkchoiceUpdatedV2 must only be called for shanghai payloads"))
 		}
 	}
-	return api.forkchoiceUpdated(update, params, engine.PayloadV2)
+	return api.forkchoiceUpdated(update, params, engine.PayloadV2, false)
 }
 
 // ForkchoiceUpdatedV3 is equivalent to V2 with the addition of parent beacon block root in the payload attributes.
 func (api *ConsensusAPI) ForkchoiceUpdatedV3(update engine.ForkchoiceStateV1, params *engine.PayloadAttributes) (engine.ForkChoiceResponse, error) {
 	if params != nil {
+		// TODO(matt): according to https://github.com/ethereum/execution-apis/pull/498,
+		// payload attributes that are invalid should return error
+		// engine.InvalidPayloadAttributes. Once hive updates this, we should update
+		// on our end.
 		if params.Withdrawals == nil {
 			return engine.STATUS_INVALID, engine.InvalidParams.With(errors.New("missing withdrawals"))
 		}
 		if params.BeaconRoot == nil {
 			return engine.STATUS_INVALID, engine.InvalidParams.With(errors.New("missing beacon root"))
 		}
-		c := api.eth.BlockChain().Config()
-		if !active(c.IsCancun, c.IsPrague, c.LondonBlock, params.Timestamp) {
-			return engine.STATUS_INVALID, engine.UnsupportedFork.With(errors.New("forkchoiceUpdatedV3 must only be called for shanghai payloads"))
+		if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Cancun {
+			return engine.STATUS_INVALID, engine.UnsupportedFork.With(errors.New("forkchoiceUpdatedV3 must only be called for cancun payloads"))
 		}
 	}
-	return api.forkchoiceUpdated(update, params, engine.PayloadV3)
+	// TODO(matt): the spec requires that fcu is applied when called on a valid
+	// hash, even if params are wrong. To do this we need to split up
+	// forkchoiceUpdate into a function that only updates the head and then a
+	// function that kicks off block construction.
+	return api.forkchoiceUpdated(update, params, engine.PayloadV3, false)
 }
 
-func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payloadAttributes *engine.PayloadAttributes, payloadVersion engine.PayloadVersion) (engine.ForkChoiceResponse, error) {
+func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payloadAttributes *engine.PayloadAttributes, payloadVersion engine.PayloadVersion, simulatorMode bool) (engine.ForkChoiceResponse, error) {
 	api.forkchoiceLock.Lock()
 	defer api.forkchoiceLock.Unlock()
 
@@ -325,7 +330,7 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 		if merger := api.eth.Merger(); !merger.PoSFinalized() {
 			merger.FinalizePoS()
 		}
-		// If the finalized block is not in our canonical tree, somethings wrong
+		// If the finalized block is not in our canonical tree, something is wrong
 		finalBlock := api.eth.BlockChain().GetBlockByHash(update.FinalizedBlockHash)
 		if finalBlock == nil {
 			log.Warn("Final block not available in database", "hash", update.FinalizedBlockHash)
@@ -337,7 +342,7 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 		// Set the finalized block
 		api.eth.BlockChain().SetFinalized(finalBlock.Header())
 	}
-	// Check if the safe block hash is in our canonical tree, if not somethings wrong
+	// Check if the safe block hash is in our canonical tree, if not something is wrong
 	if update.SafeBlockHash != (common.Hash{}) {
 		safeBlock := api.eth.BlockChain().GetBlockByHash(update.SafeBlockHash)
 		if safeBlock == nil {
@@ -371,6 +376,19 @@ func (api *ConsensusAPI) forkchoiceUpdated(update engine.ForkchoiceStateV1, payl
 		// to start a second process.
 		if api.localBlocks.has(id) {
 			return valid(&id), nil
+		}
+		// If the beacon chain is ran by a simulator, then transaction insertion,
+		// block insertion and block production will happen without any timing
+		// delay between them. This will cause flaky simulator executions due to
+		// the transaction pool running its internal reset operation on a back-
+		// ground thread. To avoid the racey behavior - in simulator mode - the
+		// pool will be explicitly blocked on its reset before continuing to the
+		// block production below.
+		if simulatorMode {
+			if err := api.eth.TxPool().Sync(); err != nil {
+				log.Error("Failed to sync transaction pool", "err", err)
+				return valid(nil), engine.InvalidPayloadAttributes.With(err)
+			}
 		}
 		payload, err := api.eth.Miner().BuildPayload(args)
 		if err != nil {
@@ -460,8 +478,10 @@ func (api *ConsensusAPI) NewPayloadV1(params engine.ExecutableData) (engine.Payl
 
 // NewPayloadV2 creates an Eth1 block, inserts it in the chain, and returns the status of the chain.
 func (api *ConsensusAPI) NewPayloadV2(params engine.ExecutableData) (engine.PayloadStatusV1, error) {
-	c := api.eth.BlockChain().Config()
-	if active(c.IsShanghai, c.IsCancun, c.LondonBlock, params.Timestamp) {
+	if api.eth.BlockChain().Config().IsCancun(api.eth.BlockChain().Config().LondonBlock, params.Timestamp) {
+		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.InvalidParams.With(errors.New("can't use new payload v2 post-shanghai"))
+	}
+	if api.eth.BlockChain().Config().LatestFork(params.Timestamp) == forks.Shanghai {
 		if params.Withdrawals == nil {
 			return engine.PayloadStatusV1{Status: engine.INVALID}, engine.InvalidParams.With(errors.New("nil withdrawals post-shanghai"))
 		}
@@ -498,23 +518,10 @@ func (api *ConsensusAPI) NewPayloadV3(params engine.ExecutableData, versionedHas
 		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.InvalidParams.With(errors.New("nil parentBeaconBlockRoot post-cancun"))
 	}
 
-	c := api.eth.BlockChain().Config()
-	if !active(c.IsCancun, c.IsPrague, c.LondonBlock, params.Timestamp) {
+	if api.eth.BlockChain().Config().LatestFork(params.Timestamp) != forks.Cancun {
 		return engine.PayloadStatusV1{Status: engine.INVALID}, engine.UnsupportedFork.With(errors.New("newPayloadV3 must only be called for cancun payloads"))
 	}
-
 	return api.newPayload(params, versionedHashes, beaconRoot)
-}
-
-// active returns true only if current returns true and next returns false. It returns false otherwise.
-func active(current, next func(*big.Int, uint64) bool, london *big.Int, time uint64) bool {
-	if !current(london, time) {
-		return false
-	}
-	if next(london, time) {
-		return false
-	}
-	return true
 }
 
 func (api *ConsensusAPI) newPayload(params engine.ExecutableData, versionedHashes []common.Hash, beaconRoot *common.Hash) (engine.PayloadStatusV1, error) {

@@ -3,12 +3,12 @@ package state
 import (
 	"bytes"
 	"fmt"
-	"math/big"
 	"math/rand"
 	"reflect"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/holiman/uint256"
 )
 
 var (
@@ -29,7 +29,7 @@ func init() {
 
 type observableAccountState struct {
 	address  common.Address
-	balance  *big.Int
+	balance  *uint256.Int
 	nonce    uint64
 	code     []byte
 	codeHash common.Hash
@@ -151,7 +151,7 @@ func genRandomAccountState(seed int64) map[common.Address]map[common.Hash]common
 
 func randFillAccount(addr common.Address, s *StateDB) {
 	s.SetNonce(addr, rng.Uint64())
-	s.SetBalance(addr, big.NewInt(rng.Int63()))
+	s.SetBalance(addr, uint256.NewInt(rng.Uint64()))
 	s.SetCode(addr, randomBytes(rng.Intn(100)))
 	randFillAccountState(addr, s)
 }
@@ -182,15 +182,15 @@ func prepareInitialState(s *StateDB) {
 	})
 
 	addAccount(func(addr common.Address, s *StateDB) {
-		s.SetBalance(addr, big.NewInt(rng.Int63()))
+		s.SetBalance(addr, uint256.NewInt(rng.Uint64()))
 	}, nil)
 	addAccount(nil, func(addr common.Address, s *StateDB) {
-		s.SetBalance(addr, big.NewInt(rng.Int63()))
+		s.SetBalance(addr, uint256.NewInt(rng.Uint64()))
 	})
 	addAccount(func(addr common.Address, s *StateDB) {
-		s.SetBalance(addr, big.NewInt(rng.Int63()))
+		s.SetBalance(addr, uint256.NewInt(rng.Uint64()))
 	}, func(addr common.Address, s *StateDB) {
-		s.SetBalance(addr, big.NewInt(rng.Int63()))
+		s.SetBalance(addr, uint256.NewInt(rng.Uint64()))
 	})
 
 	addAccount(func(addr common.Address, s *StateDB) {
@@ -341,7 +341,7 @@ func TestMultiTxSnapshotAccountChangesSimple(t *testing.T) {
 	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
-			s.SetBalance(addr, big.NewInt(79))
+			s.SetBalance(addr, uint256.NewInt(79))
 			s.SetCode(addr, []byte{0x80})
 		}
 		s.Finalise(true)
@@ -371,7 +371,7 @@ func TestMultiTxSnapshotRefund(t *testing.T) {
 	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
-			s.SetBalance(addr, big.NewInt(79))
+			s.SetBalance(addr, uint256.NewInt(79))
 			s.SetCode(addr, []byte{0x80})
 		}
 		s.Finalise(true)
@@ -382,14 +382,14 @@ func TestMultiTxSnapshotAccountChangesMultiTx(t *testing.T) {
 	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
-			s.SetBalance(addr, big.NewInt(79))
+			s.SetBalance(addr, uint256.NewInt(79))
 			s.SetCode(addr, []byte{0x80})
 		}
 		s.Finalise(true)
 
 		for _, addr := range addrs {
 			s.SetNonce(addr, 79)
-			s.SetBalance(addr, big.NewInt(80))
+			s.SetBalance(addr, uint256.NewInt(80))
 			s.SetCode(addr, []byte{0x81})
 		}
 		s.Finalise(true)
@@ -400,7 +400,7 @@ func TestMultiTxSnapshotAccountChangesSelfDestruct(t *testing.T) {
 	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
-			s.SetBalance(addr, big.NewInt(79))
+			s.SetBalance(addr, uint256.NewInt(79))
 			s.SetCode(addr, []byte{0x80})
 		}
 		s.Finalise(true)
@@ -412,7 +412,7 @@ func TestMultiTxSnapshotAccountChangesSelfDestruct(t *testing.T) {
 
 		for _, addr := range addrs {
 			s.SetNonce(addr, 79)
-			s.SetBalance(addr, big.NewInt(80))
+			s.SetBalance(addr, uint256.NewInt(80))
 			s.SetCode(addr, []byte{0x81})
 		}
 		s.Finalise(true)
@@ -423,21 +423,21 @@ func TestMultiTxSnapshotAccountChangesEmptyAccount(t *testing.T) {
 	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
-			s.SetBalance(addr, big.NewInt(79))
+			s.SetBalance(addr, uint256.NewInt(79))
 			s.SetCode(addr, []byte{0x80})
 		}
 		s.Finalise(true)
 
 		for _, addr := range addrs {
 			s.SetNonce(addr, 0)
-			s.SetBalance(addr, common.Big0)
+			s.SetBalance(addr, common.U2560)
 			s.SetCode(addr, nil)
 		}
 		s.Finalise(true)
 
 		for _, addr := range addrs {
 			s.SetNonce(addr, 79)
-			s.SetBalance(addr, big.NewInt(80))
+			s.SetBalance(addr, uint256.NewInt(80))
 			s.SetCode(addr, []byte{0x81})
 		}
 		s.Finalise(true)
@@ -522,7 +522,7 @@ func TestStackSelfDestruct(t *testing.T) {
 		}
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
-			s.SetBalance(addr, big.NewInt(79))
+			s.SetBalance(addr, uint256.NewInt(79))
 			s.SetCode(addr, []byte{0x80})
 			s.Finalise(true)
 		}
@@ -547,7 +547,7 @@ func TestStackSelfDestruct(t *testing.T) {
 
 		for _, addr := range addrs {
 			s.SetNonce(addr, 79)
-			s.SetBalance(addr, big.NewInt(80))
+			s.SetBalance(addr, uint256.NewInt(80))
 			s.SetCode(addr, []byte{0x81})
 		}
 		s.Finalise(true)

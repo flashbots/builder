@@ -40,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/stretchr/testify/require"
+	"github.com/holiman/uint256"
 )
 
 const (
@@ -253,7 +254,7 @@ func testEmptyWork(t *testing.T, chainConfig *params.ChainConfig, engine consens
 	taskCh := make(chan struct{}, 2)
 	checkEqual := func(t *testing.T, task *task) {
 		// The work should contain 1 tx
-		receiptLen, balance := 1, big.NewInt(1000)
+		receiptLen, balance := 1, uint256.NewInt(1000)
 		if len(task.receipts) != receiptLen {
 			t.Fatalf("receipt number mismatch: have %d, want %d", len(task.receipts), receiptLen)
 		}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -152,6 +153,17 @@ func (r *RemoteRelay) SubmitBlock(msg *builderSpec.VersionedSubmitBlockRequest, 
 			bodyBytes, err = msg.Capella.MarshalSSZ()
 		case spec.DataVersionDeneb:
 			bodyBytes, err = msg.Deneb.MarshalSSZ()
+			if len(msg.Deneb.BlobsBundle.Blobs) > 0 {
+				jsonBid, _ := msg.Deneb.MarshalJSON()
+				err := os.WriteFile("/home/ubuntu/submitBlockPayloadDeneb_Goerli.json", jsonBid, 0644)
+				if err != nil {
+					fmt.Println("Error writing JSON to file:", err)
+				}
+				err = os.WriteFile("/home/ubuntu/submitBlockPayloadDeneb_Goerli.ssz", bodyBytes, 0644)
+				if err != nil {
+					fmt.Println("Error writing SSZ to file:", err)
+				}
+			}
 		default:
 			return fmt.Errorf("unknown data version %d", msg.Version)
 		}

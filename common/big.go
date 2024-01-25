@@ -16,7 +16,11 @@
 
 package common
 
-import "math/big"
+import (
+	"math/big"
+
+	"github.com/holiman/uint256"
+)
 
 // Common big integers often used
 var (
@@ -28,6 +32,8 @@ var (
 	Big100 = big.NewInt(100)
 	Big256 = big.NewInt(256)
 	Big257 = big.NewInt(257)
+
+	U2560 = uint256.NewInt(0)
 )
 
 func PercentOf(val *big.Int, percent int) *big.Int {
