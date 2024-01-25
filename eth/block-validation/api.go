@@ -228,32 +228,42 @@ func (r *BuilderBlockValidationRequestV2) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockValidationRequestV2) error {
+// Response object for the block validation v2 request. Contains a gas limit
+// and a block hash that are valid for the `RegisteredGasLimit` property of the
+// request. This is to allow post-building adjustment of the gas limit in the
+// built block.
+type BuilderBlockValidationResponseV2 struct {
+	NewGasLimit  uint64 `json:"new_gas_limit,string"`
+	NewBlockHash string `json:"new_block_hash"`
+}
+
+func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockValidationRequestV2) (*BuilderBlockValidationResponseV2, error) {
 	// TODO: fuzztest, make sure the validation is sound
 	// TODO: handle context!
 	if params.ExecutionPayload == nil {
-		return errors.New("nil execution payload")
+		return nil, errors.New("nil execution payload")
 	}
+
 	payload := params.ExecutionPayload
 	block, err := engine.ExecutionPayloadV2ToBlock(payload)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if params.Message.ParentHash != phase0.Hash32(block.ParentHash()) {
-		return fmt.Errorf("incorrect ParentHash %s, expected %s", params.Message.ParentHash.String(), block.ParentHash().String())
+		return nil, fmt.Errorf("incorrect ParentHash %s, expected %s", params.Message.ParentHash.String(), block.ParentHash().String())
 	}
 
 	if params.Message.BlockHash != phase0.Hash32(block.Hash()) {
-		return fmt.Errorf("incorrect BlockHash %s, expected %s", params.Message.BlockHash.String(), block.Hash().String())
+		return nil, fmt.Errorf("incorrect BlockHash %s, expected %s", params.Message.BlockHash.String(), block.Hash().String())
 	}
 
 	if params.Message.GasLimit != block.GasLimit() {
-		return fmt.Errorf("incorrect GasLimit %d, expected %d", params.Message.GasLimit, block.GasLimit())
+		return nil, fmt.Errorf("incorrect GasLimit %d, expected %d", params.Message.GasLimit, block.GasLimit())
 	}
 
 	if params.Message.GasUsed != block.GasUsed() {
-		return fmt.Errorf("incorrect GasUsed %d, expected %d", params.Message.GasUsed, block.GasUsed())
+		return nil, fmt.Errorf("incorrect GasUsed %d, expected %d", params.Message.GasUsed, block.GasUsed())
 	}
 
 	feeRecipient := common.BytesToAddress(params.Message.ProposerFeeRecipient[:])
@@ -263,13 +273,13 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockV
 	var tracer *logger.AccessListTracer = nil
 	if api.accessVerifier != nil {
 		if err := api.accessVerifier.isBlacklisted(block.Coinbase()); err != nil {
-			return err
+			return nil, err
 		}
 		if err := api.accessVerifier.isBlacklisted(feeRecipient); err != nil {
-			return err
+			return nil, err
 		}
 		if err := api.accessVerifier.verifyTransactions(types.LatestSigner(api.eth.BlockChain().Config()), block.Transactions()); err != nil {
-			return err
+			return nil, err
 		}
 		isPostMerge := true // the call is PoS-native
 		precompiles := vm.ActivePrecompiles(api.eth.APIBackend.ChainConfig().Rules(new(big.Int).SetUint64(params.ExecutionPayload.BlockNumber), isPostMerge, params.ExecutionPayload.Timestamp))
@@ -277,18 +287,39 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockV
 		vmconfig = vm.Config{Tracer: tracer, Debug: true}
 	}
 
-	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig, api.useBalanceDiffProfit)
+	bc := api.eth.BlockChain()
+
+	// After validation of the message, we modify the block's gas limit
+	adjustedGasLimit, err := bc.AdjustedGasLimit(block, params.RegisteredGasLimit)
+	if err != nil {
+		return nil, err
+	}
+	// If the gas limit was adjusted, we need to regenerate the block
+	// as mutating them is generally unsupported
+	if payload.GasLimit != adjustedGasLimit {
+		payload.GasLimit = adjustedGasLimit
+		block, err = engine.ExecutionPayloadV2ToBlock(payload)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	err = bc.ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig, api.useBalanceDiffProfit)
 	if err != nil {
 		log.Error("invalid payload", "hash", payload.BlockHash.String(), "number", payload.BlockNumber, "parentHash", payload.ParentHash.String(), "err", err)
-		return err
+		return nil, err
 	}
 
 	if api.accessVerifier != nil && tracer != nil {
 		if err := api.accessVerifier.verifyTraces(tracer); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	log.Info("validated block", "hash", block.Hash(), "number", block.NumberU64(), "parentHash", block.ParentHash())
-	return nil
+
+	return &BuilderBlockValidationResponseV2{
+		NewGasLimit:  block.GasLimit(),
+		NewBlockHash: block.Hash().String(),
+	}, nil
 }

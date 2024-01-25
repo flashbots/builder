@@ -2494,6 +2494,28 @@ func (bc *BlockChain) SetBlockValidatorAndProcessorForTesting(v Validator, p Pro
 	bc.processor = p
 }
 
+// AdjustedGasLimit calculates the gas limit for the given block and returns
+// the calculated limit.
+func (bc *BlockChain) AdjustedGasLimit(block *types.Block, registeredGasLimit uint64) (uint64, error) {
+	header := block.Header()
+	if err := bc.engine.VerifyHeader(bc, header, true); err != nil {
+		return 0, err
+	}
+
+	current := bc.CurrentBlock()
+	reorg, err := bc.forker.ReorgNeeded(current, header)
+	if err == nil && reorg {
+		return 0, errors.New("block requires a reorg")
+	}
+
+	parent := bc.GetHeader(block.ParentHash(), block.NumberU64()-1)
+	if parent == nil {
+		return 0, errors.New("parent not found")
+	}
+
+	return utils.CalcGasLimit(parent.GasLimit, registeredGasLimit), nil
+}
+
 // ValidatePayload validates the payload of the block.
 // It returns nil if the payload is valid, otherwise it returns an error.
 //   - `useBalanceDiffProfit` if set to false, proposer payment is assumed to be in the last transaction of the block

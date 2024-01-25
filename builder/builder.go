@@ -326,9 +326,12 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 	}
 
 	if b.dryRun {
-		err = b.validator.ValidateBuilderSubmissionV2(&blockvalidation.BuilderBlockValidationRequestV2{SubmitBlockRequest: blockSubmitReq, RegisteredGasLimit: vd.GasLimit})
+		resp, err := b.validator.ValidateBuilderSubmissionV2(&blockvalidation.BuilderBlockValidationRequestV2{SubmitBlockRequest: blockSubmitReq, RegisteredGasLimit: vd.GasLimit})
 		if err != nil {
 			log.Error("could not validate block for capella", "err", err)
+		}
+		if resp.NewGasLimit != payload.GasLimit {
+			log.Error("gas limit adjusted needed for capella", "gasLimit", payload.GasLimit, "newGasLimit", resp.NewGasLimit)
 		}
 	} else {
 		go b.processBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
