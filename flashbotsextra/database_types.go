@@ -1,13 +1,8 @@
 package flashbotsextra
 
 import (
-	"math/big"
-	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
 	"github.com/google/uuid"
 )
 
@@ -62,50 +57,8 @@ type DbLatestUuidBundle struct {
 	BundleUUID     uuid.UUID `db:"bundle_uuid"`
 }
 
-type blockAndBundleId struct {
-	BlockId  uint64 `db:"block_id"`
-	BundleId uint64 `db:"bundle_id"`
-}
-
 type DbUsedSBundle struct {
 	BlockId  uint64 `db:"block_id"`
 	Hash     []byte `db:"hash"`
 	Inserted bool   `db:"inserted"`
-}
-
-var insertUsedSbundleQuery = `
-INSERT INTO sbundle_builder_used (block_id, hash, inserted)
-VALUES (:block_id, :hash, :inserted)
-ON CONFLICT (block_id, hash) DO NOTHING`
-
-func SimulatedBundleToDbBundle(bundle *types.SimulatedBundle) DbBundle {
-	revertingTxHashes := make([]string, len(bundle.OriginalBundle.RevertingTxHashes))
-	for i, rTxHash := range bundle.OriginalBundle.RevertingTxHashes {
-		revertingTxHashes[i] = rTxHash.String()
-	}
-	paramRevertingTxHashes := strings.Join(revertingTxHashes, ",")
-	signedTxsStrings := make([]string, len(bundle.OriginalBundle.Txs))
-	for i, tx := range bundle.OriginalBundle.Txs {
-		txBytes, err := tx.MarshalBinary()
-		if err != nil {
-			log.Error("could not marshal tx bytes", "err", err)
-			continue
-		}
-		signedTxsStrings[i] = hexutil.Encode(txBytes)
-	}
-
-	return DbBundle{
-		BundleHash:             bundle.OriginalBundle.Hash.String(),
-		BundleUUID:             bundle.OriginalBundle.ComputeUUID(),
-		ParamSignedTxs:         strings.Join(signedTxsStrings, ","),
-		ParamBlockNumber:       bundle.OriginalBundle.BlockNumber.Uint64(),
-		ParamTimestamp:         &bundle.OriginalBundle.MinTimestamp,
-		ParamRevertingTxHashes: &paramRevertingTxHashes,
-
-		CoinbaseDiff:      new(big.Rat).SetFrac(bundle.TotalEth, big.NewInt(1e18)).FloatString(18),
-		TotalGasUsed:      bundle.TotalGasUsed,
-		StateBlockNumber:  bundle.OriginalBundle.BlockNumber.Uint64(),
-		GasFees:           new(big.Int).Mul(big.NewInt(int64(bundle.TotalGasUsed)), bundle.MevGasPrice).String(),
-		EthSentToCoinbase: new(big.Rat).SetFrac(bundle.EthSentToCoinbase, big.NewInt(1e18)).FloatString(18),
-	}
 }

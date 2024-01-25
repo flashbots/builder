@@ -56,6 +56,7 @@ func newTestBackend(t *testing.T, forkchoiceData *engine.ExecutableData, block *
 		validator:                   nil,
 		beaconClient:                beaconClient,
 		limiter:                     nil,
+		blockConsumer:               flashbotsextra.NilDbService{},
 	}
 	backend, _ := NewBuilder(builderArgs)
 
