@@ -2397,7 +2397,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		}
 		uint256GasPrice, overflow := uint256.FromBig(gasPrice)
 		if overflow {
-			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
+			return nil, fmt.Errorf("incorrect gasPrice txhash %s", tx.Hash())
 		}
 		gasFeesTx := new(uint256.Int).Mul(uint256.NewInt(receipt.GasUsed), uint256GasPrice)
 		gasFees.Add(gasFees, gasFeesTx)
