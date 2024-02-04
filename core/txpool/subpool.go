@@ -107,27 +107,6 @@ type SubPool interface {
 	// to a later point to batch multiple ones together.
 	Add(txs []*types.Transaction, local bool, sync bool, private bool) []error
 
-	// AddMevBundle adds a mev bundle to the pool.
-	AddMevBundle(bundle types.MevBundle) error
-
-	AddMevBundles(bundles []types.MevBundle) error
-
-	// MevBundles returns a list of bundles valid for the given blockNumber/blockTimestamp
-	MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]types.MevBundle, chan []types.MevBundle)
-
-	// AddSBundle adds a sbundle to the pool.
-	AddSBundle(bundle *types.SBundle) error
-
-	// GetSBundle returns a sbundle if it is contained in the pool, or nil otherwise.
-	GetSBundles(block *big.Int) []*types.SBundle
-
-	// CancelSBundle cancels a sbundle from the pool.
-	CancelSBundles(hashes []common.Hash)
-
-	IsPrivateTxHash(hash common.Hash) bool
-
-	RegisterBundleFetcher(fetcher IFetcher)
-
 	// Pending retrieves all currently processable transactions, grouped by origin
 	// account and sorted by nonce.
 	Pending(enforceTips bool) map[common.Address][]*LazyTransaction

@@ -32,9 +32,9 @@ type Config struct {
 
 // DefaultConfig contains the default configurations for the transaction pool.
 var DefaultConfig = Config{
-	Datadir:   "blobpool",
-	Datacap:   10 * 1024 * 1024 * 1024,
-	PriceBump: 100, // either have patience or be aggressive, no mushy ground
+	Datadir:           "blobpool",
+	Datacap:           10 * 1024 * 1024 * 1024,
+	PriceBump:         100, // either have patience or be aggressive, no mushy ground
 	PrivateTxLifetime: 3 * 24 * time.Hour,
 }
 

@@ -913,7 +913,7 @@ func (p *BlobPool) reorg(oldHead, newHead *types.Header) (map[common.Address][]*
 		// Generate the set that was lost to reinject into the pool
 		lost := make([]*types.Transaction, 0, len(discarded[addr]))
 		for _, tx := range types.TxDifference(discarded[addr], included[addr]) {
-			if p.Filter(tx) && !p.IsPrivateTxHash(tx.Hash()) {
+			if p.Filter(tx) {
 				lost = append(lost, tx)
 			}
 		}
@@ -1571,36 +1571,4 @@ func (p *BlobPool) Status(hash common.Hash) txpool.TxStatus {
 		return txpool.TxStatusPending
 	}
 	return txpool.TxStatusUnknown
-}
-
-func (p *BlobPool) IsPrivateTxHash(hash common.Hash) bool {
-	return p.privateTxs.Contains(hash)
-}
-
-// TODO: deneb support blob txs
-func (p *BlobPool) AddMevBundle(bundle types.MevBundle) error {
-	return errors.New("blob pool does not support mev bundle")
-}
-
-func (p *BlobPool) AddMevBundles(bundles []types.MevBundle) error {
-	return errors.New("blob pool does not support mev bundle")
-}
-
-func (p *BlobPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]types.MevBundle, chan []types.MevBundle) {
-	return nil, nil
-}
-
-func (p *BlobPool) AddSBundle(bundle *types.SBundle) error {
-	return errors.New("blob pool does not support sbundle")
-}
-
-// GetSBundles
-func (p *BlobPool) GetSBundles(block *big.Int) []*types.SBundle {
-	return []*types.SBundle{}
-}
-
-func (p *BlobPool) CancelSBundles(hashes []common.Hash) {
-}
-
-func (p *BlobPool) RegisterBundleFetcher(fetcher txpool.IFetcher) {
 }

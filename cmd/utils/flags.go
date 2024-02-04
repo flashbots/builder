@@ -348,12 +348,6 @@ var (
 		Value:    ethconfig.Defaults.TxPool.Lifetime,
 		Category: flags.TxPoolCategory,
 	}
-	TxPoolPrivateLifetimeFlag = &cli.DurationFlag{
-		Name:     "txpool.privatelifetime",
-		Usage:    "Maximum amount of time private transactions are withheld from public broadcasting",
-		Value:    ethconfig.Defaults.TxPool.PrivateTxLifetime,
-		Category: flags.TxPoolCategory,
-	}
 	// Blob transaction pool settings
 	BlobPoolDataDirFlag = &cli.StringFlag{
 		Name:     "blobpool.datadir",
@@ -1775,9 +1769,6 @@ func setTxPool(ctx *cli.Context, cfg *legacypool.Config) {
 	if ctx.IsSet(TxPoolLifetimeFlag.Name) {
 		cfg.Lifetime = ctx.Duration(TxPoolLifetimeFlag.Name)
 	}
-	if ctx.IsSet(TxPoolPrivateLifetimeFlag.Name) {
-		cfg.PrivateTxLifetime = ctx.Duration(TxPoolPrivateLifetimeFlag.Name)
-	}
 }
 
 func setMiner(ctx *cli.Context, cfg *miner.Config) {
@@ -2200,7 +2191,7 @@ func RegisterEthService(stack *node.Node, cfg *ethconfig.Config, bpCfg *builder.
 			Fatalf("Failed to register the builder service: %v", err)
 		}
 	}
-	
+
 	stack.RegisterAPIs(tracers.APIs(backend.APIBackend))
 	return backend.APIBackend, backend
 }

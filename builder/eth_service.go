@@ -26,7 +26,7 @@ type testEthereumService struct {
 	testExecutableData *engine.ExecutableData
 	testBlock          *types.Block
 	testBlockValue     *big.Int
-	testBlobSidecar 	[]*types.BlobTxSidecar
+	testBlobSidecar    []*types.BlobTxSidecar
 	testBundlesMerged  []types.SimulatedBundle
 	testAllBundles     []types.SimulatedBundle
 	testUsedSbundles   []types.UsedSBundle

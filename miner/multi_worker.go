@@ -182,6 +182,7 @@ func newMultiWorkerGreedy(config *Config, chainConfig *params.ChainConfig, engin
 	}
 }
 
+// mev-geth deprecated
 func newMultiWorkerMevGeth(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *multiWorker {
 	queue := make(chan *task)
 

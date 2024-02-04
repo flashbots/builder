@@ -268,6 +268,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 	log.Info("new worker", "builderCoinbase", builderCoinbase.String())
 	exitCh := make(chan struct{})
 	taskCh := make(chan *task)
+	// mev-geth deprecated
 	if flashbots.algoType == ALGO_MEV_GETH {
 		if flashbots.isFlashbots {
 			// publish to the flashbots queue
@@ -1241,6 +1242,7 @@ func (w *worker) fillTransactionsSelectAlgo(interrupt *atomic.Int32, env *enviro
 // fillTransactions retrieves the pending transactions from the txpool and fills them
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
+// deprecated in favor of fillTransactionsSelectAlgo
 func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) ([]types.SimulatedBundle, []types.SimulatedBundle, map[common.Hash]struct{}, error) {
 	pending := w.eth.TxPool().Pending(true)
 	mempoolTxHashes := make(map[common.Hash]struct{}, len(pending))

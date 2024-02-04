@@ -2516,7 +2516,6 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 	if useBalanceDiffProfit {
 		uint256ExpectedProfit, ok := uint256.FromBig(expectedProfit)
 		if !ok {
-
 			if feeRecipientBalanceDelta.Cmp(uint256ExpectedProfit) >= 0 {
 				if feeRecipientBalanceDelta.Cmp(uint256ExpectedProfit) > 0 {
 					log.Warn("builder claimed profit is lower than calculated profit", "expected", expectedProfit, "actual", feeRecipientBalanceDelta)

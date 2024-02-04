@@ -136,7 +136,7 @@ func (envDiff *environmentDiff) commitTxCommon(tx *types.Transaction, chData cha
 			from, _ := types.Sender(signer, tx)
 			log.Trace("Skipping unsupported transaction type", "sender", from, "type", tx.Type())
 			return receipt, popTx, err
-		
+
 		case errors.Is(err, core.ErrBlobFeeCapTooLow):
 			from, _ := types.Sender(signer, tx)
 			log.Trace("Skipping blob transaction with fee cap less than block blob gas fee", "sender", from, "err", err.Error())

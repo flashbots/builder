@@ -2348,6 +2348,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	bundleHash := sha3.NewLegacyKeccak256()
 	signer := types.MakeSigner(s.b.ChainConfig(), blockNumber, timestamp)
 	var totalGasUsed uint64
+	var totalBlobGasUsed uint64
 	gasFees := new(uint256.Int)
 	for i, tx := range txs {
 		// Check if the context was cancelled (eg. timed-out)
@@ -2407,6 +2408,11 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		jsonResult["ethSentToCoinbase"] = new(uint256.Int).Sub(coinbaseDiffTx, gasFeesTx).String()
 		jsonResult["gasPrice"] = new(uint256.Int).Div(coinbaseDiffTx, uint256.NewInt(receipt.GasUsed)).String()
 		jsonResult["gasUsed"] = receipt.GasUsed
+
+		if tx.Type() == types.BlobTxType {
+			totalBlobGasUsed += receipt.BlobGasUsed
+			jsonResult["blobGasUsed"] = receipt.BlobGasUsed
+		}
 		results = append(results, jsonResult)
 	}
 
@@ -2418,6 +2424,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	ret["ethSentToCoinbase"] = new(uint256.Int).Sub(coinbaseDiff, gasFees).String()
 	ret["bundleGasPrice"] = new(uint256.Int).Div(coinbaseDiff, uint256.NewInt(totalGasUsed)).String()
 	ret["totalGasUsed"] = totalGasUsed
+	ret["totalBlobGasUsed"] = totalBlobGasUsed
 	ret["stateBlockNumber"] = parent.Number.Int64()
 
 	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
@@ -2434,6 +2441,7 @@ type EstimateGasBundleArgs struct {
 	Timeout                *int64                `json:"timeout"`
 }
 
+// Deprecated?
 func (s *BundleAPI) EstimateGasBundle(ctx context.Context, args EstimateGasBundleArgs) (map[string]interface{}, error) {
 	if len(args.Txs) == 0 {
 		return nil, errors.New("bundle missing txs")

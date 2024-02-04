@@ -22,9 +22,9 @@ type testRelay struct {
 	gvsVd   ValidatorData
 	gvsErr  error
 
-	requestedSlot         uint64
-	submittedMsg          *builderSpec.VersionedSubmitBlockRequest
-	submittedMsgCh        chan *builderSpec.VersionedSubmitBlockRequest
+	requestedSlot  uint64
+	submittedMsg   *builderSpec.VersionedSubmitBlockRequest
+	submittedMsgCh chan *builderSpec.VersionedSubmitBlockRequest
 }
 
 type testRelayAggBackend struct {

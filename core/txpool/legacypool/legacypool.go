@@ -18,7 +18,6 @@
 package legacypool
 
 import (
-	"context"
 	"errors"
 	"math"
 	"math/big"
@@ -38,7 +37,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/google/uuid"
 )
 
 const (
@@ -62,9 +60,8 @@ var (
 )
 
 var (
-	evictionInterval         = time.Minute     // Time interval to check for evictable transactions
-	statsReportInterval      = 8 * time.Second // Time interval to report transaction pool stats
-	privateTxCleanupInterval = 1 * time.Hour
+	evictionInterval    = time.Minute     // Time interval to check for evictable transactions
+	statsReportInterval = 8 * time.Second // Time interval to report transaction pool stats
 )
 
 var (
@@ -136,8 +133,7 @@ type Config struct {
 	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
 	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
 
-	Lifetime          time.Duration // Maximum amount of time non-executable transaction are queued
-	PrivateTxLifetime time.Duration // Maximum amount of time to keep private transactions private
+	Lifetime time.Duration // Maximum amount of time non-executable transaction are queued
 }
 
 // DefaultConfig contains the default configurations for the transaction pool.
@@ -153,8 +149,7 @@ var DefaultConfig = Config{
 	AccountQueue: 64,
 	GlobalQueue:  1024,
 
-	Lifetime:          3 * time.Hour,
-	PrivateTxLifetime: 3 * 24 * time.Hour,
+	Lifetime: 3 * time.Hour,
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -192,10 +187,6 @@ func (config *Config) sanitize() Config {
 	if conf.Lifetime < 1 {
 		log.Warn("Sanitizing invalid txpool lifetime", "provided", conf.Lifetime, "updated", DefaultConfig.Lifetime)
 		conf.Lifetime = DefaultConfig.Lifetime
-	}
-	if conf.PrivateTxLifetime < 1 {
-		log.Warn("Sanitizing invalid txpool private tx lifetime", "provided", conf.PrivateTxLifetime, "updated", DefaultConfig.PrivateTxLifetime)
-		conf.PrivateTxLifetime = DefaultConfig.PrivateTxLifetime
 	}
 	return conf
 }
@@ -239,11 +230,6 @@ type LegacyPool struct {
 	initDoneCh      chan struct{}  // is closed once the pool is initialized (for tests)
 
 	changesSinceReorg int // A counter for how many drops we've performed in-between reorg.
-
-	privateTxs    *types.TimestampedTxHashSet
-	mevBundles    []types.MevBundle
-	bundleFetcher txpool.IFetcher
-	sbundles      *SBundlePool
 }
 
 type txpoolResetRequest struct {
@@ -272,8 +258,6 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
 		initDoneCh:      make(chan struct{}),
-		privateTxs:      types.NewExpiringTxHashSet(config.PrivateTxLifetime),
-		sbundles:        NewSBundlePool(chain.Config()),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -323,7 +307,6 @@ func (pool *LegacyPool) Init(gasTip *big.Int, head *types.Header, reserve txpool
 	pool.currentHead.Store(head)
 	pool.currentState = statedb
 	pool.pendingNonces = newNoncer(statedb)
-	pool.sbundles.ResetPoolData(pool)
 
 	// Start the reorg loop early, so it can handle requests generated during
 	// journal loading.
@@ -344,13 +327,6 @@ func (pool *LegacyPool) Init(gasTip *big.Int, head *types.Header, reserve txpool
 	return nil
 }
 
-func (pool *LegacyPool) RegisterBundleFetcher(fetcher txpool.IFetcher) {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-
-	pool.bundleFetcher = fetcher
-}
-
 // loop is the transaction pool's main event loop, waiting for and reacting to
 // outside blockchain events as well as for various reporting and transaction
 // eviction events.
@@ -361,15 +337,13 @@ func (pool *LegacyPool) loop() {
 		prevPending, prevQueued, prevStales int
 
 		// Start the stats reporting and transaction eviction tickers
-		report    = time.NewTicker(statsReportInterval)
-		evict     = time.NewTicker(evictionInterval)
-		journal   = time.NewTicker(pool.config.Rejournal)
-		privateTx = time.NewTicker(privateTxCleanupInterval)
+		report  = time.NewTicker(statsReportInterval)
+		evict   = time.NewTicker(evictionInterval)
+		journal = time.NewTicker(pool.config.Rejournal)
 	)
 	defer report.Stop()
 	defer evict.Stop()
 	defer journal.Stop()
-	defer privateTx.Stop()
 
 	// Notify tests that the init phase is done
 	close(pool.initDoneCh)
@@ -419,9 +393,6 @@ func (pool *LegacyPool) loop() {
 				}
 				pool.mu.Unlock()
 			}
-		// Remove stale hashes that must be kept private
-		case <-privateTx.C:
-			pool.privateTxs.Prune()
 		}
 	}
 }
@@ -541,154 +512,6 @@ func (pool *LegacyPool) ContentFrom(addr common.Address) ([]*types.Transaction, 
 		queued = list.Flatten()
 	}
 	return pending, queued
-}
-
-// IsPrivateTxHash indicates whether the transaction should be shared with peers
-func (pool *LegacyPool) IsPrivateTxHash(hash common.Hash) bool {
-	return pool.privateTxs.Contains(hash)
-}
-
-type uuidBundleKey struct {
-	Uuid           uuid.UUID
-	SigningAddress common.Address
-}
-
-func (pool *LegacyPool) fetchLatestCancellableBundles(ctx context.Context, blockNumber *big.Int) (chan []types.LatestUuidBundle, chan error) {
-	if pool.bundleFetcher == nil {
-		return nil, nil
-	}
-	errCh := make(chan error, 1)
-	lubCh := make(chan []types.LatestUuidBundle, 1)
-	go func(blockNum int64) {
-		lub, err := pool.bundleFetcher.GetLatestUuidBundles(ctx, blockNum)
-		errCh <- err
-		lubCh <- lub
-	}(blockNumber.Int64())
-	return lubCh, errCh
-}
-
-func resolveCancellableBundles(lubCh chan []types.LatestUuidBundle, errCh chan error, uuidBundles map[uuidBundleKey][]types.MevBundle) []types.MevBundle {
-	if lubCh == nil || errCh == nil {
-		return nil
-	}
-
-	if len(uuidBundles) == 0 {
-		return nil
-	}
-
-	err := <-errCh
-	if err != nil {
-		log.Error("could not fetch latest bundles uuid map", "err", err)
-		return nil
-	}
-
-	currentCancellableBundles := []types.MevBundle{}
-
-	log.Trace("Processing uuid bundles", "uuidBundles", uuidBundles)
-
-	lubs := <-lubCh
-	for _, lub := range lubs {
-		ubk := uuidBundleKey{lub.Uuid, lub.SigningAddress}
-		bundles, found := uuidBundles[ubk]
-		if !found {
-			log.Trace("missing uuid bundle", "ubk", ubk)
-			continue
-		}
-		for _, bundle := range bundles {
-			if bundle.Hash == lub.BundleHash {
-				log.Trace("adding uuid bundle", "bundle hash", bundle.Hash.String(), "lub", lub)
-				currentCancellableBundles = append(currentCancellableBundles, bundle)
-				break
-			}
-		}
-	}
-	return currentCancellableBundles
-}
-
-// MevBundles returns a list of bundles valid for the given blockNumber/blockTimestamp
-// also prunes bundles that are outdated
-// Returns regular bundles and a function resolving to current cancellable bundles
-func (pool *LegacyPool) MevBundles(blockNumber *big.Int, blockTimestamp uint64) ([]types.MevBundle, chan []types.MevBundle) {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-	lubCh, errCh := pool.fetchLatestCancellableBundles(ctx, blockNumber)
-
-	// returned values
-	var ret []types.MevBundle
-	// rolled over values
-	var bundles []types.MevBundle
-	// (uuid, signingAddress) -> list of bundles
-	var uuidBundles = make(map[uuidBundleKey][]types.MevBundle)
-
-	for _, bundle := range pool.mevBundles {
-		// Prune outdated bundles
-		if (bundle.MaxTimestamp != 0 && blockTimestamp > bundle.MaxTimestamp) || blockNumber.Cmp(bundle.BlockNumber) > 0 {
-			continue
-		}
-
-		// Roll over future bundles
-		if (bundle.MinTimestamp != 0 && blockTimestamp < bundle.MinTimestamp) || blockNumber.Cmp(bundle.BlockNumber) < 0 {
-			bundles = append(bundles, bundle)
-			continue
-		}
-
-		// keep the bundles around internally until they need to be pruned
-		bundles = append(bundles, bundle)
-
-		// TODO: omit duplicates
-
-		// do not append to the return quite yet, check the DB for the latest bundle for that uuid
-		if bundle.Uuid != types.EmptyUUID {
-			ubk := uuidBundleKey{bundle.Uuid, bundle.SigningAddress}
-			uuidBundles[ubk] = append(uuidBundles[ubk], bundle)
-			continue
-		}
-
-		// return the ones which are in time
-		ret = append(ret, bundle)
-	}
-
-	pool.mevBundles = bundles
-
-	cancellableBundlesCh := make(chan []types.MevBundle, 1)
-	go func() {
-		cancellableBundlesCh <- resolveCancellableBundles(lubCh, errCh, uuidBundles)
-		cancel()
-	}()
-
-	return ret, cancellableBundlesCh
-}
-
-// AddMevBundles adds a mev bundles to the pool
-func (pool *LegacyPool) AddMevBundles(mevBundles []types.MevBundle) error {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-
-	pool.mevBundles = append(pool.mevBundles, mevBundles...)
-	return nil
-}
-
-// AddMevBundle adds a mev bundle to the pool
-func (pool *LegacyPool) AddMevBundle(bundle types.MevBundle) error {
-	pool.mu.Lock()
-	defer pool.mu.Unlock()
-
-	pool.mevBundles = append(pool.mevBundles, bundle)
-	return nil
-}
-
-func (pool *LegacyPool) AddSBundle(bundle *types.SBundle) error {
-	return pool.sbundles.Add(bundle)
-}
-
-func (pool *LegacyPool) CancelSBundles(hashes []common.Hash) {
-	pool.sbundles.Cancel(hashes)
-}
-
-func (pool *LegacyPool) GetSBundles(block *big.Int) []*types.SBundle {
-	return pool.sbundles.GetSBundles(block.Uint64())
 }
 
 // Pending retrieves all currently processable transactions, grouped by origin
@@ -1137,7 +960,7 @@ func (pool *LegacyPool) addRemoteSync(tx *types.Transaction) error {
 func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync, private bool) []error {
 	// Do not treat as local if local transactions have been disabled
 	local = local && !pool.config.NoLocals
-	
+
 	// Filter out known ones without obtaining the pool lock or recovering signatures
 	var (
 		errs = make([]error, len(txs))
@@ -1164,13 +987,6 @@ func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync, private bool)
 	}
 	if len(news) == 0 {
 		return errs
-	}
-
-	// Track private transactions, so they don't get leaked to the public mempool
-	if private {
-		for _, tx := range news {
-			pool.privateTxs.Add(tx.Hash())
-		}
 	}
 
 	// Process all the new transaction and merge any errors into the original slice
@@ -1500,9 +1316,7 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 		var txs []*types.Transaction
 		for _, set := range events {
 			for _, tx := range set.Flatten() {
-				if !pool.IsPrivateTxHash(tx.Hash()) {
-					txs = append(txs, tx)
-				}
+				txs = append(txs, tx)
 			}
 		}
 		pool.txFeed.Send(core.NewTxsEvent{Txs: txs})
@@ -1601,7 +1415,6 @@ func (pool *LegacyPool) reset(oldHead, newHead *types.Header) {
 	pool.currentHead.Store(newHead)
 	pool.currentState = statedb
 	pool.pendingNonces = newNoncer(statedb)
-	pool.sbundles.ResetPoolData(pool)
 
 	// Inject any transactions discarded due to reorgs
 	log.Debug("Reinjecting stale transactions", "count", len(reinject))
@@ -1829,7 +1642,6 @@ func (pool *LegacyPool) demoteUnexecutables() {
 		for _, tx := range olds {
 			hash := tx.Hash()
 			pool.all.Remove(hash)
-			pool.privateTxs.Remove(hash)
 			log.Trace("Removed old pending transaction", "hash", hash)
 		}
 		// Drop all transactions that are too costly (low balance or out of gas), and queue any invalids back for later

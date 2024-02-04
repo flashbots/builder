@@ -1,4 +1,4 @@
-package legacypool
+package txpool
 
 // TODO: cancel sbundles, fetch them from the db
 
@@ -9,7 +9,6 @@ import (
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -17,6 +16,23 @@ import (
 const (
 	maxSBundleRange   = 30
 	maxSBundleNesting = 1
+
+	// txSlotSize is used to calculate how many data slots a single transaction
+	// takes up based on its size. The slots are used as DoS protection, ensuring
+	// that validating a new transaction remains a constant operation (in reality
+	// O(maxslots), where max slots are 4 currently).
+	txSlotSize = 32 * 1024
+	// txMaxSize is the maximum size a single transaction can have. This field has
+	// non-trivial consequences: larger transactions are significantly harder and
+	// more expensive to propagate; larger transactions also take more resources
+	// to validate whether they fit into the pool or not.
+	txMaxSize = 4 * txSlotSize // 128KB
+	// blobTxMaxSize is the maximum size a single transaction can have, outside
+	// the included blobs. Since blob transactions are pulled instead of pushed,
+	// and only a small metadata is kept in ram, the rest is on disk, there is
+	// no critical limit that should be enforced. Still, capping it to some sane
+	// limit can never hurt.
+	blobTxMaxSize = 1024 * 1024
 )
 
 var (
@@ -53,11 +69,11 @@ func NewSBundlePool(chainConfig *params.ChainConfig) *SBundlePool {
 	}
 }
 
-func (p *SBundlePool) ResetPoolData(pool *LegacyPool) {
+func (p *SBundlePool) ResetPoolData(head *types.Header) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.currentHead.Store(pool.currentHead.Load())
+	p.currentHead.Store(head)
 }
 
 func (p *SBundlePool) Add(bundle *types.SBundle) error {
@@ -171,17 +187,23 @@ func (p *SBundlePool) validateSBundle(level int, b *types.SBundle) error {
 
 // same as core/tx_pool.go but we don't check for gas price and nonce
 func (p *SBundlePool) validateTx(tx *types.Transaction) error {
-	opts := &txpool.ValidationOptions{
+	opts := &ValidationOptions{
 		Config: p.chainconfig,
-		Accept: 0 |
-			1<<types.LegacyTxType |
-			1<<types.AccessListTxType |
-			1<<types.DynamicFeeTxType,
-		MaxSize: txMaxSize,
-		MinTip:  new(big.Int),
+		MinTip: new(big.Int),
 	}
 
-	if err := txpool.ValidateTransaction(tx, p.currentHead.Load(), p.signer, opts); err != nil {
+	if tx.Type() == types.BlobTxType {
+		opts.MaxSize = blobTxMaxSize
+		opts.Accept = 1 << types.BlobTxType
+	} else {
+		opts.MaxSize = txMaxSize
+		opts.Accept = 0 |
+			1<<types.LegacyTxType |
+			1<<types.AccessListTxType |
+			1<<types.DynamicFeeTxType
+	}
+
+	if err := ValidateTransaction(tx, p.currentHead.Load(), p.signer, opts); err != nil {
 		return err
 	}
 	return nil

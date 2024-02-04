@@ -42,8 +42,8 @@ import (
 	"github.com/ethereum/go-ethereum/test_utils"
 	"github.com/ethereum/go-ethereum/trie"
 	"github.com/google/uuid"
-	"github.com/stretchr/testify/require"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
 )
 
 var (
@@ -2544,11 +2544,12 @@ func TestBundleCancellations(t *testing.T) {
 	blockchain := newTestBlockChain(params.TestChainConfig, 100, statedb, new(event.Feed))
 
 	pool := New(testTxPoolConfig, blockchain)
+	txpool, err := txpool.New(new(big.Int).SetUint64(testTxPoolConfig.PriceLimit), blockchain, []txpool.SubPool{pool})
 	fetcher := &mockFetcher{make(map[int64]error), make(map[int64][]types.LatestUuidBundle)}
-	pool.RegisterBundleFetcher(fetcher)
+	txpool.RegisterBundleFetcher(fetcher)
 
 	fetcher.resps[1] = nil
-	bundles, ccBundles := pool.MevBundles(big.NewInt(1), 20)
+	bundles, ccBundles := txpool.MevBundles(big.NewInt(1), 20)
 	require.Equal(t, []types.MevBundle(nil), bundles)
 	require.Equal(t, []types.MevBundle(nil), <-ccBundles)
 
@@ -2577,13 +2578,13 @@ func TestBundleCancellations(t *testing.T) {
 		Hash:           common.Hash{0xf3},
 	}
 
-	err := pool.AddMevBundles([]types.MevBundle{
+	txpool.AddMevBundles([]types.MevBundle{
 		bundle01_uuid1_signer1, bundle02_no_uuid_signer2, bundle03_uuid1_signer1, bundle03_uuid1_signer2,
 	})
 	require.NoError(t, err)
 
 	// Ignores uuid bundle since fetcher does not return it, passes non-uuid bundle
-	bundles, ccBundles = pool.MevBundles(big.NewInt(1), 20)
+	bundles, ccBundles = txpool.MevBundles(big.NewInt(1), 20)
 	require.Equal(t, []types.MevBundle{bundle02_no_uuid_signer2}, bundles)
 	cr := test_utils.RequireChan(ccBundles, time.Millisecond)
 	require.False(t, cr.Timeout)
@@ -2596,7 +2597,7 @@ func TestBundleCancellations(t *testing.T) {
 	})
 
 	// Passes non-uuid bundle and only the bundle exactly matching the fetcher resp
-	bundles, ccBundles = pool.MevBundles(big.NewInt(1), 20)
+	bundles, ccBundles = txpool.MevBundles(big.NewInt(1), 20)
 	require.Equal(t, []types.MevBundle{bundle02_no_uuid_signer2}, bundles)
 	cr = test_utils.RequireChan(ccBundles, time.Millisecond)
 	require.False(t, cr.Timeout)
@@ -2611,7 +2612,7 @@ func TestBundleCancellations(t *testing.T) {
 	}
 
 	// Passes non-uuid bundle and only the bundle exactly matching the fetcher resp
-	bundles, ccBundles = pool.MevBundles(big.NewInt(1), 20)
+	bundles, ccBundles = txpool.MevBundles(big.NewInt(1), 20)
 	require.Equal(t, []types.MevBundle{bundle02_no_uuid_signer2}, bundles)
 	cr = test_utils.RequireChan(ccBundles, time.Millisecond)
 	require.False(t, cr.Timeout)
@@ -2624,7 +2625,7 @@ func TestBundleCancellations(t *testing.T) {
 	})
 
 	// Passes non-uuid bundle and both bundles exactly matching the fetcher resp for the same hash
-	bundles, ccBundles = pool.MevBundles(big.NewInt(1), 20)
+	bundles, ccBundles = txpool.MevBundles(big.NewInt(1), 20)
 	require.Equal(t, []types.MevBundle{bundle02_no_uuid_signer2}, bundles)
 	cr = test_utils.RequireChan(ccBundles, time.Millisecond)
 	require.False(t, cr.Timeout)

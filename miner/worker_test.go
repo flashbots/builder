@@ -39,8 +39,8 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/stretchr/testify/require"
 	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
 )
 
 const (
