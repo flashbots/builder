@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -2253,6 +2254,7 @@ type CallBundleArgs struct {
 	GasLimit               *uint64               `json:"gasLimit"`
 	Difficulty             *big.Int              `json:"difficulty"`
 	BaseFee                *big.Int              `json:"baseFee"`
+	ExcessBlobGas          *uint64               `json:"excessBlobGas"`
 }
 
 // CallBundle will simulate a bundle of transactions at the top of a given block
@@ -2304,7 +2306,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	}
 	blockNumber := big.NewInt(int64(args.BlockNumber))
 
-	timestamp := parent.Time + 1
+	timestamp := parent.Time + 12
 	if args.Timestamp != nil {
 		timestamp = *args.Timestamp
 	}
@@ -2326,6 +2328,14 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	} else if s.b.ChainConfig().IsLondon(big.NewInt(args.BlockNumber.Int64())) {
 		baseFee = eip1559.CalcBaseFee(s.b.ChainConfig(), parent)
 	}
+
+	var excessBlobGas uint64
+	if args.ExcessBlobGas != nil {
+		excessBlobGas = *args.ExcessBlobGas
+	} else if s.b.ChainConfig().IsCancun(big.NewInt(args.BlockNumber.Int64()), timestamp) {
+		excessBlobGas = eip4844.CalcExcessBlobGas(*parent.ExcessBlobGas, *parent.BlobGasUsed)
+	}
+
 	header := &types.Header{
 		ParentHash: parent.Hash(),
 		Number:     blockNumber,
@@ -2334,6 +2344,7 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		Difficulty: difficulty,
 		Coinbase:   coinbase,
 		BaseFee:    baseFee,
+		ExcessBlobGas: &excessBlobGas,
 	}
 
 	vmconfig := vm.Config{}
@@ -2384,8 +2395,8 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 		if err != nil {
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
-		uint256GasPrice, ok := uint256.FromBig(gasPrice)
-		if !ok {
+		uint256GasPrice, overflow := uint256.FromBig(gasPrice)
+		if overflow {
 			return nil, fmt.Errorf("err: %w; txhash %s", err, tx.Hash())
 		}
 		gasFeesTx := new(uint256.Int).Mul(uint256.NewInt(receipt.GasUsed), uint256GasPrice)
@@ -2424,8 +2435,11 @@ func (s *BundleAPI) CallBundle(ctx context.Context, args CallBundleArgs) (map[st
 	ret["ethSentToCoinbase"] = new(uint256.Int).Sub(coinbaseDiff, gasFees).String()
 	ret["bundleGasPrice"] = new(uint256.Int).Div(coinbaseDiff, uint256.NewInt(totalGasUsed)).String()
 	ret["totalGasUsed"] = totalGasUsed
-	ret["totalBlobGasUsed"] = totalBlobGasUsed
 	ret["stateBlockNumber"] = parent.Number.Int64()
+
+	if totalBlobGasUsed > 0 {
+		ret["totalBlobGasUsed"] = totalBlobGasUsed
+	}
 
 	ret["bundleHash"] = "0x" + common.Bytes2Hex(bundleHash.Sum(nil))
 	return ret, nil
