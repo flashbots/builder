@@ -287,7 +287,7 @@ func (b *Builder) onSealedBlock(opts SubmitBlockOpts) error {
 		}
 	}
 
-	log.Info("submitted block", "version", dataVersion.String(), "slot", opts.PayloadAttributes.Slot, "value", opts.BlockValue.String(), "parent", opts.Block.ParentHash,
+	log.Info("submitted block", "version", dataVersion.String(), "slot", opts.PayloadAttributes.Slot, "value", opts.BlockValue.String(), "parent", opts.Block.ParentHash().String(),
 		"hash", opts.Block.Hash(), "#commitedBundles", len(opts.CommitedBundles))
 
 	return nil
