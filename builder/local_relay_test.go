@@ -67,7 +67,6 @@ func testRequest(t *testing.T, localRelay *LocalRelay, method, path string, payl
 		req, err = http.NewRequest(method, path, nil)
 	} else {
 		payloadBytes, err2 := json.Marshal(payload)
-		fmt.Println(string(payloadBytes))
 		require.NoError(t, err2)
 		req, err = http.NewRequest(method, path, bytes.NewReader(payloadBytes))
 	}

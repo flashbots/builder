@@ -357,7 +357,7 @@ func (p *TxPool) Add(txs []*types.Transaction, local bool, sync bool, private bo
 	// back the errors into the original sort order.
 	errsets := make([][]error, len(p.subpools))
 	for i := 0; i < len(p.subpools); i++ {
-		errsets[i] = p.subpools[i].Add(txsets[i], local, sync, private)
+		errsets[i] = p.subpools[i].Add(txsets[i], local, sync)
 	}
 	errs := make([]error, len(txs))
 	for i, split := range splits {
