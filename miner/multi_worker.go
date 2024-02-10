@@ -2,6 +2,7 @@ package miner
 
 import (
 	"errors"
+	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -77,6 +78,12 @@ func (w *multiWorker) setRecommitInterval(interval time.Duration) {
 func (w *multiWorker) setEtherbase(addr common.Address) {
 	for _, worker := range w.workers {
 		worker.setEtherbase(addr)
+	}
+}
+
+func (w *multiWorker) setGasTip(tip *big.Int) {
+	for _, worker := range w.workers {
+		worker.setGasTip(tip)
 	}
 }
 

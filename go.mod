@@ -24,9 +24,10 @@ require (
 	github.com/dop251/goja v0.0.0-20230806174421-c933cf95e127
 	github.com/ethereum/c-kzg-4844 v0.4.0
 	github.com/fatih/color v1.15.0
+	github.com/ferranbt/fastssz v0.1.3
 	github.com/fjl/gencodec v0.0.0-20230517082657-f9840df7b83e
-	github.com/fjl/memsize v0.0.0-20190710130421-bcb5799ab5e5
-	github.com/flashbots/go-boost-utils v1.7.2-0.20230914170129-53972d4d3d85
+	github.com/fjl/memsize v0.0.2
+	github.com/flashbots/go-boost-utils v1.8.0
 	github.com/flashbots/go-utils v0.4.8
 	github.com/fsnotify/fsnotify v1.6.0
 	github.com/gballet/go-libpcsclite v0.0.0-20190607065134-2772fd86a8ff
@@ -122,7 +123,6 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0 // indirect
 	github.com/deepmap/oapi-codegen v1.6.0 // indirect
 	github.com/dlclark/regexp2 v1.7.0 // indirect
-	github.com/ferranbt/fastssz v0.1.3 // indirect
 	github.com/garslo/gogen v0.0.0-20170306192744-1d203ffc1f61 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect

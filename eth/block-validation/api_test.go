@@ -458,7 +458,7 @@ func updatePayloadHashV2(t *testing.T, blockRequest *BuilderBlockValidationReque
 }
 
 func updatePayloadHashV3(t *testing.T, blockRequest *BuilderBlockValidationRequestV3) {
-	root := phase0.Hash32(blockRequest.ParentBeaconBlockRoot)
+	root := phase0.Root(blockRequest.ParentBeaconBlockRoot)
 	blockHash, err := utils.ComputeBlockHash(&api.VersionedExecutionPayload{Version: spec.DataVersionDeneb, Deneb: blockRequest.ExecutionPayload}, &root)
 	require.NoError(t, err)
 	copy(blockRequest.Message.BlockHash[:], blockHash[:])

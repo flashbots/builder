@@ -219,6 +219,7 @@ type worker struct {
 	mu       sync.RWMutex // The lock used to protect the coinbase and extra fields
 	coinbase common.Address
 	extra    []byte
+	tip      *big.Int // Minimum tip needed for non-local transaction to include them
 
 	pendingMu    sync.RWMutex
 	pendingTasks map[common.Hash]*task
@@ -307,6 +308,7 @@ func newWorker(config *Config, chainConfig *params.ChainConfig, engine consensus
 		mux:                mux,
 		isLocalBlock:       isLocalBlock,
 		extra:              config.ExtraData,
+		tip:                config.GasPrice,
 		pendingTasks:       make(map[common.Hash]*task),
 		txsCh:              make(chan core.NewTxsEvent, txChanSize),
 		chainHeadCh:        make(chan core.ChainHeadEvent, chainHeadChanSize),
@@ -387,6 +389,13 @@ func (w *worker) setExtra(extra []byte) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.extra = extra
+}
+
+// setGasTip sets the minimum miner tip needed to include a non-local transaction.
+func (w *worker) setGasTip(tip *big.Int) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.tip = tip
 }
 
 // setRecommitInterval updates the interval for miner sealing work recommitting.
@@ -632,7 +641,7 @@ func (w *worker) mainLoop() {
 				}
 				txset := newTransactionsByPriceAndNonce(w.current.signer, txs, nil, nil, w.current.header.BaseFee)
 				tcount := w.current.tcount
-				w.commitTransactions(w.current, txset, nil)
+				w.commitTransactions(w.current, txset, nil, new(big.Int))
 
 				// Only update the snapshot if any new transactions were added
 				// to the pending block
@@ -1005,7 +1014,7 @@ func (w *worker) commitBundle(env *environment, txs []*types.Transaction, interr
 	return nil
 }
 
-func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAndNonce, interrupt *atomic.Int32) error {
+func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAndNonce, interrupt *atomic.Int32, minTip *big.Int) error {
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
 		env.gasPool = new(core.GasPool).AddGas(gasLimit)
@@ -1046,6 +1055,11 @@ func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAn
 			log.Trace("Not enough blob gas left for transaction", "hash", ltx.Hash, "left", left, "needed", ltx.BlobGas)
 			txs.Pop()
 			continue
+		}
+		// If we don't receive enough tip for the next transaction, skip the account
+		if txWithMinerFee.fees.Cmp(minTip) < 0 {
+			log.Trace("Not enough tip for transaction", "hash", ltx.Hash, "tip", txWithMinerFee.fees, "needed", minTip)
+			break // If the next-best is too low, surely no better will be available
 		}
 		// Transaction seems to fit, pull it up from the pool
 		tx := ltx.Resolve()
@@ -1108,7 +1122,7 @@ func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAn
 
 // generateParams wraps various of settings for generating sealing task.
 type generateParams struct {
-	timestamp   uint64            // The timstamp for sealing task
+	timestamp   uint64            // The timestamp for sealing task
 	forceTime   bool              // Flag whether the given timestamp is immutable or not
 	parentHash  common.Hash       // Parent block hash, empty means the latest chain head
 	coinbase    common.Address    // The fee recipient address for including transaction
@@ -1292,15 +1306,19 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) ([]
 	}
 
 	// Fill the block with all available pending transactions.
+	w.mu.RLock()
+	tip := w.tip
+	w.mu.RUnlock()
+
 	if len(localTxs) > 0 {
 		txs := newTransactionsByPriceAndNonce(env.signer, localTxs, nil, nil, env.header.BaseFee)
-		if err := w.commitTransactions(env, txs, interrupt); err != nil {
+		if err := w.commitTransactions(env, txs, interrupt, new(big.Int)); err != nil {
 			return nil, nil, nil, err
 		}
 	}
 	if len(remoteTxs) > 0 {
 		txs := newTransactionsByPriceAndNonce(env.signer, remoteTxs, nil, nil, env.header.BaseFee)
-		if err := w.commitTransactions(env, txs, interrupt); err != nil {
+		if err := w.commitTransactions(env, txs, interrupt, tip); err != nil {
 			return nil, nil, nil, err
 		}
 	}
