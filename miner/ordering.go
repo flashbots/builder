@@ -275,12 +275,12 @@ func (t *transactionsByPriceAndNonce) Pop() {
 // Note that this operation should only be performed when the head transaction on the heap is different from the
 // input transaction. This operation is useful in scenarios where the current best head transaction for an account
 // was already popped from the heap and we want to process the next one from the same account.
-func (t *transactionsByPriceAndNonce) ShiftAndPushByAccountForTx(tx *txpool.LazyTransaction) {
+func (t *transactionsByPriceAndNonce) ShiftAndPushByAccountForTx(tx *types.Transaction) {
 	if tx == nil {
 		return
 	}
 
-	acc, _ := types.Sender(t.signer, tx.Tx)
+	acc, _ := types.Sender(t.signer, tx)
 	if txs, exists := t.txs[acc]; exists && len(txs) > 0 {
 		if wrapped, err := newTxWithMinerFee(txs[0], acc, t.baseFee); err == nil {
 			t.txs[acc] = txs[1:]
