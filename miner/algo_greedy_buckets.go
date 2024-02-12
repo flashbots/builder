@@ -226,6 +226,7 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 func (b *greedyBucketsBuilder) buildBlock(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address][]*txpool.LazyTransaction) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
 	orders := newTransactionsByPriceAndNonce(b.inputEnvironment.signer, transactions, simBundles, simSBundles, b.inputEnvironment.header.BaseFee)
 	envDiff := newEnvironmentDiff(b.inputEnvironment.copy())
+	b.inputEnvironment.state.StopPrefetcher()
 	usedBundles, usedSbundles := b.mergeOrdersIntoEnvDiff(envDiff, orders)
 	envDiff.applyToBaseEnv()
 	return envDiff.baseEnvironment, usedBundles, usedSbundles
