@@ -90,6 +90,8 @@ type BlockValidationConfig struct {
 	BlacklistSourceFilePath string
 	// If set to true, proposer payment is calculated as a balance difference of the fee recipient.
 	UseBalanceDiffProfit bool
+	// If set to true, withdrawals to the fee recipient are excluded from the balance difference.
+	ExcludeWithdrawals bool
 }
 
 // Register adds catalyst APIs to the full node.
@@ -106,7 +108,7 @@ func Register(stack *node.Node, backend *eth.Ethereum, cfg BlockValidationConfig
 	stack.RegisterAPIs([]rpc.API{
 		{
 			Namespace: "flashbots",
-			Service:   NewBlockValidationAPI(backend, accessVerifier, cfg.UseBalanceDiffProfit),
+			Service:   NewBlockValidationAPI(backend, accessVerifier, cfg.UseBalanceDiffProfit, cfg.ExcludeWithdrawals),
 		},
 	})
 	return nil
@@ -117,15 +119,18 @@ type BlockValidationAPI struct {
 	accessVerifier *AccessVerifier
 	// If set to true, proposer payment is calculated as a balance difference of the fee recipient.
 	useBalanceDiffProfit bool
+	// If set to true, withdrawals to the fee recipient are excluded from the balance delta.
+	excludeWithdrawals bool
 }
 
 // NewConsensusAPI creates a new consensus api for the given backend.
 // The underlying blockchain needs to have a valid terminal total difficulty set.
-func NewBlockValidationAPI(eth *eth.Ethereum, accessVerifier *AccessVerifier, useBalanceDiffProfit bool) *BlockValidationAPI {
+func NewBlockValidationAPI(eth *eth.Ethereum, accessVerifier *AccessVerifier, useBalanceDiffProfit, excludeWithdrawals bool) *BlockValidationAPI {
 	return &BlockValidationAPI{
 		eth:                  eth,
 		accessVerifier:       accessVerifier,
 		useBalanceDiffProfit: useBalanceDiffProfit,
+		excludeWithdrawals:   excludeWithdrawals,
 	}
 }
 
@@ -185,7 +190,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockV
 		vmconfig = vm.Config{Tracer: tracer, Debug: true}
 	}
 
-	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig, api.useBalanceDiffProfit)
+	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig, api.useBalanceDiffProfit, api.excludeWithdrawals)
 	if err != nil {
 		log.Error("invalid payload", "hash", payload.BlockHash.String(), "number", payload.BlockNumber, "parentHash", payload.ParentHash.String(), "err", err)
 		return err
@@ -277,7 +282,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockV
 		vmconfig = vm.Config{Tracer: tracer, Debug: true}
 	}
 
-	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig, api.useBalanceDiffProfit)
+	err = api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, params.RegisteredGasLimit, vmconfig, api.useBalanceDiffProfit, api.excludeWithdrawals)
 	if err != nil {
 		log.Error("invalid payload", "hash", payload.BlockHash.String(), "number", payload.BlockNumber, "parentHash", payload.ParentHash.String(), "err", err)
 		return err

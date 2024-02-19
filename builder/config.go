@@ -22,6 +22,7 @@ type Config struct {
 	SecondaryRemoteRelayEndpoints    []string      `toml:",omitempty"`
 	ValidationBlocklist              string        `toml:",omitempty"`
 	ValidationUseCoinbaseDiff        bool          `toml:",omitempty"`
+	ValidationExcludeWithdrawals     bool          `toml:",omitempty"`
 	BuilderRateLimitDuration         string        `toml:",omitempty"`
 	BuilderRateLimitMaxBurst         int           `toml:",omitempty"`
 	BuilderRateLimitResubmitInterval string        `toml:",omitempty"`
@@ -52,6 +53,7 @@ var DefaultConfig = Config{
 	SecondaryRemoteRelayEndpoints: nil,
 	ValidationBlocklist:           "",
 	ValidationUseCoinbaseDiff:     false,
+	ValidationExcludeWithdrawals:  false,
 	BuilderRateLimitDuration:      RateLimitIntervalDefault.String(),
 	BuilderRateLimitMaxBurst:      RateLimitBurstDefault,
 	DiscardRevertibleTxOnErr:      false,
