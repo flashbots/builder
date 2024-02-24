@@ -25,6 +25,7 @@ func TestBuildBlockGasLimit(t *testing.T) {
 			Time:      tx1.Time(),
 			GasFeeCap: uint256.MustFromBig(tx1.GasFeeCap()),
 			GasTipCap: uint256.MustFromBig(tx1.GasTipCap()),
+			GasPrice:  uint256.MustFromBig(tx1.GasPrice()),
 		}}
 		tx2 := signers.signTx(2, 21000, big.NewInt(0), big.NewInt(1), signers.addresses[2], big.NewInt(0), []byte{})
 		txs[signers.addresses[2]] = []*txpool.LazyTransaction{{
@@ -33,6 +34,7 @@ func TestBuildBlockGasLimit(t *testing.T) {
 			Time:      tx2.Time(),
 			GasFeeCap: uint256.MustFromBig(tx2.GasFeeCap()),
 			GasTipCap: uint256.MustFromBig(tx2.GasTipCap()),
+			GasPrice:  uint256.MustFromBig(tx2.GasPrice()),
 		}}
 		tx3 := signers.signTx(3, 21000, big.NewInt(math.MaxInt), big.NewInt(math.MaxInt), signers.addresses[2], big.NewInt(math.MaxInt), []byte{})
 		txs[signers.addresses[3]] = []*txpool.LazyTransaction{{
@@ -41,6 +43,7 @@ func TestBuildBlockGasLimit(t *testing.T) {
 			Time:      tx3.Time(),
 			GasFeeCap: uint256.MustFromBig(tx3.GasFeeCap()),
 			GasTipCap: uint256.MustFromBig(tx3.GasTipCap()),
+			GasPrice:  uint256.MustFromBig(tx3.GasPrice()),
 		}}
 
 		var result *environment
@@ -59,7 +62,6 @@ func TestBuildBlockGasLimit(t *testing.T) {
 			result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
 		}
 
-		t.Log("block built", "txs", len(result.txs), "gasPool", result.gasPool.Gas(), "algorithm", algo.String())
 		if result.tcount != 1 {
 			t.Fatalf("Incorrect tx count [found: %d]", result.tcount)
 		}

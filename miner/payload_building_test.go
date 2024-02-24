@@ -31,55 +31,58 @@ import (
 
 func TestBuildPayload(t *testing.T) {
 	t.Parallel()
-	var (
-		db        = rawdb.NewMemoryDatabase()
-		recipient = common.HexToAddress("0xdeadbeef")
-	)
-	w, b := newTestWorker(t, params.TestChainConfig, ethash.NewFaker(), db, nil, 0)
-	defer w.close()
+	for _, algoType := range []AlgoType{ALGO_MEV_GETH, ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP} {
+		var (
+			db        = rawdb.NewMemoryDatabase()
+			recipient = common.HexToAddress("0xdeadbeef")
+		)
+		testConfig.AlgoType = algoType
+		w, b := newTestWorker(t, params.TestChainConfig, ethash.NewFaker(), db, nil, 0)
+		defer w.close()
 
-	timestamp := uint64(time.Now().Unix())
-	args := &BuildPayloadArgs{
-		Parent:       b.chain.CurrentBlock().Hash(),
-		Timestamp:    timestamp,
-		Random:       common.Hash{},
-		FeeRecipient: recipient,
-	}
-	payload, err := w.buildPayload(args)
-	if err != nil {
-		t.Fatalf("Failed to build payload %v", err)
-	}
-	verify := func(outer *engine.ExecutionPayloadEnvelope, txs int) {
-		payload := outer.ExecutionPayload
-		builderCoinbase := w.coinbase
-		if payload.ParentHash != b.chain.CurrentBlock().Hash() {
-			t.Fatal("Unexpected parent hash")
+		timestamp := uint64(time.Now().Unix())
+		args := &BuildPayloadArgs{
+			Parent:       b.chain.CurrentBlock().Hash(),
+			Timestamp:    timestamp,
+			Random:       common.Hash{},
+			FeeRecipient: recipient,
 		}
-		if payload.Random != (common.Hash{}) {
-			t.Fatal("Unexpected random value")
+		payload, err := w.buildPayload(args)
+		if err != nil {
+			t.Fatalf("Failed to build payload %v", err)
 		}
-		if payload.Timestamp != timestamp {
-			t.Fatal("Unexpected timestamp")
+		verify := func(outer *engine.ExecutionPayloadEnvelope, txs int) {
+			payload := outer.ExecutionPayload
+			builderCoinbase := w.coinbase
+			if payload.ParentHash != b.chain.CurrentBlock().Hash() {
+				t.Fatal("Unexpected parent hash")
+			}
+			if payload.Random != (common.Hash{}) {
+				t.Fatal("Unexpected random value")
+			}
+			if payload.Timestamp != timestamp {
+				t.Fatal("Unexpected timestamp")
+			}
+			if payload.FeeRecipient != builderCoinbase {
+				t.Fatal("Unexpect fee recipient")
+			}
+			if len(payload.Transactions) != txs {
+				t.Fatal("Unexpected transaction set")
+			}
 		}
-		if payload.FeeRecipient != builderCoinbase {
-			t.Fatal("Unexpect fee recipient")
-		}
-		if len(payload.Transactions) != txs {
-			t.Fatal("Unexpected transaction set")
-		}
-	}
-	empty := payload.ResolveEmpty()
-	verify(empty, 0)
+		empty := payload.ResolveEmpty()
+		verify(empty, 0)
 
-	full := payload.ResolveFull()
-	verify(full, len(pendingTxs))
+		full := payload.ResolveFull()
+		verify(full, len(pendingTxs))
 
-	// Ensure resolve can be called multiple times and the
-	// result should be unchanged
-	dataOne := payload.Resolve()
-	dataTwo := payload.Resolve()
-	if !reflect.DeepEqual(dataOne, dataTwo) {
-		t.Fatal("Unexpected payload data")
+		// Ensure resolve can be called multiple times and the
+		// result should be unchanged
+		dataOne := payload.Resolve()
+		dataTwo := payload.Resolve()
+		if !reflect.DeepEqual(dataOne, dataTwo) {
+			t.Fatal("Unexpected payload data")
+		}
 	}
 }
 

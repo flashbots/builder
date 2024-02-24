@@ -1045,25 +1045,25 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 		}
 		// Retrieve the next transaction and abort if all done.
 		var (
-			ltx *txpool.LazyTransaction
-			txs *transactionsByPriceAndNonce
+			ltx  *txpool.LazyTransaction
+			txs  *transactionsByPriceAndNonce
+			pltx *txpool.LazyTransaction
+			ptip *uint256.Int
+			bltx *txpool.LazyTransaction
+			btip *uint256.Int
 		)
 
 		pTxWithMinerFee := plainTxs.Peek()
-		if pTxWithMinerFee == nil {
-			break
+		if pTxWithMinerFee != nil {
+			pltx = pTxWithMinerFee.Tx()
+			ptip = pTxWithMinerFee.fees
 		}
 
 		bTxWithMinerFee := blobTxs.Peek()
-		if bTxWithMinerFee == nil {
-			break
+		if bTxWithMinerFee != nil {
+			bltx = bTxWithMinerFee.Tx()
+			btip = bTxWithMinerFee.fees
 		}
-
-		pltx := pTxWithMinerFee.Tx()
-		ptip := pTxWithMinerFee.fees
-
-		bltx := bTxWithMinerFee.Tx()
-		btip := bTxWithMinerFee.fees
 
 		switch {
 		case pltx == nil:
@@ -1077,6 +1077,7 @@ func (w *worker) commitTransactions(env *environment, plainTxs, blobTxs *transac
 				txs, ltx = plainTxs, pltx
 			}
 		}
+
 		if ltx == nil {
 			break
 		}

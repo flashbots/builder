@@ -271,6 +271,7 @@ func BenchmarkAlgo(b *testing.B) {
 										Time:      tx.Time,
 										GasFeeCap: tx.GasFeeCap,
 										GasTipCap: tx.GasTipCap,
+										GasPrice:  tx.GasPrice,
 									})
 								}
 							}
@@ -425,6 +426,7 @@ func (test *algoTest) build(signer types.Signer, scale int) (alloc types.Genesis
 						Time:      signedTx.Time(),
 						GasFeeCap: uint256.MustFromBig(signedTx.GasFeeCap()),
 						GasTipCap: uint256.MustFromBig(signedTx.GasTipCap()),
+						GasPrice:  uint256.MustFromBig(signedTx.GasPrice()),
 					}
 				}
 				txPool[addrs[s*n+i]] = signedTxs
