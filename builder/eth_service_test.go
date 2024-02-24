@@ -26,7 +26,7 @@ func generatePreMergeChain(n int) (*core.Genesis, []*types.Block) {
 	config := params.AllEthashProtocolChanges
 	genesis := &core.Genesis{
 		Config:     config,
-		Alloc:      core.GenesisAlloc{},
+		Alloc:      types.GenesisAlloc{},
 		ExtraData:  []byte("test genesis"),
 		Timestamp:  9000,
 		BaseFee:    big.NewInt(params.InitialBaseFee),

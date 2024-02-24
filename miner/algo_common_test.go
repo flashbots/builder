@@ -18,7 +18,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/triedb"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -50,8 +51,8 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 	gasPool := new(core.GasPool).AddGas(env.header.GasLimit)
 
 	var totalGasUsed uint64
-	gasFees := big.NewInt(0)
-	ethSentToCoinbase := big.NewInt(0)
+	gasFees := uint256.NewInt(0)
+	ethSentToCoinbase := uint256.NewInt(0)
 
 	for i, tx := range bundle.Txs {
 		if checkInterrupt(interrupt) {
@@ -73,7 +74,7 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 		}
 
 		stateDB.SetTxContext(tx.Hash(), i+env.tcount)
-		coinbaseBalanceBefore := stateDB.GetBalance(env.coinbase).ToBig()
+		coinbaseBalanceBefore := stateDB.GetBalance(env.coinbase)
 
 		var tempGasUsed uint64
 		receipt, err := core.ApplyTransaction(chData.chainConfig, chData.chain, &env.coinbase, gasPool, stateDB, env.header, tx, &tempGasUsed, *chData.chain.GetVMConfig(), nil)
@@ -105,14 +106,14 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 		//	}
 		//}
 
-		gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
+		gasUsed := new(uint256.Int).SetUint64(receipt.GasUsed)
 		gasPrice, err := tx.EffectiveGasTip(env.header.BaseFee)
 		if err != nil {
 			return types.SimulatedBundle{}, err
 		}
-		gasFeesTx := gasUsed.Mul(gasUsed, gasPrice)
-		coinbaseBalanceAfter := stateDB.GetBalance(env.coinbase).ToBig()
-		coinbaseDelta := big.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
+		gasFeesTx := gasUsed.Mul(gasUsed, uint256.MustFromBig(gasPrice))
+		coinbaseBalanceAfter := stateDB.GetBalance(env.coinbase)
+		coinbaseDelta := uint256.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
 		coinbaseDelta.Sub(coinbaseDelta, gasFeesTx)
 		ethSentToCoinbase.Add(ethSentToCoinbase, coinbaseDelta)
 
@@ -124,10 +125,10 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 		gasFees.Add(gasFees, gasFeesTx)
 	}
 
-	totalEth := new(big.Int).Add(ethSentToCoinbase, gasFees)
+	totalEth := new(uint256.Int).Add(ethSentToCoinbase, gasFees)
 
 	return types.SimulatedBundle{
-		MevGasPrice:       new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)),
+		MevGasPrice:       new(uint256.Int).Div(totalEth, new(uint256.Int).SetUint64(totalGasUsed)),
 		TotalEth:          totalEth,
 		EthSentToCoinbase: ethSentToCoinbase,
 		TotalGasUsed:      totalGasUsed,
@@ -170,17 +171,17 @@ func genSignerList(len int, config *params.ChainConfig) signerList {
 	return res
 }
 
-func genGenesisAlloc(sign signerList, contractAddr []common.Address, contractCode [][]byte) core.GenesisAlloc {
-	genesisAlloc := make(core.GenesisAlloc)
+func genGenesisAlloc(sign signerList, contractAddr []common.Address, contractCode [][]byte) types.GenesisAlloc {
+	genesisAlloc := make(types.GenesisAlloc)
 	for i := 0; i < len(sign.signers); i++ {
-		genesisAlloc[sign.addresses[i]] = core.GenesisAccount{
+		genesisAlloc[sign.addresses[i]] = types.Account{
 			Balance: big.NewInt(1000000000000000000), // 1 ether
 			Nonce:   sign.nonces[i],
 		}
 	}
 
 	for i, address := range contractAddr {
-		genesisAlloc[address] = core.GenesisAccount{
+		genesisAlloc[address] = types.Account{
 			Balance: new(big.Int),
 			Code:    contractCode[i],
 		}
@@ -198,7 +199,7 @@ func genTestSetup(gasLimit uint64) (*state.StateDB, chainData, signerList) {
 	return stateDB, chainData, signerList
 }
 
-func genTestSetupWithAlloc(config *params.ChainConfig, alloc core.GenesisAlloc, gasLimit uint64) (*state.StateDB, chainData) {
+func genTestSetupWithAlloc(config *params.ChainConfig, alloc types.GenesisAlloc, gasLimit uint64) (*state.StateDB, chainData) {
 	db := rawdb.NewMemoryDatabase()
 
 	gspec := &core.Genesis{
@@ -206,7 +207,7 @@ func genTestSetupWithAlloc(config *params.ChainConfig, alloc core.GenesisAlloc, 
 		Alloc:    alloc,
 		GasLimit: gasLimit,
 	}
-	_ = gspec.MustCommit(db, trie.NewDatabase(db, trie.HashDefaults))
+	_ = gspec.MustCommit(db, triedb.NewDatabase(db, triedb.HashDefaults))
 
 	chain, _ := core.NewBlockChain(db, &core.CacheConfig{TrieDirtyDisabled: true}, gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
 
@@ -232,7 +233,7 @@ func newEnvironment(data chainData, state *state.StateDB, coinbase common.Addres
 			BaseFee:    baseFee,
 			Difficulty: big.NewInt(0),
 		},
-		profit: new(big.Int),
+		profit: new(uint256.Int),
 	}
 }
 
@@ -409,7 +410,7 @@ func TestErrorBundleCommit(t *testing.T) {
 
 	gasPoolBefore := *envDiff.gasPool
 	gasUsedBefore := envDiff.header.GasUsed
-	newProfitBefore := new(big.Int).Set(envDiff.newProfit)
+	newProfitBefore := new(uint256.Int).Set(envDiff.newProfit)
 	balanceBefore := envDiff.state.GetBalance(signers.addresses[2])
 
 	err = envDiff.commitBundle(&simBundle, chData, nil, defaultAlgorithmConfig)

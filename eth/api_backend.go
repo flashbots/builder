@@ -309,7 +309,7 @@ func (b *EthAPIBackend) CancelSBundles(ctx context.Context, hashes []common.Hash
 }
 
 func (b *EthAPIBackend) GetPoolTransactions() (types.Transactions, error) {
-	pending := b.eth.txPool.Pending(false)
+	pending := b.eth.txPool.Pending(txpool.PendingFilter{})
 	var txs types.Transactions
 	for _, batch := range pending {
 		for _, lazy := range batch {

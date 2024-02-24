@@ -82,7 +82,7 @@ var (
 		GasCeil:  params.GenesisGasLimit,
 	}
 
-	defaultGenesisAlloc = core.GenesisAlloc{testBankAddress: {Balance: testBankFunds}}
+	defaultGenesisAlloc = types.GenesisAlloc{testBankAddress: {Balance: testBankFunds}}
 )
 
 func init() {
@@ -126,13 +126,13 @@ type testWorkerBackend struct {
 	genesis *core.Genesis
 }
 
-func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, alloc core.GenesisAlloc, n int, gasLimit uint64) *testWorkerBackend {
+func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, alloc types.GenesisAlloc, n int, gasLimit uint64) *testWorkerBackend {
 	if alloc == nil {
 		alloc = defaultGenesisAlloc
 	}
-	gspec := &core.Genesis{
-		GasLimit: gasLimit,
+	var gspec = &core.Genesis{
 		Config:   chainConfig,
+		GasLimit: gasLimit,
 		Alloc:    alloc,
 	}
 	switch e := engine.(type) {
@@ -151,7 +151,7 @@ func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine 
 		t.Fatalf("core.NewBlockChain failed: %v", err)
 	}
 	pool := legacypool.New(testTxPoolConfig, chain)
-	txpool, _ := txpool.New(new(big.Int).SetUint64(testTxPoolConfig.PriceLimit), chain, []txpool.SubPool{pool})
+	txpool, _ := txpool.New(testTxPoolConfig.PriceLimit, chain, []txpool.SubPool{pool})
 
 	return &testWorkerBackend{
 		db:      db,
@@ -174,7 +174,7 @@ func (b *testWorkerBackend) newRandomTx(creation bool, to common.Address, amt in
 	return tx
 }
 
-func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, alloc core.GenesisAlloc, blocks int) (*worker, *testWorkerBackend) {
+func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, db ethdb.Database, alloc types.GenesisAlloc, blocks int) (*worker, *testWorkerBackend) {
 	const GasLimit = 1_000_000_000_000_000_000
 	backend := newTestWorkerBackend(t, chainConfig, engine, db, alloc, blocks, GasLimit)
 	backend.txPool.Add(pendingTxs, true, false, false)
@@ -593,7 +593,7 @@ func testBundles(t *testing.T) {
 
 	chainConfig.LondonBlock = big.NewInt(0)
 
-	genesisAlloc := core.GenesisAlloc{testBankAddress: {Balance: testBankFunds}}
+	genesisAlloc := types.GenesisAlloc{testBankAddress: {Balance: testBankFunds}}
 
 	nExtraKeys := 5
 	extraKeys := make([]*ecdsa.PrivateKey, nExtraKeys)
@@ -601,7 +601,7 @@ func testBundles(t *testing.T) {
 		pk, _ := crypto.GenerateKey()
 		address := crypto.PubkeyToAddress(pk.PublicKey)
 		extraKeys[i] = pk
-		genesisAlloc[address] = core.GenesisAccount{Balance: testBankFunds}
+		genesisAlloc[address] = types.Account{Balance: testBankFunds}
 	}
 
 	nSearchers := 5
@@ -610,11 +610,11 @@ func testBundles(t *testing.T) {
 		pk, _ := crypto.GenerateKey()
 		address := crypto.PubkeyToAddress(pk.PublicKey)
 		searcherPrivateKeys[i] = pk
-		genesisAlloc[address] = core.GenesisAccount{Balance: testBankFunds}
+		genesisAlloc[address] = types.Account{Balance: testBankFunds}
 	}
 
 	for _, address := range []common.Address{testAddress1, testAddress2, testAddress3} {
-		genesisAlloc[address] = core.GenesisAccount{Balance: testBankFunds}
+		genesisAlloc[address] = types.Account{Balance: testBankFunds}
 	}
 
 	w, b := newTestWorker(t, chainConfig, engine, db, nil, 0)

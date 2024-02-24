@@ -3,7 +3,6 @@ package miner
 import (
 	"crypto/ecdsa"
 	"errors"
-	"math/big"
 	"sort"
 	"sync/atomic"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
 // / To use it:
@@ -190,14 +190,14 @@ func (b *greedyBucketsMultiSnapBuilder) mergeOrdersAndApplyToEnv(
 	const retryLimit = 1
 
 	var (
-		baseFee            = changes.env.header.BaseFee
+		baseFee            = uint256.MustFromBig(changes.env.header.BaseFee)
 		retryMap           = make(map[*txWithMinerFee]int)
 		usedBundles        []types.SimulatedBundle
 		usedSbundles       []types.UsedSBundle
 		transactions       []*txWithMinerFee
 		priceCutoffPercent = b.algoConf.PriceCutoffPercent
 
-		SortInPlaceByProfit = func(baseFee *big.Int, transactions []*txWithMinerFee, gasUsedMap map[*txWithMinerFee]uint64) {
+		SortInPlaceByProfit = func(baseFee *uint256.Int, transactions []*txWithMinerFee, gasUsedMap map[*txWithMinerFee]uint64) {
 			sort.SliceStable(transactions, func(i, j int) bool {
 				return transactions[i].Profit(baseFee, gasUsedMap[transactions[i]]).Cmp(transactions[j].Profit(baseFee, gasUsedMap[transactions[j]])) > 0
 			})

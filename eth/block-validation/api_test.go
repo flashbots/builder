@@ -40,6 +40,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/triedb"
 	boostTypes "github.com/flashbots/go-boost-utils/types"
 	"github.com/flashbots/go-boost-utils/utils"
 	"github.com/holiman/uint256"
@@ -470,7 +471,7 @@ func generatePreMergeChain(n int) (*core.Genesis, []*types.Block) {
 	config := params.AllEthashProtocolChanges
 	genesis := &core.Genesis{
 		Config:     config,
-		Alloc:      core.GenesisAlloc{testAddr: {Balance: testBalance}, testValidatorAddr: {Balance: testBalance}, testBuilderAddr: {Balance: testBalance}},
+		Alloc:      types.GenesisAlloc{testAddr: {Balance: testBalance}, testValidatorAddr: {Balance: testBalance}, testBuilderAddr: {Balance: testBalance}},
 		ExtraData:  []byte("test genesis"),
 		Timestamp:  9000,
 		BaseFee:    big.NewInt(params.InitialBaseFee),
@@ -484,7 +485,7 @@ func generatePreMergeChain(n int) (*core.Genesis, []*types.Block) {
 		g.AddTx(tx)
 		testNonce++
 	}
-	gblock := genesis.MustCommit(db, trie.NewDatabase(db, trie.HashDefaults))
+	gblock := genesis.MustCommit(db, triedb.NewDatabase(db, triedb.HashDefaults))
 	engine := ethash.NewFaker()
 	blocks, _ := core.GenerateChain(config, gblock, engine, db, n, generate)
 	totalDifficulty := big.NewInt(0)
@@ -505,7 +506,7 @@ func generateMergeChain(n int, merged bool) (*core.Genesis, []*types.Block) {
 	}
 	genesis := &core.Genesis{
 		Config: &config,
-		Alloc: core.GenesisAlloc{
+		Alloc: types.GenesisAlloc{
 			testAddr:                         {Balance: testBalance},
 			params.BeaconRootsStorageAddress: {Balance: common.Big0, Code: common.Hex2Bytes("3373fffffffffffffffffffffffffffffffffffffffe14604457602036146024575f5ffd5b620180005f350680545f35146037575f5ffd5b6201800001545f5260205ff35b6201800042064281555f359062018000015500")},
 		},

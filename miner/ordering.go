@@ -21,9 +21,9 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 )
 
 type _Order interface {
@@ -60,7 +60,7 @@ func (o _SBundleOrder) AsSBundle() *types.SimSBundle     { return o.sbundle }
 type txWithMinerFee struct {
 	order _Order
 	from  common.Address
-	fees  *big.Int
+	fees  *uint256.Int
 }
 
 func (t *txWithMinerFee) Tx() *txpool.LazyTransaction {
@@ -75,17 +75,17 @@ func (t *txWithMinerFee) SBundle() *types.SimSBundle {
 	return t.order.AsSBundle()
 }
 
-func (t *txWithMinerFee) Price() *big.Int {
-	return new(big.Int).Set(t.fees)
+func (t *txWithMinerFee) Price() *uint256.Int {
+	return new(uint256.Int).Set(t.fees)
 }
 
-func (t *txWithMinerFee) Profit(baseFee *big.Int, gasUsed uint64) *big.Int {
+func (t *txWithMinerFee) Profit(baseFee *uint256.Int, gasUsed uint64) *uint256.Int {
 	if tx := t.Tx(); tx != nil {
-		profit := new(big.Int).Sub(tx.Tx.GasPrice(), baseFee)
+		profit := new(uint256.Int).Sub(tx.GasPrice, baseFee)
 		if gasUsed != 0 {
-			profit.Mul(profit, new(big.Int).SetUint64(gasUsed))
+			profit.Mul(profit, new(uint256.Int).SetUint64(gasUsed))
 		} else {
-			profit.Mul(profit, new(big.Int).SetUint64(tx.Tx.Gas()))
+			profit.Mul(profit, new(uint256.Int).SetUint64(tx.Gas))
 		}
 		return profit
 	} else if bundle := t.Bundle(); bundle != nil {
@@ -98,12 +98,12 @@ func (t *txWithMinerFee) Profit(baseFee *big.Int, gasUsed uint64) *big.Int {
 }
 
 // SetPrice sets the miner fee of the wrapped transaction.
-func (t *txWithMinerFee) SetPrice(price *big.Int) {
+func (t *txWithMinerFee) SetPrice(price *uint256.Int) {
 	t.fees.Set(price)
 }
 
 // SetProfit sets the profit of the wrapped transaction.
-func (t *txWithMinerFee) SetProfit(profit *big.Int) {
+func (t *txWithMinerFee) SetProfit(profit *uint256.Int) {
 	if bundle := t.Bundle(); bundle != nil {
 		bundle.TotalEth.Set(profit)
 	} else if sbundle := t.SBundle(); sbundle != nil {
@@ -134,13 +134,16 @@ func newSBundleWithMinerFee(sbundle *types.SimSBundle) (*txWithMinerFee, error) 
 // newTxWithMinerFee creates a wrapped transaction, calculating the effective
 // miner gasTipCap if a base fee is provided.
 // Returns error in case of a negative effective miner gasTipCap.
-func newTxWithMinerFee(tx *txpool.LazyTransaction, from common.Address, baseFee *big.Int) (*txWithMinerFee, error) {
-	tip := new(big.Int).Set(tx.GasTipCap)
+func newTxWithMinerFee(tx *txpool.LazyTransaction, from common.Address, baseFee *uint256.Int) (*txWithMinerFee, error) {
+	tip := new(uint256.Int).Set(tx.GasTipCap)
 	if baseFee != nil {
 		if tx.GasFeeCap.Cmp(baseFee) < 0 {
 			return nil, types.ErrGasFeeCapTooLow
 		}
-		tip = math.BigMin(tx.GasTipCap, new(big.Int).Sub(tx.GasFeeCap, baseFee))
+		tip = new(uint256.Int).Sub(tx.GasFeeCap, baseFee)
+		if tip.Gt(tx.GasTipCap) {
+			tip = tx.GasTipCap
+		}
 	}
 	return &txWithMinerFee{
 		order: _TxOrder{tx},
@@ -193,7 +196,7 @@ type transactionsByPriceAndNonce struct {
 	txs     map[common.Address][]*txpool.LazyTransaction // Per account nonce-sorted list of transactions
 	heads   txByPriceAndTime                             // Next transaction for each unique account (price heap)
 	signer  types.Signer                                 // Signer for the set of transactions
-	baseFee *big.Int                                     // Current base fee
+	baseFee *uint256.Int                                 // Current base fee
 }
 
 // newTransactionsByPriceAndNonce creates a transaction set that can retrieve
@@ -202,6 +205,11 @@ type transactionsByPriceAndNonce struct {
 // Note, the input map is reowned so the caller should not interact any more with
 // if after providing it to the constructor.
 func newTransactionsByPriceAndNonce(signer types.Signer, txs map[common.Address][]*txpool.LazyTransaction, bundles []types.SimulatedBundle, sbundles []*types.SimSBundle, baseFee *big.Int) *transactionsByPriceAndNonce {
+	// Convert the basefee from header format to uint256 format
+	var baseFeeUint *uint256.Int
+	if baseFee != nil {
+		baseFeeUint = uint256.MustFromBig(baseFee)
+	}
 	// Initialize a price and received time based heap with the head transactions
 	heads := make(txByPriceAndTime, 0, len(txs))
 
@@ -222,7 +230,7 @@ func newTransactionsByPriceAndNonce(signer types.Signer, txs map[common.Address]
 	}
 
 	for from, accTxs := range txs {
-		wrapped, err := newTxWithMinerFee(accTxs[0], from, baseFee)
+		wrapped, err := newTxWithMinerFee(accTxs[0], from, baseFeeUint)
 		if err != nil {
 			delete(txs, from)
 			continue
@@ -237,7 +245,7 @@ func newTransactionsByPriceAndNonce(signer types.Signer, txs map[common.Address]
 		txs:     txs,
 		heads:   heads,
 		signer:  signer,
-		baseFee: baseFee,
+		baseFee: baseFeeUint,
 	}
 }
 
@@ -295,4 +303,15 @@ func (t *transactionsByPriceAndNonce) Push(tx *txWithMinerFee) {
 	}
 
 	heap.Push(&t.heads, tx)
+}
+
+// Empty returns if the price heap is empty. It can be used to check it simpler
+// than calling peek and checking for nil return.
+func (t *transactionsByPriceAndNonce) Empty() bool {
+	return len(t.heads) == 0
+}
+
+// Clear removes the entire content of the heap.
+func (t *transactionsByPriceAndNonce) Clear() {
+	t.heads, t.txs = nil, nil
 }

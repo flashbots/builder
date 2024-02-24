@@ -34,6 +34,7 @@ import (
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
 var (
@@ -92,7 +93,7 @@ func (p *testTxPool) Add(txs []*types.Transaction, local bool, sync bool, privat
 }
 
 // Pending returns all the transactions known to the pool
-func (p *testTxPool) Pending(enforceTips bool) map[common.Address][]*txpool.LazyTransaction {
+func (p *testTxPool) Pending(filter txpool.PendingFilter) map[common.Address][]*txpool.LazyTransaction {
 	p.lock.RLock()
 	defer p.lock.RUnlock()
 
@@ -111,11 +112,11 @@ func (p *testTxPool) Pending(enforceTips bool) map[common.Address][]*txpool.Lazy
 				Hash:      tx.Hash(),
 				Tx:        tx,
 				Time:      tx.Time(),
-				GasFeeCap: tx.GasFeeCap(),
-				GasTipCap: tx.GasTipCap(),
+				GasFeeCap: uint256.MustFromBig(tx.GasFeeCap()),
+				GasTipCap: uint256.MustFromBig(tx.GasTipCap()),
 				Gas:       tx.Gas(),
 				BlobGas:   tx.BlobGas(),
-				GasPrice:  tx.GasPrice(),
+				GasPrice:  uint256.MustFromBig(tx.GasPrice()),
 			})
 		}
 	}
@@ -150,7 +151,7 @@ func newTestHandlerWithBlocks(blocks int) *testHandler {
 	db := rawdb.NewMemoryDatabase()
 	gspec := &core.Genesis{
 		Config: params.TestChainConfig,
-		Alloc:  core.GenesisAlloc{testAddr: {Balance: big.NewInt(1000000)}},
+		Alloc:  types.GenesisAlloc{testAddr: {Balance: big.NewInt(1000000)}},
 	}
 	chain, _ := core.NewBlockChain(db, nil, gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
 

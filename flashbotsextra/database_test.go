@@ -9,6 +9,7 @@ import (
 	builderApiV1 "github.com/attestantio/go-builder-client/api/v1"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -45,9 +46,9 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 	blockProfit := big.NewInt(10)
 
 	simBundle1 := types.SimulatedBundle{
-		MevGasPrice:       big.NewInt(9),
-		TotalEth:          big.NewInt(11),
-		EthSentToCoinbase: big.NewInt(10),
+		MevGasPrice:       uint256.NewInt(9),
+		TotalEth:          uint256.NewInt(11),
+		EthSentToCoinbase: uint256.NewInt(10),
 		TotalGasUsed:      uint64(100),
 		OriginalBundle: types.MevBundle{
 			Txs:               types.Transactions{types.NewTransaction(uint64(50), common.Address{0x60}, big.NewInt(19), uint64(67), big.NewInt(43), []byte{})},
@@ -59,9 +60,9 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 	}
 
 	simBundle2 := types.SimulatedBundle{
-		MevGasPrice:       big.NewInt(90),
-		TotalEth:          big.NewInt(110),
-		EthSentToCoinbase: big.NewInt(100),
+		MevGasPrice:       uint256.NewInt(90),
+		TotalEth:          uint256.NewInt(110),
+		EthSentToCoinbase: uint256.NewInt(100),
 		TotalGasUsed:      uint64(1000),
 		OriginalBundle: types.MevBundle{
 			Txs:               types.Transactions{types.NewTransaction(uint64(51), common.Address{0x61}, big.NewInt(109), uint64(167), big.NewInt(433), []byte{})},
@@ -76,9 +77,9 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 	ds.db.Get(&bundle2Id, "insert into bundles (bundle_hash, param_signed_txs, param_block_number, param_timestamp, received_timestamp, param_reverting_tx_hashes, coinbase_diff, total_gas_used, state_block_number, gas_fees, eth_sent_to_coinbase) values (:bundle_hash, :param_signed_txs, :param_block_number, :param_timestamp, :received_timestamp, :param_reverting_tx_hashes, :coinbase_diff, :total_gas_used, :state_block_number, :gas_fees, :eth_sent_to_coinbase) on conflict (bundle_hash, param_block_number) do nothing returning id", SimulatedBundleToDbBundle(&simBundle2))
 
 	simBundle3 := types.SimulatedBundle{
-		MevGasPrice:       big.NewInt(91),
-		TotalEth:          big.NewInt(111),
-		EthSentToCoinbase: big.NewInt(101),
+		MevGasPrice:       uint256.NewInt(91),
+		TotalEth:          uint256.NewInt(111),
+		EthSentToCoinbase: uint256.NewInt(101),
 		TotalGasUsed:      uint64(101),
 		OriginalBundle: types.MevBundle{
 			Txs:               types.Transactions{types.NewTransaction(uint64(51), common.Address{0x62}, big.NewInt(20), uint64(68), big.NewInt(44), []byte{})},
@@ -90,9 +91,9 @@ func TestDatabaseBlockInsertion(t *testing.T) {
 	}
 
 	simBundle4 := types.SimulatedBundle{
-		MevGasPrice:       big.NewInt(92),
-		TotalEth:          big.NewInt(112),
-		EthSentToCoinbase: big.NewInt(102),
+		MevGasPrice:       uint256.NewInt(92),
+		TotalEth:          uint256.NewInt(112),
+		EthSentToCoinbase: uint256.NewInt(102),
 		TotalGasUsed:      uint64(1002),
 		OriginalBundle: types.MevBundle{
 			Txs:               types.Transactions{types.NewTransaction(uint64(52), common.Address{0x62}, big.NewInt(110), uint64(168), big.NewInt(434), []byte{})},

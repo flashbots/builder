@@ -6,6 +6,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -201,7 +202,7 @@ func TestErrorBundleCommitSnaps(t *testing.T) {
 
 	gasPoolBefore := *changes.gasPool
 	gasUsedBefore := changes.usedGas
-	newProfitBefore := new(big.Int).Set(changes.profit)
+	newProfitBefore := new(uint256.Int).Set(changes.profit)
 	balanceBefore := changes.env.state.GetBalance(signers.addresses[2])
 
 	err = changes.commitBundle(&simBundle, chData, algoConf)
@@ -265,8 +266,8 @@ func TestErrorSBundleCommitSnaps(t *testing.T) {
 			},
 		},
 		// with such small values this bundle will never be rejected based on insufficient profit
-		MevGasPrice: big.NewInt(1),
-		Profit:      big.NewInt(1),
+		MevGasPrice: uint256.NewInt(1),
+		Profit:      uint256.NewInt(1),
 	}
 
 	_, _, err = changes.commitTx(tx0, chData)
@@ -276,7 +277,7 @@ func TestErrorSBundleCommitSnaps(t *testing.T) {
 
 	gasPoolBefore := *changes.gasPool
 	gasUsedBefore := changes.usedGas
-	newProfitBefore := new(big.Int).Set(changes.profit)
+	newProfitBefore := new(uint256.Int).Set(changes.profit)
 	balanceBefore := changes.env.state.GetBalance(signers.addresses[2])
 
 	err = changes.CommitSBundle(&sbundle, chData, builderPrivKey, defaultAlgorithmConfig)

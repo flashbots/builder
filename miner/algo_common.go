@@ -49,11 +49,11 @@ var (
 
 // lowProfitError is returned when an order is not committed due to low profit or low effective gas price
 type lowProfitError struct {
-	ExpectedProfit *big.Int
-	ActualProfit   *big.Int
+	ExpectedProfit *uint256.Int
+	ActualProfit   *uint256.Int
 
-	ExpectedEffectiveGasPrice *big.Int
-	ActualEffectiveGasPrice   *big.Int
+	ExpectedEffectiveGasPrice *uint256.Int
+	ActualEffectiveGasPrice   *uint256.Int
 }
 
 func (e *lowProfitError) Error() string {
@@ -114,12 +114,12 @@ type (
 	CommitTxFunc func(*types.Transaction, chainData) (*types.Receipt, int, error)
 )
 
-func ValidateGasPriceAndProfit(algoConf algorithmConfig, actualPrice, expectedPrice *big.Int, tolerablePriceDifferencePercent int,
-	actualProfit, expectedProfit *big.Int,
+func ValidateGasPriceAndProfit(algoConf algorithmConfig, actualPrice, expectedPrice *uint256.Int, tolerablePriceDifferencePercent int,
+	actualProfit, expectedProfit *uint256.Int,
 ) error {
 	// allow tolerablePriceDifferencePercent % divergence
-	expectedPriceMultiple := new(big.Int).Mul(expectedPrice, big.NewInt(100-int64(tolerablePriceDifferencePercent)))
-	actualPriceMultiple := new(big.Int).Mul(actualPrice, common.Big100)
+	expectedPriceMultiple := new(uint256.Int).Mul(expectedPrice, uint256.NewInt(100-uint64(tolerablePriceDifferencePercent)))
+	actualPriceMultiple := new(uint256.Int).Mul(actualPrice, common.U256100)
 
 	var errLowProfit *lowProfitError = nil
 	if expectedPriceMultiple.Cmp(actualPriceMultiple) > 0 {
@@ -133,7 +133,7 @@ func ValidateGasPriceAndProfit(algoConf algorithmConfig, actualPrice, expectedPr
 		// We want to make expected profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
 		expectedProfitMultiple := common.PercentOf(expectedProfit, algoConf.ProfitThresholdPercent)
-		actualProfitMultiple := new(big.Int).Mul(actualProfit, common.Big100)
+		actualProfitMultiple := new(uint256.Int).Mul(actualProfit, common.U256100)
 
 		if expectedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
 			if errLowProfit == nil {

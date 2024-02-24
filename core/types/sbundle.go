@@ -2,10 +2,10 @@ package types
 
 import (
 	"errors"
-	"math/big"
 	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/holiman/uint256"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -84,8 +84,8 @@ func (b *SBundle) Hash() common.Hash {
 type SimSBundle struct {
 	Bundle *SBundle
 	// MevGasPrice = (total coinbase profit) / (gas used)
-	MevGasPrice *big.Int
-	Profit      *big.Int
+	MevGasPrice *uint256.Int
+	Profit      *uint256.Int
 }
 
 func GetRefundConfig(body *BundleBody, signer Signer) ([]RefundConfig, error) {

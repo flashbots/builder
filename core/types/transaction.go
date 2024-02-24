@@ -31,6 +31,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/google/uuid"
+	"github.com/holiman/uint256"
 )
 
 var (
@@ -621,9 +622,9 @@ func (b *MevBundle) RevertingHash(hash common.Hash) bool {
 }
 
 type SimulatedBundle struct {
-	MevGasPrice       *big.Int
-	TotalEth          *big.Int
-	EthSentToCoinbase *big.Int
+	MevGasPrice       *uint256.Int
+	TotalEth          *uint256.Int
+	EthSentToCoinbase *uint256.Int
 	TotalGasUsed      uint64
 	OriginalBundle    MevBundle
 }

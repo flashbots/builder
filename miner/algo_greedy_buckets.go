@@ -3,7 +3,6 @@ package miner
 import (
 	"crypto/ecdsa"
 	"errors"
-	"math/big"
 	"sort"
 	"sync/atomic"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
 // / To use it:
@@ -49,12 +49,12 @@ func newGreedyBucketsBuilder(
 
 // CutoffPriceFromOrder returns the cutoff price for a given order based on the cutoff percent.
 // For example, if the cutoff percent is 90, the cutoff price will be 90% of the order price, rounded down to the nearest integer.
-func CutoffPriceFromOrder(order *txWithMinerFee, cutoffPercent int) *big.Int {
+func CutoffPriceFromOrder(order *txWithMinerFee, cutoffPercent int) *uint256.Int {
 	return common.PercentOf(order.Price(), cutoffPercent)
 }
 
 // IsOrderInPriceRange returns true if the order price is greater than or equal to the minPrice.
-func IsOrderInPriceRange(order *txWithMinerFee, minPrice *big.Int) bool {
+func IsOrderInPriceRange(order *txWithMinerFee, minPrice *uint256.Int) bool {
 	return order.Price().Cmp(minPrice) >= 0
 }
 
@@ -174,14 +174,14 @@ func (b *greedyBucketsBuilder) mergeOrdersIntoEnvDiff(
 	const retryLimit = 1
 
 	var (
-		baseFee            = envDiff.baseEnvironment.header.BaseFee
+		baseFee            = uint256.MustFromBig(envDiff.baseEnvironment.header.BaseFee)
 		retryMap           = make(map[*txWithMinerFee]int)
 		usedBundles        []types.SimulatedBundle
 		usedSbundles       []types.UsedSBundle
 		transactions       []*txWithMinerFee
 		priceCutoffPercent = b.algoConf.PriceCutoffPercent
 
-		SortInPlaceByProfit = func(baseFee *big.Int, transactions []*txWithMinerFee, gasUsedMap map[*txWithMinerFee]uint64) {
+		SortInPlaceByProfit = func(baseFee *uint256.Int, transactions []*txWithMinerFee, gasUsedMap map[*txWithMinerFee]uint64) {
 			sort.SliceStable(transactions, func(i, j int) bool {
 				return transactions[i].Profit(baseFee, gasUsedMap[transactions[i]]).Cmp(transactions[j].Profit(baseFee, gasUsedMap[transactions[j]])) > 0
 			})

@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -370,7 +371,7 @@ func (sc stateComparisonTestContexts) ValidateTestCases(t *testing.T, reference 
 	var (
 		expectedGasPool      *core.GasPool        = expected.envDiff.baseEnvironment.gasPool
 		expectedHeader       *types.Header        = expected.envDiff.baseEnvironment.header
-		expectedProfit       *big.Int             = expected.envDiff.baseEnvironment.profit
+		expectedProfit       *uint256.Int         = expected.envDiff.baseEnvironment.profit
 		expectedTxCount      int                  = expected.envDiff.baseEnvironment.tcount
 		expectedTransactions []*types.Transaction = expected.envDiff.baseEnvironment.txs
 		expectedReceipts     types.Receipts       = expected.envDiff.baseEnvironment.receipts
@@ -383,7 +384,7 @@ func (sc stateComparisonTestContexts) ValidateTestCases(t *testing.T, reference 
 		var (
 			actualGasPool      *core.GasPool        = tc.env.gasPool
 			actualHeader       *types.Header        = tc.env.header
-			actualProfit       *big.Int             = tc.env.profit
+			actualProfit       *uint256.Int         = tc.env.profit
 			actualTxCount      int                  = tc.env.tcount
 			actualTransactions []*types.Transaction = tc.env.txs
 			actualReceipts     types.Receipts       = tc.env.receipts

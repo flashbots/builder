@@ -100,10 +100,10 @@ func SimulatedBundleToDbBundle(bundle *types.SimulatedBundle) DbBundle {
 		ParamTimestamp:         &bundle.OriginalBundle.MinTimestamp,
 		ParamRevertingTxHashes: &paramRevertingTxHashes,
 
-		CoinbaseDiff:      new(big.Rat).SetFrac(bundle.TotalEth, big.NewInt(1e18)).FloatString(18),
+		CoinbaseDiff:      new(big.Rat).SetFrac(bundle.TotalEth.ToBig(), big.NewInt(1e18)).FloatString(18),
 		TotalGasUsed:      bundle.TotalGasUsed,
 		StateBlockNumber:  bundle.OriginalBundle.BlockNumber.Uint64(),
-		GasFees:           new(big.Int).Mul(big.NewInt(int64(bundle.TotalGasUsed)), bundle.MevGasPrice).String(),
-		EthSentToCoinbase: new(big.Rat).SetFrac(bundle.EthSentToCoinbase, big.NewInt(1e18)).FloatString(18),
+		GasFees:           new(big.Int).Mul(big.NewInt(int64(bundle.TotalGasUsed)), bundle.MevGasPrice.ToBig()).String(),
+		EthSentToCoinbase: new(big.Rat).SetFrac(bundle.EthSentToCoinbase.ToBig(), big.NewInt(1e18)).FloatString(18),
 	}
 }

@@ -2,13 +2,13 @@ package core
 
 import (
 	"errors"
-	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
 var (
@@ -19,14 +19,14 @@ var (
 	ErrInvalidBundle  = errors.New("invalid bundle")
 
 	SbundlePayoutMaxCostInt uint64 = 30_000
-	SbundlePayoutMaxCost           = big.NewInt(30_000)
+	SbundlePayoutMaxCost           = uint256.NewInt(30_000)
 )
 
 type SimBundleResult struct {
-	TotalProfit     *big.Int
-	RefundableValue *big.Int
+	TotalProfit     *uint256.Int
+	RefundableValue *uint256.Int
 	GasUsed         uint64
-	MevGasPrice     *big.Int
+	MevGasPrice     *uint256.Int
 	BodyLogs        []SimBundleBodyLogs
 }
 
@@ -37,10 +37,10 @@ type SimBundleBodyLogs struct {
 
 func NewSimBundleResult() SimBundleResult {
 	return SimBundleResult{
-		TotalProfit:     big.NewInt(0),
-		RefundableValue: big.NewInt(0),
+		TotalProfit:     uint256.NewInt(0),
+		RefundableValue: uint256.NewInt(0),
 		GasUsed:         0,
-		MevGasPrice:     big.NewInt(0),
+		MevGasPrice:     uint256.NewInt(0),
 		BodyLogs:        nil,
 	}
 }
@@ -70,12 +70,12 @@ func SimBundle(config *params.ChainConfig, bc *BlockChain, author *common.Addres
 	}
 
 	var (
-		coinbaseDelta  = new(big.Int)
-		coinbaseBefore *big.Int
+		coinbaseDelta  = new(uint256.Int)
+		coinbaseBefore *uint256.Int
 	)
 	for i, el := range b.Body {
-		coinbaseDelta.Set(common.Big0)
-		coinbaseBefore = statedb.GetBalance(header.Coinbase).ToBig()
+		coinbaseDelta.Set(common.U2560)
+		coinbaseBefore = statedb.GetBalance(header.Coinbase)
 
 		if el.Tx != nil {
 			statedb.SetTxContext(el.Tx.Hash(), txIdx)
@@ -105,7 +105,7 @@ func SimBundle(config *params.ChainConfig, bc *BlockChain, author *common.Addres
 		}
 
 		coinbaseAfter := statedb.GetBalance(header.Coinbase)
-		coinbaseDelta.Set(coinbaseAfter.ToBig())
+		coinbaseDelta.Set(coinbaseAfter)
 		coinbaseDelta.Sub(coinbaseDelta, coinbaseBefore)
 
 		res.TotalProfit.Add(res.TotalProfit, coinbaseDelta)
@@ -127,8 +127,8 @@ func SimBundle(config *params.ChainConfig, bc *BlockChain, author *common.Addres
 		if err != nil {
 			return res, err
 		}
-		payoutTxFee := new(big.Int).Mul(header.BaseFee, SbundlePayoutMaxCost)
-		payoutTxFee.Mul(payoutTxFee, new(big.Int).SetInt64(int64(len(refundConfig))))
+		payoutTxFee := new(uint256.Int).Mul(uint256.MustFromBig(header.BaseFee), SbundlePayoutMaxCost)
+		payoutTxFee.Mul(payoutTxFee, new(uint256.Int).SetUint64(uint64(len(refundConfig))))
 		res.GasUsed += SbundlePayoutMaxCost.Uint64() * uint64(len(refundConfig))
 
 		// allocated refundable value
@@ -142,9 +142,9 @@ func SimBundle(config *params.ChainConfig, bc *BlockChain, author *common.Addres
 	}
 
 	if res.TotalProfit.Sign() < 0 {
-		res.TotalProfit.Set(common.Big0)
+		res.TotalProfit.Set(common.U2560)
 		return res, ErrNegativeProfit
 	}
-	res.MevGasPrice.Div(res.TotalProfit, new(big.Int).SetUint64(res.GasUsed))
+	res.MevGasPrice.Div(res.TotalProfit, new(uint256.Int).SetUint64(res.GasUsed))
 	return res, nil
 }

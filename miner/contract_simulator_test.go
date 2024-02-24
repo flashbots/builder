@@ -15,7 +15,6 @@ import (
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	ethmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -83,13 +82,13 @@ func NewTestParticipants(nSearchers, nUsers int) TestParticipants {
 	return opa
 }
 
-func (o *TestParticipants) AppendToGenesisAlloc(genesis core.GenesisAlloc) core.GenesisAlloc {
+func (o *TestParticipants) AppendToGenesisAlloc(genesis types.GenesisAlloc) types.GenesisAlloc {
 	for _, searcher := range o.searchers {
-		genesis[searcher.address] = core.GenesisAccount{Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}
+		genesis[searcher.address] = types.Account{Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}
 	}
 
 	for _, user := range o.users {
-		genesis[user.address] = core.GenesisAccount{Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}
+		genesis[user.address] = types.Account{Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}
 	}
 
 	return genesis
@@ -142,7 +141,7 @@ func TestSimulatorState(t *testing.T) {
 
 			deployerAddress := crypto.PubkeyToAddress(deployerKey.PublicKey)
 			deployerTestAddress := common.HexToAddress("0x70997970C51812dc3A010C7d01b50e0d17dc79C8")
-			alloc := core.GenesisAlloc{deployerAddress: {Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}, deployerTestAddress: {Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}}
+			alloc := types.GenesisAlloc{deployerAddress: {Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}, deployerTestAddress: {Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}}
 
 			testParticipants := NewTestParticipants(5, 5)
 			alloc = testParticipants.AppendToGenesisAlloc(alloc)

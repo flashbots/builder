@@ -432,3 +432,21 @@ func ExecutionPayloadV3ToBlock(payload *deneb.ExecutionPayload, blobsBundle *den
 	}
 	return ExecutableDataToBlock(executableData, versionedHashes, &parentBeaconBlockRoot)
 }
+
+// Client identifiers to support ClientVersionV1.
+const (
+	ClientCode = "GE"
+	ClientName = "go-ethereum"
+)
+
+// ClientVersionV1 contains information which identifies a client implementation.
+type ClientVersionV1 struct {
+	Code    string `json:"code"`
+	Name    string `json:"clientName"`
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+}
+
+func (v *ClientVersionV1) String() string {
+	return fmt.Sprintf("%s-%s-%s-%s", v.Code, v.Name, v.Version, v.Commit)
+}
