@@ -84,7 +84,7 @@ func getRelayConfig(endpoint string) (RelayConfig, error) {
 	relayUrl := configs[0]
 	// relay endpoint is configurated in the format URL;ssz=<value>;gzip=<value>
 	// if any of them are missing, we default the config value to false
-	var sszEnabled, gzipEnabled bool
+	var sszEnabled, gzipEnabled, complianceListsEnabled bool
 	var err error
 
 	for _, config := range configs {
@@ -98,12 +98,18 @@ func getRelayConfig(endpoint string) (RelayConfig, error) {
 			if err != nil {
 				log.Info("invalid gzip config for relay", "endpoint", endpoint, "err", err)
 			}
+		} else if strings.HasPrefix(config, "complianceLists=") {
+			complianceListsEnabled, err = strconv.ParseBool(config[16:])
+			if err != nil {
+				log.Info("invalid compliance list config for relay", "endpoint", endpoint, "err", err)
+			}
 		}
 	}
 	return RelayConfig{
-		Endpoint:    relayUrl,
-		SszEnabled:  sszEnabled,
-		GzipEnabled: gzipEnabled,
+		Endpoint:               relayUrl,
+		SszEnabled:             sszEnabled,
+		GzipEnabled:            gzipEnabled,
+		ComplianceListsEnabled: complianceListsEnabled,
 	}, nil
 }
 

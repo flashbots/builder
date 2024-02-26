@@ -7,6 +7,7 @@ import (
 
 	builderSpec "github.com/attestantio/go-builder-client/spec"
 	"github.com/ethereum/go-ethereum/log"
+	"go.uber.org/atomic"
 )
 
 type RemoteRelayAggregator struct {
@@ -67,10 +68,15 @@ type RelayValidatorRegistration struct {
 
 func (r *RemoteRelayAggregator) GetValidatorForSlot(nextSlot uint64) (ValidatorData, error) {
 	registrationsCh := make(chan *RelayValidatorRegistration, len(r.relays))
+	complianceList := atomic.NewString("")
+
 	for i, relay := range r.relays {
 		go func(relay IRelay, relayI int) {
 			vd, err := relay.GetValidatorForSlot(nextSlot)
 			if err == nil {
+				if vd.ComplianceList != "" {
+					complianceList.Store(vd.ComplianceList)
+				}
 				registrationsCh <- &RelayValidatorRegistration{vd: vd, relayI: relayI}
 			} else if errors.Is(err, ErrValidatorNotFound) {
 				registrationsCh <- nil
@@ -85,6 +91,7 @@ func (r *RemoteRelayAggregator) GetValidatorForSlot(nextSlot uint64) (ValidatorD
 	go r.updateRelayRegistrations(nextSlot, registrationsCh, topRegistrationCh)
 
 	if vd, ok := <-topRegistrationCh; ok {
+		vd.ComplianceList = complianceList.Load()
 		return vd, nil
 	}
 	return ValidatorData{}, ErrValidatorNotFound

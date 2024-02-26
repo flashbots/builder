@@ -48,9 +48,10 @@ const (
 type PubkeyHex string
 
 type ValidatorData struct {
-	Pubkey       PubkeyHex
-	FeeRecipient bellatrix.ExecutionAddress
-	GasLimit     uint64
+	Pubkey         PubkeyHex
+	FeeRecipient   bellatrix.ExecutionAddress
+	GasLimit       uint64
+	ComplianceList string
 }
 
 type IRelay interface {
@@ -380,6 +381,7 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 
 	attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
 	attrs.GasLimit = core.CalcGasLimit(parentBlock.GasLimit(), vd.GasLimit)
+	attrs.ComplianceList = vd.ComplianceList
 
 	proposerPubkey, err := utils.HexToPubkey(string(vd.Pubkey))
 	if err != nil {

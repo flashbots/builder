@@ -15,6 +15,7 @@ type BuilderPayloadAttributes struct {
 	Withdrawals           Withdrawals    `json:"withdrawals"`
 	ParentBeaconBlockRoot *common.Hash   `json:"parentBeaconBlockRoot"`
 	GasLimit              uint64
+	ComplianceList        string
 }
 
 func (attrs *BuilderPayloadAttributes) Equal(other *BuilderPayloadAttributes) bool {

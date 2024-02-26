@@ -93,15 +93,16 @@ func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	// to deliver for not missing slot.
 	var empty *newPayloadResult
 	emptyParams := &generateParams{
-		timestamp:   args.Timestamp,
-		forceTime:   true,
-		parentHash:  args.Parent,
-		coinbase:    args.FeeRecipient,
-		random:      args.Random,
-		gasLimit:    args.GasLimit,
-		withdrawals: args.Withdrawals,
-		beaconRoot:  args.BeaconRoot,
-		noTxs:       true,
+		timestamp:      args.Timestamp,
+		forceTime:      true,
+		parentHash:     args.Parent,
+		coinbase:       args.FeeRecipient,
+		random:         args.Random,
+		gasLimit:       args.GasLimit,
+		withdrawals:    args.Withdrawals,
+		beaconRoot:     args.BeaconRoot,
+		noTxs:          true,
+		complianceList: args.ComplianceList,
 	}
 	for _, worker := range w.workers {
 		empty = worker.getSealingBlock(emptyParams)
@@ -130,16 +131,17 @@ func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 		workerPayload := newPayload(empty.block, args.Id())
 		workerPayloads = append(workerPayloads, workerPayload)
 		fullParams := &generateParams{
-			timestamp:   args.Timestamp,
-			forceTime:   true,
-			parentHash:  args.Parent,
-			coinbase:    args.FeeRecipient,
-			random:      args.Random,
-			withdrawals: args.Withdrawals,
-			beaconRoot:  args.BeaconRoot,
-			gasLimit:    args.GasLimit,
-			noTxs:       false,
-			onBlock:     args.BlockHook,
+			timestamp:      args.Timestamp,
+			forceTime:      true,
+			parentHash:     args.Parent,
+			coinbase:       args.FeeRecipient,
+			random:         args.Random,
+			withdrawals:    args.Withdrawals,
+			beaconRoot:     args.BeaconRoot,
+			gasLimit:       args.GasLimit,
+			noTxs:          false,
+			onBlock:        args.BlockHook,
+			complianceList: args.ComplianceList,
 		}
 
 		go func(w *worker) {

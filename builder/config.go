@@ -62,7 +62,8 @@ var DefaultConfig = Config{
 
 // RelayConfig is the config for a single remote relay.
 type RelayConfig struct {
-	Endpoint    string
-	SszEnabled  bool
-	GzipEnabled bool
+	Endpoint               string
+	SszEnabled             bool
+	GzipEnabled            bool
+	ComplianceListsEnabled bool
 }

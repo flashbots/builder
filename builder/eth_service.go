@@ -56,14 +56,15 @@ func (s *EthereumService) BuildBlock(attrs *types.BuilderPayloadAttributes, seal
 	// Send a request to generate a full block in the background.
 	// The result can be obtained via the returned channel.
 	args := &miner.BuildPayloadArgs{
-		Parent:       attrs.HeadHash,
-		Timestamp:    uint64(attrs.Timestamp),
-		FeeRecipient: attrs.SuggestedFeeRecipient,
-		GasLimit:     attrs.GasLimit,
-		Random:       attrs.Random,
-		Withdrawals:  attrs.Withdrawals,
-		BeaconRoot:   attrs.ParentBeaconBlockRoot,
-		BlockHook:    sealedBlockCallback,
+		Parent:         attrs.HeadHash,
+		Timestamp:      uint64(attrs.Timestamp),
+		FeeRecipient:   attrs.SuggestedFeeRecipient,
+		GasLimit:       attrs.GasLimit,
+		Random:         attrs.Random,
+		Withdrawals:    attrs.Withdrawals,
+		BeaconRoot:     attrs.ParentBeaconBlockRoot,
+		BlockHook:      sealedBlockCallback,
+		ComplianceList: attrs.ComplianceList,
 	}
 
 	payload, err := s.eth.Miner().BuildPayload(args)
