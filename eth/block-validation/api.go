@@ -291,6 +291,7 @@ func (api *BlockValidationAPI) validateBlock(block *types.Block, msg *builderApi
 	accessVerifier := api.accessVerifier
 
 	if complianceList != "" {
+		log.Info("using compliance list in block validation", "list", complianceList)
 		accessVerifier = NewAccessVerifierWithComplianceList(complianceList)
 	}
 
