@@ -274,7 +274,6 @@ func (r *RemoteRelay) getComplianceListsMapFromRelay(listsToRequest map[string]b
 
 	// add a query parameter for each list we need to request
 	for key := range listsToRequest {
-		//TODO: verify this query parameter format works on relay
 		if strings.Contains(url, "list=") {
 			url += "&"
 		}
