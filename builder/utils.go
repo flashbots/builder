@@ -86,7 +86,7 @@ func SendHTTPRequest(ctx context.Context, client http.Client, method, url string
 	}
 
 	if useAuthHeader {
-		req.Header.Add("Authorization", "<YOUR_BLOXROUTE_HEADER>")
+		req.Header.Add("Authorization", "<YOUR_BLOXROUTE_AUTH_HEADER>")
 	}
 
 	// Execute request
