@@ -217,11 +217,11 @@ func (r *RemoteRelay) SubmitBlock(msg *builderSpec.VersionedSubmitBlockRequest, 
 	} else {
 		switch msg.Version {
 		case spec.DataVersionBellatrix:
-			code, err = SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg.Bellatrix, nil)
+			code, err = SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg.Bellatrix, nil, false)
 		case spec.DataVersionCapella:
-			code, err = SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg.Capella, nil)
+			code, err = SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg.Capella, nil, false)
 		case spec.DataVersionDeneb:
-			code, err = SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg.Deneb, nil)
+			code, err = SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg.Deneb, nil, false)
 		default:
 			return fmt.Errorf("unknown data version %d", msg.Version)
 		}
@@ -239,7 +239,7 @@ func (r *RemoteRelay) SubmitBlock(msg *builderSpec.VersionedSubmitBlockRequest, 
 
 func (r *RemoteRelay) getSlotValidatorMapFromRelay() (map[uint64]ValidatorData, error) {
 	var dst GetValidatorRelayResponse
-	code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodGet, r.config.Endpoint+"/relay/v1/builder/validators", nil, &dst)
+	code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodGet, r.config.Endpoint+"/relay/v1/builder/validators", nil, &dst, false)
 	if err != nil {
 		return nil, err
 	}
@@ -281,7 +281,7 @@ func (r *RemoteRelay) getComplianceListsMapFromRelay(listsToRequest map[string]b
 	}
 
 	var dst GetComplianceListRelayResponse
-	code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodGet, url, nil, &dst)
+	code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodGet, url, nil, &dst, true)
 	if err != nil {
 		return nil, err
 	}

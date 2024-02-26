@@ -66,7 +66,7 @@ func SendSSZRequest(ctx context.Context, client http.Client, method, url string,
 }
 
 // SendHTTPRequest - prepare and send HTTP request, marshaling the payload if any, and decoding the response if dst is set
-func SendHTTPRequest(ctx context.Context, client http.Client, method, url string, payload, dst any) (code int, err error) {
+func SendHTTPRequest(ctx context.Context, client http.Client, method, url string, payload, dst any, useAuthHeader bool) (code int, err error) {
 	var req *http.Request
 
 	if payload == nil {
@@ -83,6 +83,10 @@ func SendHTTPRequest(ctx context.Context, client http.Client, method, url string
 	}
 	if err != nil {
 		return 0, fmt.Errorf("could not prepare request: %w", err)
+	}
+
+	if useAuthHeader {
+		req.Header.Add("Authorization", "<YOUR_BLOXROUTE_HEADER>")
 	}
 
 	// Execute request
