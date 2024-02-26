@@ -21,6 +21,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
+	"github.com/ethereum/go-ethereum/ofac"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -89,6 +90,18 @@ func NewAccessVerifierFromFile(path string) (*AccessVerifier, error) {
 	}, nil
 }
 
+func NewAccessVerifierWithComplianceList(listName string) *AccessVerifier {
+	list, found := ofac.ComplianceLists[listName]
+	if !found {
+		log.Warn("compliance list not found, using OFAC list as a backup", "list", listName)
+		list = ofac.ComplianceLists[ofac.OFAC]
+	}
+
+	return &AccessVerifier{
+		blacklistedAddresses: list,
+	}
+}
+
 type BlockValidationConfig struct {
 	BlacklistSourceFilePath string
 	// If set to true, proposer payment is calculated as a balance difference of the fee recipient.
@@ -140,6 +153,7 @@ func NewBlockValidationAPI(eth *eth.Ethereum, accessVerifier *AccessVerifier, us
 type BuilderBlockValidationRequest struct {
 	builderApiBellatrix.SubmitBlockRequest
 	RegisteredGasLimit uint64 `json:"registered_gas_limit,string"`
+	ComplianceList     string `json:"compliance_list"`
 }
 
 func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockValidationRequest) error {
@@ -153,23 +167,26 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockV
 		return err
 	}
 
-	return api.validateBlock(block, params.Message, params.RegisteredGasLimit)
+	return api.validateBlock(block, params.Message, params.RegisteredGasLimit, params.ComplianceList)
 }
 
 type BuilderBlockValidationRequestV2 struct {
 	builderApiCapella.SubmitBlockRequest
 	RegisteredGasLimit uint64 `json:"registered_gas_limit,string"`
+	ComplianceList     string `json:"compliance_list"`
 }
 
 func (r *BuilderBlockValidationRequestV2) UnmarshalJSON(data []byte) error {
 	params := &struct {
 		RegisteredGasLimit uint64 `json:"registered_gas_limit,string"`
+		ComplianceList     string `json:"compliance_list"`
 	}{}
 	err := json.Unmarshal(data, params)
 	if err != nil {
 		return err
 	}
 	r.RegisteredGasLimit = params.RegisteredGasLimit
+	r.ComplianceList = params.ComplianceList
 
 	blockRequest := new(builderApiCapella.SubmitBlockRequest)
 	err = json.Unmarshal(data, &blockRequest)
@@ -192,19 +209,21 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockV
 		return err
 	}
 
-	return api.validateBlock(block, params.Message, params.RegisteredGasLimit)
+	return api.validateBlock(block, params.Message, params.RegisteredGasLimit, params.ComplianceList)
 }
 
 type BuilderBlockValidationRequestV3 struct {
 	builderApiDeneb.SubmitBlockRequest
 	ParentBeaconBlockRoot common.Hash `json:"parent_beacon_block_root"`
 	RegisteredGasLimit    uint64      `json:"registered_gas_limit,string"`
+	ComplianceList        string      `json:"compliance_list"`
 }
 
 func (r *BuilderBlockValidationRequestV3) UnmarshalJSON(data []byte) error {
 	params := &struct {
 		ParentBeaconBlockRoot common.Hash `json:"parent_beacon_block_root"`
 		RegisteredGasLimit    uint64      `json:"registered_gas_limit,string"`
+		ComplianceList        string      `json:"compliance_list"`
 	}{}
 	err := json.Unmarshal(data, params)
 	if err != nil {
@@ -212,6 +231,7 @@ func (r *BuilderBlockValidationRequestV3) UnmarshalJSON(data []byte) error {
 	}
 	r.RegisteredGasLimit = params.RegisteredGasLimit
 	r.ParentBeaconBlockRoot = params.ParentBeaconBlockRoot
+	r.ComplianceList = params.ComplianceList
 
 	blockRequest := new(builderApiDeneb.SubmitBlockRequest)
 	err = json.Unmarshal(data, &blockRequest)
@@ -232,7 +252,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV3(params *BuilderBlockV
 		return err
 	}
 
-	err = api.validateBlock(block, params.Message, params.RegisteredGasLimit)
+	err = api.validateBlock(block, params.Message, params.RegisteredGasLimit, params.ComplianceList)
 	if err != nil {
 		log.Error("invalid payload", "hash", block.Hash, "number", block.NumberU64(), "parentHash", block.ParentHash, "err", err)
 		return err
@@ -245,7 +265,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV3(params *BuilderBlockV
 	return nil
 }
 
-func (api *BlockValidationAPI) validateBlock(block *types.Block, msg *builderApiV1.BidTrace, registeredGasLimit uint64) error {
+func (api *BlockValidationAPI) validateBlock(block *types.Block, msg *builderApiV1.BidTrace, registeredGasLimit uint64, complianceList string) error {
 	if msg.ParentHash != phase0.Hash32(block.ParentHash()) {
 		return fmt.Errorf("incorrect ParentHash %s, expected %s", msg.ParentHash.String(), block.ParentHash().String())
 	}
@@ -267,14 +287,21 @@ func (api *BlockValidationAPI) validateBlock(block *types.Block, msg *builderApi
 
 	var vmconfig vm.Config
 	var tracer *logger.AccessListTracer = nil
-	if api.accessVerifier != nil {
-		if err := api.accessVerifier.isBlacklisted(block.Coinbase()); err != nil {
+
+	accessVerifier := api.accessVerifier
+
+	if complianceList != "" {
+		accessVerifier = NewAccessVerifierWithComplianceList(complianceList)
+	}
+
+	if accessVerifier != nil {
+		if err := accessVerifier.isBlacklisted(block.Coinbase()); err != nil {
 			return err
 		}
-		if err := api.accessVerifier.isBlacklisted(feeRecipient); err != nil {
+		if err := accessVerifier.isBlacklisted(feeRecipient); err != nil {
 			return err
 		}
-		if err := api.accessVerifier.verifyTransactions(types.LatestSigner(api.eth.BlockChain().Config()), block.Transactions()); err != nil {
+		if err := accessVerifier.verifyTransactions(types.LatestSigner(api.eth.BlockChain().Config()), block.Transactions()); err != nil {
 			return err
 		}
 		isPostMerge := true // the call is PoS-native
@@ -288,8 +315,8 @@ func (api *BlockValidationAPI) validateBlock(block *types.Block, msg *builderApi
 		return err
 	}
 
-	if api.accessVerifier != nil && tracer != nil {
-		if err := api.accessVerifier.verifyTraces(tracer); err != nil {
+	if accessVerifier != nil && tracer != nil {
+		if err := accessVerifier.verifyTraces(tracer); err != nil {
 			return err
 		}
 	}
