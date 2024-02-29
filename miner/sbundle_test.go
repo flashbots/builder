@@ -461,12 +461,12 @@ func TestSBundles(t *testing.T) {
 				expectedKickbackReceivers = make([]common.Address, 0, len(tt.ExtractedRefunds))
 			)
 			for _, refund := range tt.ExtractedRefunds {
-				refundBeforSplit := common.PercentOf(refund.Value.ToInt(), refund.Percent)
+				refundBeforeSplit := common.PercentOf((*uint256.Int)(refund.Value), refund.Percent)
 
 				fees := new(uint256.Int).Mul(uint256.MustFromBig(testSuite.Header.BaseFee), core.SbundlePayoutMaxCost)
 				fees.Mul(fees, uint256.NewInt(uint64(len(refund.RefundSplit))))
 				for recipient, split := range refund.RefundSplit {
-					value := new(uint256.Int).Sub(refundBeforSplit, fees)
+					value := new(uint256.Int).Sub(refundBeforeSplit, fees)
 					value = common.PercentOf(value, split)
 					expectedKickbackValues = append(expectedKickbackValues, value)
 					expectedKickbackReceivers = append(expectedKickbackReceivers, recipient)

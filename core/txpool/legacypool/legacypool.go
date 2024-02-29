@@ -1332,9 +1332,7 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 	if len(events) > 0 {
 		var txs []*types.Transaction
 		for _, set := range events {
-			for _, tx := range set.Flatten() {
-				txs = append(txs, tx)
-			}
+			txs = append(txs, set.Flatten()...)
 		}
 		pool.txFeed.Send(core.NewTxsEvent{Txs: txs})
 	}

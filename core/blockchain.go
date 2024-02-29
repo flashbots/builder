@@ -38,7 +38,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/state/snapshot"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/utils"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
@@ -2471,7 +2470,7 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 		return errors.New("parent not found")
 	}
 
-	calculatedGasLimit := utils.CalcGasLimit(parent.GasLimit, registeredGasLimit)
+	calculatedGasLimit := CalcGasLimit(parent.GasLimit, registeredGasLimit)
 	if calculatedGasLimit != header.GasLimit {
 		return errors.New("incorrect gas limit set")
 	}
