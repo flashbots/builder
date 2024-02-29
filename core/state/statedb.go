@@ -877,6 +877,7 @@ func (s *StateDB) Finalise(deleteEmptyObjects bool) {
 			_, wasDirty := s.stateObjectsDirty[addr]
 			s.multiTxSnapshotStack.UpdatePendingStatus(addr, wasPending, wasDirty)
 		}
+		obj.created = false
 		s.stateObjectsPending[addr] = struct{}{}
 		s.stateObjectsDirty[addr] = struct{}{}
 
