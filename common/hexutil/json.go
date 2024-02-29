@@ -265,11 +265,6 @@ func (b *U256) UnmarshalText(input []byte) error {
 	return (*uint256.Int)(b).SetFromHex(string(input))
 }
 
-// ToInt converts b to a uint256.Int.
-func (b *U256) ToInt() *uint256.Int {
-	return (*uint256.Int)(b)
-}
-
 // String returns the hex encoding of b.
 func (b *U256) String() string {
 	return (*uint256.Int)(b).Hex()

@@ -204,6 +204,7 @@ func (args *TransactionArgs) setFeeDefaults(ctx context.Context, b Backend) erro
 		}
 		return nil // No need to set anything, user already set MaxFeePerGas and MaxPriorityFeePerGas
 	}
+
 	// Sanity check the non-EIP-1559 fee parameters.
 	isLondon := b.ChainConfig().IsLondon(head.Number)
 	if args.GasPrice != nil && !eip1559ParamsSet {

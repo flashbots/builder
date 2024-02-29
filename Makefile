@@ -27,9 +27,7 @@ lint: ## Run linters.
 	$(GORUN) build/ci.go lint
 
 fmt:
-	gofmt -s -w .
-	gofumpt -extra -w .
-	gci write .
+	go fmt
 	go mod tidy
 
 clean:

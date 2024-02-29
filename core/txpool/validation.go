@@ -38,8 +38,6 @@ type ValidationOptions struct {
 	Accept  uint8    // Bitmap of transaction types that should be accepted for the calling pool
 	MaxSize uint64   // Maximum size of a transaction that the caller can meaningfully handle
 	MinTip  *big.Int // Minimum gas tip needed to allow a transaction into the caller pool
-
-	sbundle bool // Whether the transaction pool is from sbundle
 }
 
 // ValidateTransaction is a helper method to check whether a transaction is valid
@@ -65,8 +63,8 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if !opts.Config.IsLondon(head.Number) && tx.Type() == types.DynamicFeeTxType {
 		return fmt.Errorf("%w: type %d rejected, pool not yet in London", core.ErrTxTypeNotSupported, tx.Type())
 	}
-	if opts.Config.CancunTime == nil && tx.Type() == types.BlobTxType {
-		return fmt.Errorf("%w: type %d rejected, pool not configured for Cancun", core.ErrTxTypeNotSupported, tx.Type())
+	if !opts.Config.IsCancun(head.Number, head.Time) && tx.Type() == types.BlobTxType {
+		return fmt.Errorf("%w: type %d rejected, pool not yet in Cancun", core.ErrTxTypeNotSupported, tx.Type())
 	}
 	// Check whether the init code size has been exceeded
 	if opts.Config.IsShanghai(head.Number, head.Time) && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
@@ -96,21 +94,19 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if _, err := types.Sender(signer, tx); err != nil {
 		return ErrInvalidSender
 	}
-	if !opts.sbundle {
-		// Ensure the transaction has more gas than the bare minimum needed to cover
-		// the transaction metadata
-		intrGas, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil, true, opts.Config.IsIstanbul(head.Number), opts.Config.IsShanghai(head.Number, head.Time))
-		if err != nil {
-			return err
-		}
-		if tx.Gas() < intrGas {
-			return fmt.Errorf("%w: needed %v, allowed %v", core.ErrIntrinsicGas, intrGas, tx.Gas())
-		}
-		// Ensure the gasprice is high enough to cover the requirement of the calling
-		// pool and/or block producer
-		if tx.GasTipCapIntCmp(opts.MinTip) < 0 {
-			return fmt.Errorf("%w: tip needed %v, tip permitted %v", ErrUnderpriced, opts.MinTip, tx.GasTipCap())
-		}
+	// Ensure the transaction has more gas than the bare minimum needed to cover
+	// the transaction metadata
+	intrGas, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil, true, opts.Config.IsIstanbul(head.Number), opts.Config.IsShanghai(head.Number, head.Time))
+	if err != nil {
+		return err
+	}
+	if tx.Gas() < intrGas {
+		return fmt.Errorf("%w: needed %v, allowed %v", core.ErrIntrinsicGas, intrGas, tx.Gas())
+	}
+	// Ensure the gasprice is high enough to cover the requirement of the calling
+	// pool and/or block producer
+	if tx.GasTipCapIntCmp(opts.MinTip) < 0 {
+		return fmt.Errorf("%w: tip needed %v, tip permitted %v", ErrUnderpriced, opts.MinTip, tx.GasTipCap())
 	}
 	// Ensure blob transactions have valid commitments
 	if tx.Type() == types.BlobTxType {
