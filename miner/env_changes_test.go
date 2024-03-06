@@ -58,7 +58,6 @@ func TestTxCommitSnaps(t *testing.T) {
 		t.Fatal("envDiff txs incorrect")
 	}
 }
-
 func TestBundleCommitSnaps(t *testing.T) {
 	statedb, chData, signers := genTestSetup(GasLimit)
 

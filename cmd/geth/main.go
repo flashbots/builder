@@ -180,6 +180,7 @@ var (
 		utils.BuilderSubmissionOffset,
 		utils.BuilderDiscardRevertibleTxOnErr,
 		utils.BuilderEnableCancellations,
+		utils.BuilderBlockProcessorURL,
 	}
 
 	rpcFlags = []cli.Flag{

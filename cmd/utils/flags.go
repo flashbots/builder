@@ -792,6 +792,12 @@ var (
 		Category: flags.BuilderCategory,
 	}
 
+	BuilderBlockProcessorURL = &cli.StringFlag{
+		Name:     "builder.block_processor_url",
+		Usage:    "RPC URL for the block processor",
+		Category: flags.BuilderCategory,
+	}
+
 	// RPC settings
 	IPCDisabledFlag = &cli.BoolFlag{
 		Name:     "ipcdisable",
@@ -1618,6 +1624,8 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.DiscardRevertibleTxOnErr = ctx.Bool(BuilderDiscardRevertibleTxOnErr.Name)
 	cfg.EnableCancellations = ctx.IsSet(BuilderEnableCancellations.Name)
 	cfg.BuilderRateLimitResubmitInterval = ctx.String(BuilderBlockResubmitInterval.Name)
+
+	cfg.BlockProcessorURL = ctx.String(BuilderBlockProcessorURL.Name)
 }
 
 // SetNodeConfig applies node-related command line flags to the config.

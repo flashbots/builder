@@ -138,7 +138,7 @@ func (r *RemoteRelay) SubmitBlock(msg *builderSpec.VersionedSubmitBlockRequest, 
 	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
 	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"
 	if r.cancellationsEnabled {
-		endpoint = endpoint + "?cancellations=true"
+		endpoint = endpoint + "?cancellations=1"
 	}
 
 	var code int

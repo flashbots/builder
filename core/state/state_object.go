@@ -255,6 +255,9 @@ func (s *stateObject) setState(key, value common.Hash) {
 func (s *stateObject) finalise(prefetch bool) {
 	slotsToPrefetch := make([][]byte, 0, len(s.dirtyStorage))
 	for key, value := range s.dirtyStorage {
+		prev, ok := s.pendingStorage[key]
+		s.db.multiTxSnapshotStack.UpdatePendingStorage(s.address, key, prev, ok)
+
 		s.pendingStorage[key] = value
 		if value != s.originStorage[key] {
 			slotsToPrefetch = append(slotsToPrefetch, common.CopyBytes(key[:])) // Copy needed for closure
