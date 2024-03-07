@@ -2453,7 +2453,8 @@ func (bc *BlockChain) SetBlockValidatorAndProcessorForTesting(v Validator, p Pro
 // It returns nil if the payload is valid, otherwise it returns an error.
 //   - `useBalanceDiffProfit` if set to false, proposer payment is assumed to be in the last transaction of the block
 //     otherwise we use proposer balance changes after the block to calculate proposer payment (see details in the code)
-func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Address, expectedProfit *big.Int, registeredGasLimit uint64, vmConfig vm.Config, useBalanceDiffProfit bool) error {
+//   - `excludeWithdrawals` if set to true, withdrawals to the fee recipient are excluded from the balance change
+func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Address, expectedProfit *big.Int, registeredGasLimit uint64, vmConfig vm.Config, useBalanceDiffProfit, excludeWithdrawals bool) error {
 	header := block.Header()
 	if err := bc.engine.VerifyHeader(bc, header); err != nil {
 		return err
@@ -2495,6 +2496,14 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 
 	feeRecipientBalanceDelta := new(uint256.Int).Set(statedb.GetBalance(feeRecipient))
 	feeRecipientBalanceDelta.Sub(feeRecipientBalanceDelta, feeRecipientBalanceBefore)
+	if excludeWithdrawals {
+		for _, w := range block.Withdrawals() {
+			if w.Address == feeRecipient {
+				amount := new(uint256.Int).Mul(new(uint256.Int).SetUint64(w.Amount), uint256.NewInt(params.GWei))
+				feeRecipientBalanceDelta.Sub(feeRecipientBalanceDelta, amount)
+			}
+		}
+	}
 
 	if bc.Config().IsShanghai(header.Number, header.Time) {
 		if header.WithdrawalsHash == nil {

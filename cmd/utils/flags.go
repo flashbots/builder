@@ -646,6 +646,12 @@ var (
 		Value:    false,
 		Category: flags.BuilderCategory,
 	}
+	BuilderBlockValidationExcludeWithdrawals = &cli.BoolFlag{
+		Name:     "builder.validation_exclude_withdrawals",
+		Usage:    "Block validation API will exclude CL withdrawals to the fee recipient from the balance delta.",
+		Value:    false,
+		Category: flags.BuilderCategory,
+	}
 	BuilderEnableLocalRelay = &cli.BoolFlag{
 		Name:     "builder.local_relay",
 		Usage:    "Enable the local relay",
@@ -1624,6 +1630,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 		cfg.ValidationBlocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
 	}
 	cfg.ValidationUseCoinbaseDiff = ctx.Bool(BuilderBlockValidationUseBalanceDiff.Name)
+	cfg.ValidationExcludeWithdrawals = ctx.Bool(BuilderBlockValidationExcludeWithdrawals.Name)
 	cfg.BuilderRateLimitDuration = ctx.String(BuilderRateLimitDuration.Name)
 	cfg.BuilderRateLimitMaxBurst = ctx.Int(BuilderRateLimitMaxBurst.Name)
 	cfg.BuilderSubmissionOffset = ctx.Duration(BuilderSubmissionOffset.Name)

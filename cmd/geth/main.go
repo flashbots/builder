@@ -160,6 +160,7 @@ var (
 		utils.BuilderEnableValidatorChecks,
 		utils.BuilderBlockValidationBlacklistSourceFilePath,
 		utils.BuilderBlockValidationUseBalanceDiff,
+		utils.BuilderBlockValidationExcludeWithdrawals,
 		utils.BuilderEnableLocalRelay,
 		utils.BuilderSecondsInSlot,
 		utils.BuilderSlotsInEpoch,
