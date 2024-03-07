@@ -127,8 +127,10 @@ type SubPool interface {
 	// Add enqueues a batch of transactions into the pool if they are valid. Due
 	// to the large transaction churn, add may postpone fully integrating the tx
 	// to a later point to batch multiple ones together.
-	Add(txs []*types.Transaction, local bool, sync bool) []error
+	Add(txs []*types.Transaction, local bool, sync bool, private bool) []error
 
+	IsPrivateTxHash(hash common.Hash) bool
+	
 	// Pending retrieves all currently processable transactions, grouped by origin
 	// account and sorted by nonce.
 	//

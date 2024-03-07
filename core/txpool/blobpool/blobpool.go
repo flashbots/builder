@@ -315,6 +315,8 @@ type BlobPool struct {
 	insertFeed   event.Feed // Event feed to send out new tx events on pool inclusion (reorg included)
 
 	lock sync.RWMutex // Mutex protecting the pool during reorg handling
+
+	privateTxs *types.TimestampedTxHashSet
 }
 
 // New creates a new blob transaction pool to gather, sort and filter inbound
@@ -325,12 +327,13 @@ func New(config Config, chain BlockChain) *BlobPool {
 
 	// Create the transaction pool with its initial settings
 	return &BlobPool{
-		config: config,
-		signer: types.LatestSigner(chain.Config()),
-		chain:  chain,
-		lookup: make(map[common.Hash]uint64),
-		index:  make(map[common.Address][]*blobTxMeta),
-		spent:  make(map[common.Address]*uint256.Int),
+		config:     config,
+		signer:     types.LatestSigner(chain.Config()),
+		chain:      chain,
+		lookup:     make(map[common.Hash]uint64),
+		index:      make(map[common.Address][]*blobTxMeta),
+		spent:      make(map[common.Address]*uint256.Int),
+		privateTxs: types.NewExpiringTxHashSet(config.PrivateTxLifetime),
 	}
 }
 
@@ -535,6 +538,7 @@ func (p *BlobPool) recheck(addr common.Address, inclusions map[common.Hash]uint6
 
 			// Included transactions blobs need to be moved to the limbo
 			if filled && inclusions != nil {
+				p.privateTxs.Remove(txs[i].hash)
 				p.offload(addr, txs[i].nonce, txs[i].id, inclusions)
 			}
 		}
@@ -576,6 +580,7 @@ func (p *BlobPool) recheck(addr common.Address, inclusions map[common.Hash]uint6
 
 			// Included transactions blobs need to be moved to the limbo
 			if inclusions != nil {
+				p.privateTxs.Remove(txs[0].hash)
 				p.offload(addr, txs[0].nonce, txs[0].id, inclusions)
 			}
 			txs = txs[1:]
@@ -833,6 +838,8 @@ func (p *BlobPool) Reset(oldHead, newHead *types.Header) {
 	basefeeGauge.Update(int64(basefee.Uint64()))
 	blobfeeGauge.Update(int64(blobfee.Uint64()))
 	p.updateStorageMetrics()
+
+	p.privateTxs.Prune()
 }
 
 // reorg assembles all the transactors and missing transactions between an old
@@ -945,7 +952,7 @@ func (p *BlobPool) reorg(oldHead, newHead *types.Header) (map[common.Address][]*
 		// Generate the set that was lost to reinject into the pool
 		lost := make([]*types.Transaction, 0, len(discarded[addr]))
 		for _, tx := range types.TxDifference(discarded[addr], included[addr]) {
-			if p.Filter(tx) {
+			if p.Filter(tx) && !p.IsPrivateTxHash(tx.Hash()) {
 				lost = append(lost, tx)
 			}
 		}
@@ -1204,14 +1211,14 @@ func (p *BlobPool) Get(hash common.Hash) *types.Transaction {
 
 // Add inserts a set of blob transactions into the pool if they pass validation (both
 // consensus validity and pool restrictions).
-func (p *BlobPool) Add(txs []*types.Transaction, local bool, sync bool) []error {
+func (p *BlobPool) Add(txs []*types.Transaction, local bool, sync bool, private bool) []error {
 	var (
 		adds = make([]*types.Transaction, 0, len(txs))
 		errs = make([]error, len(txs))
 	)
 	for i, tx := range txs {
-		errs[i] = p.add(tx)
-		if errs[i] == nil {
+		errs[i] = p.add(tx, private)
+		if errs[i] == nil && !private {
 			adds = append(adds, tx.WithoutBlobTxSidecar())
 		}
 	}
@@ -1224,7 +1231,7 @@ func (p *BlobPool) Add(txs []*types.Transaction, local bool, sync bool) []error 
 
 // Add inserts a new blob transaction into the pool if it passes validation (both
 // consensus validity and pool restrictions).
-func (p *BlobPool) add(tx *types.Transaction) (err error) {
+func (p *BlobPool) add(tx *types.Transaction, private bool) (err error) {
 	// The blob pool blocks on adding a transaction. This is because blob txs are
 	// only even pulled from the network, so this method will act as the overload
 	// protection for fetches.
@@ -1290,6 +1297,11 @@ func (p *BlobPool) add(tx *types.Transaction) (err error) {
 		return err
 	}
 	meta := newBlobTxMeta(id, p.store.Size(id), tx)
+
+	// Track private transactions, so they don't get leaked to the public mempool
+	if private {
+		p.privateTxs.Add(tx.Hash())
+	}
 
 	var (
 		next   = p.state.GetNonce(from)
@@ -1648,4 +1660,8 @@ func (p *BlobPool) Status(hash common.Hash) txpool.TxStatus {
 		return txpool.TxStatusPending
 	}
 	return txpool.TxStatusUnknown
+}
+
+func (p *BlobPool) IsPrivateTxHash(hash common.Hash) bool {
+	return p.privateTxs.Contains(hash)
 }

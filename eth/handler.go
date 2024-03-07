@@ -79,6 +79,10 @@ type txPool interface {
 	// can decide whether to receive notifications only for newly seen transactions
 	// or also for reorged out ones.
 	SubscribeTransactions(ch chan<- core.NewTxsEvent, reorgs bool) event.Subscription
+	
+	// IsPrivateTxHash indicates if the transaction hash should not
+	// be broadcast on public channels
+	IsPrivateTxHash(hash common.Hash) bool
 }
 
 // handlerConfig is the collection of initialization parameters to create a full

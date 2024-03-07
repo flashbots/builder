@@ -129,6 +129,11 @@ func (p *testTxPool) SubscribeTransactions(ch chan<- core.NewTxsEvent, reorgs bo
 	return p.txFeed.Subscribe(ch)
 }
 
+// IsPrivateTxHash always returns false in tests
+func (p *testTxPool) IsPrivateTxHash(hash common.Hash) bool {
+	return false
+}
+
 // testHandler is a live implementation of the Ethereum protocol handler, just
 // preinitialized with some sane testing defaults and the transaction pool mocked
 // out.

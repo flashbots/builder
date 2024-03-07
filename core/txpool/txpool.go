@@ -357,7 +357,7 @@ func (p *TxPool) Add(txs []*types.Transaction, local bool, sync bool, private bo
 	// back the errors into the original sort order.
 	errsets := make([][]error, len(p.subpools))
 	for i := 0; i < len(p.subpools); i++ {
-		errsets[i] = p.subpools[i].Add(txsets[i], local, sync)
+		errsets[i] = p.subpools[i].Add(txsets[i], local, sync, private)
 	}
 	errs := make([]error, len(txs))
 	for i, split := range splits {
@@ -501,6 +501,15 @@ func (p *TxPool) Sync() error {
 	case <-p.term:
 		return errors.New("pool already terminated")
 	}
+}
+
+func (p *TxPool) IsPrivateTxHash(hash common.Hash) bool {
+	for _, subpool := range p.subpools {
+		if subpool.IsPrivateTxHash(hash) {
+			return true
+		}
+	}
+	return false
 }
 
 // MevBundle methods

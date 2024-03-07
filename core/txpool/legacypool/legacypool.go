@@ -61,8 +61,9 @@ var (
 )
 
 var (
-	evictionInterval    = time.Minute     // Time interval to check for evictable transactions
-	statsReportInterval = 8 * time.Second // Time interval to report transaction pool stats
+	evictionInterval         = time.Minute     // Time interval to check for evictable transactions
+	statsReportInterval      = 8 * time.Second // Time interval to report transaction pool stats
+	privateTxCleanupInterval = 1 * time.Hour
 )
 
 var (
@@ -134,7 +135,8 @@ type Config struct {
 	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
 	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
 
-	Lifetime time.Duration // Maximum amount of time non-executable transaction are queued
+	Lifetime          time.Duration // Maximum amount of time non-executable transaction are queued
+	PrivateTxLifetime time.Duration // Maximum amount of time to keep private transactions private
 }
 
 // DefaultConfig contains the default configurations for the transaction pool.
@@ -150,7 +152,8 @@ var DefaultConfig = Config{
 	AccountQueue: 64,
 	GlobalQueue:  1024,
 
-	Lifetime: 3 * time.Hour,
+	Lifetime:          3 * time.Hour,
+	PrivateTxLifetime: 3 * 24 * time.Hour,
 }
 
 // sanitize checks the provided user configurations and changes anything that's
@@ -188,6 +191,10 @@ func (config *Config) sanitize() Config {
 	if conf.Lifetime < 1 {
 		log.Warn("Sanitizing invalid txpool lifetime", "provided", conf.Lifetime, "updated", DefaultConfig.Lifetime)
 		conf.Lifetime = DefaultConfig.Lifetime
+	}
+	if conf.PrivateTxLifetime < 1 {
+		log.Warn("Sanitizing invalid txpool private tx lifetime", "provided", conf.PrivateTxLifetime, "updated", DefaultConfig.PrivateTxLifetime)
+		conf.PrivateTxLifetime = DefaultConfig.PrivateTxLifetime
 	}
 	return conf
 }
@@ -231,6 +238,8 @@ type LegacyPool struct {
 	initDoneCh      chan struct{}  // is closed once the pool is initialized (for tests)
 
 	changesSinceReorg int // A counter for how many drops we've performed in-between reorg.
+
+	privateTxs *types.TimestampedTxHashSet
 }
 
 type txpoolResetRequest struct {
@@ -259,6 +268,7 @@ func New(config Config, chain BlockChain) *LegacyPool {
 		reorgDoneCh:     make(chan chan struct{}),
 		reorgShutdownCh: make(chan struct{}),
 		initDoneCh:      make(chan struct{}),
+		privateTxs:      types.NewExpiringTxHashSet(config.PrivateTxLifetime),
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
@@ -338,13 +348,15 @@ func (pool *LegacyPool) loop() {
 		prevPending, prevQueued, prevStales int
 
 		// Start the stats reporting and transaction eviction tickers
-		report  = time.NewTicker(statsReportInterval)
-		evict   = time.NewTicker(evictionInterval)
-		journal = time.NewTicker(pool.config.Rejournal)
+		report    = time.NewTicker(statsReportInterval)
+		evict     = time.NewTicker(evictionInterval)
+		journal   = time.NewTicker(pool.config.Rejournal)
+		privateTx = time.NewTicker(privateTxCleanupInterval)
 	)
 	defer report.Stop()
 	defer evict.Stop()
 	defer journal.Stop()
+	defer privateTx.Stop()
 
 	// Notify tests that the init phase is done
 	close(pool.initDoneCh)
@@ -394,6 +406,9 @@ func (pool *LegacyPool) loop() {
 				}
 				pool.mu.Unlock()
 			}
+		// Remove stale hashes that must be kept private
+		case <-privateTx.C:
+			pool.privateTxs.Prune()
 		}
 	}
 }
@@ -426,6 +441,11 @@ func (pool *LegacyPool) SubscribeTransactions(ch chan<- core.NewTxsEvent, reorgs
 	// is because the new txs are added to the queue, resurrected ones too and
 	// reorgs run lazily, so separating the two would need a marker.
 	return pool.txFeed.Subscribe(ch)
+}
+
+// IsPrivateTxHash indicates whether the transaction should be shared with peers
+func (pool *LegacyPool) IsPrivateTxHash(hash common.Hash) bool {
+	return pool.privateTxs.Contains(hash)
 }
 
 // SetGasTip updates the minimum gas tip required by the transaction pool for a
@@ -935,7 +955,7 @@ func (pool *LegacyPool) promoteTx(addr common.Address, hash common.Hash, tx *typ
 // This method is used to add transactions from the RPC API and performs synchronous pool
 // reorganization and event propagation.
 func (pool *LegacyPool) addLocals(txs []*types.Transaction) []error {
-	return pool.Add(txs, !pool.config.NoLocals, true)
+	return pool.Add(txs, !pool.config.NoLocals, true, false)
 }
 
 // addLocal enqueues a single local transaction into the pool if it is valid. This is
@@ -950,7 +970,7 @@ func (pool *LegacyPool) addLocal(tx *types.Transaction) error {
 // This method is used to add transactions from the p2p network and does not wait for pool
 // reorganization and internal event propagation.
 func (pool *LegacyPool) addRemotes(txs []*types.Transaction) []error {
-	return pool.Add(txs, false, false)
+	return pool.Add(txs, false, false, false)
 }
 
 // addRemote enqueues a single transaction into the pool if it is valid. This is a convenience
@@ -961,12 +981,12 @@ func (pool *LegacyPool) addRemote(tx *types.Transaction) error {
 
 // addRemotesSync is like addRemotes, but waits for pool reorganization. Tests use this method.
 func (pool *LegacyPool) addRemotesSync(txs []*types.Transaction) []error {
-	return pool.Add(txs, false, true)
+	return pool.Add(txs, false, true, false)
 }
 
 // This is like addRemotes with a single transaction, but waits for pool reorganization. Tests use this method.
 func (pool *LegacyPool) addRemoteSync(tx *types.Transaction) error {
-	return pool.Add([]*types.Transaction{tx}, false, true)[0]
+	return pool.Add([]*types.Transaction{tx}, false, true, false)[0]
 }
 
 // Add enqueues a batch of transactions into the pool if they are valid. Depending
@@ -974,7 +994,7 @@ func (pool *LegacyPool) addRemoteSync(tx *types.Transaction) error {
 //
 // If sync is set, the method will block until all internal maintenance related
 // to the add is finished. Only use this during tests for determinism!
-func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync bool) []error {
+func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync bool, private bool) []error {
 	// Do not treat as local if local transactions have been disabled
 	local = local && !pool.config.NoLocals
 
@@ -1004,6 +1024,13 @@ func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync bool) []error 
 	}
 	if len(news) == 0 {
 		return errs
+	}
+
+	// Track private transactions, so they don't get leaked to the public mempool
+	if private {
+		for _, tx := range news {
+			pool.privateTxs.Add(tx.Hash())
+		}
 	}
 
 	// Process all the new transaction and merge any errors into the original slice
@@ -1332,7 +1359,11 @@ func (pool *LegacyPool) runReorg(done chan struct{}, reset *txpoolResetRequest, 
 	if len(events) > 0 {
 		var txs []*types.Transaction
 		for _, set := range events {
-			txs = append(txs, set.Flatten()...)
+			for _, tx := range set.Flatten() {
+				if !pool.IsPrivateTxHash(tx.Hash()) {
+					txs = append(txs, tx)
+				}
+			}
 		}
 		pool.txFeed.Send(core.NewTxsEvent{Txs: txs})
 	}
@@ -1456,6 +1487,7 @@ func (pool *LegacyPool) promoteExecutables(accounts []common.Address) []*types.T
 		for _, tx := range forwards {
 			hash := tx.Hash()
 			pool.all.Remove(hash)
+			pool.privateTxs.Remove(hash)
 		}
 		log.Trace("Removed old queued transactions", "count", len(forwards))
 		// Drop all transactions that are too costly (low balance or out of gas)

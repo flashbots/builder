@@ -1517,7 +1517,7 @@ func TestMinGasPriceEnforced(t *testing.T) {
 		t.Fatalf("Min tip not enforced")
 	}
 
-	if err := pool.Add([]*types.Transaction{tx}, true, false)[0]; !errors.Is(err, txpool.ErrUnderpriced) {
+	if err := pool.Add([]*types.Transaction{tx}, true, false, false)[0]; !errors.Is(err, txpool.ErrUnderpriced) {
 		t.Fatalf("Min tip not enforced")
 	}
 
@@ -1528,12 +1528,12 @@ func TestMinGasPriceEnforced(t *testing.T) {
 		t.Fatalf("Min tip not enforced")
 	}
 
-	if err := pool.Add([]*types.Transaction{tx}, true, false)[0]; !errors.Is(err, txpool.ErrUnderpriced) {
+	if err := pool.Add([]*types.Transaction{tx}, true, false, false)[0]; !errors.Is(err, txpool.ErrUnderpriced) {
 		t.Fatalf("Min tip not enforced")
 	}
 	// Make sure the tx is accepted if locals are enabled
 	pool.config.NoLocals = false
-	if err := pool.Add([]*types.Transaction{tx}, true, false)[0]; err != nil {
+	if err := pool.Add([]*types.Transaction{tx}, true, false, false)[0]; err != nil {
 		t.Fatalf("Min tip enforced with locals enabled, error: %v", err)
 	}
 }
