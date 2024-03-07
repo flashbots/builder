@@ -180,6 +180,9 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	if ctx.IsSet(utils.BuilderBlockValidationUseBalanceDiff.Name) {
 		bvConfig.UseBalanceDiffProfit = ctx.Bool(utils.BuilderBlockValidationUseBalanceDiff.Name)
 	}
+	if ctx.IsSet(utils.BuilderBlockValidationExcludeWithdrawals.Name) {
+		bvConfig.ExcludeWithdrawals = ctx.Bool(utils.BuilderBlockValidationExcludeWithdrawals.Name)
+	}
 
 	if err := blockvalidationapi.Register(stack, eth, bvConfig); err != nil {
 		utils.Fatalf("Failed to register the Block Validation API: %v", err)
