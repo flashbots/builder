@@ -759,6 +759,12 @@ var (
 		Value:    builder.RateLimitIntervalDefault.String(),
 		Category: flags.BuilderCategory,
 	}
+	BuilderBloxrouteAuthHeader = &cli.StringFlag{
+		Name:     "builder.bloxroute_auth_header",
+		Usage:    "Authorization header to utilize bloxroute request endpoints",
+		EnvVars:  []string{"BLOXROUTE_AUTHORIZATION_HEADER"},
+		Category: flags.BuilderCategory,
+	}
 
 	// BuilderRateLimitMaxBurst burst value can be thought of as a bucket of size b, initially full and refilled at rate r per second.
 	// b is defined by BuilderRateLimitMaxBurst and r is defined by BuilderRateLimitDuration.
@@ -1620,6 +1626,7 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.BeaconEndpoints = strings.Split(ctx.String(BuilderBeaconEndpoints.Name), ",")
 	cfg.RemoteRelayEndpoint = ctx.String(BuilderRemoteRelayEndpoint.Name)
 	cfg.SecondaryRemoteRelayEndpoints = strings.Split(ctx.String(BuilderSecondaryRemoteRelayEndpoints.Name), ",")
+	cfg.BloxrouteAuthHeader = ctx.String(BuilderBloxrouteAuthHeader.Name)
 	// NOTE: This flag is deprecated and will be removed in the future in favor of BuilderBlockValidationBlacklistSourceFilePath
 	if ctx.IsSet(MinerBlocklistFileFlag.Name) {
 		cfg.ValidationBlocklist = ctx.String(MinerBlocklistFileFlag.Name)

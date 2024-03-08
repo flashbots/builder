@@ -182,6 +182,7 @@ var (
 		utils.BuilderSubmissionOffset,
 		utils.BuilderDiscardRevertibleTxOnErr,
 		utils.BuilderEnableCancellations,
+		utils.BuilderBloxrouteAuthHeader,
 		utils.BuilderBlockProcessorURL,
 	}
 

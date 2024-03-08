@@ -29,6 +29,7 @@ type Config struct {
 	BuilderSubmissionOffset          time.Duration `toml:",omitempty"`
 	DiscardRevertibleTxOnErr         bool          `toml:",omitempty"`
 	EnableCancellations              bool          `toml:",omitempty"`
+	BloxrouteAuthHeader              string        `toml:",omitempty"`
 	BlockProcessorURL                string        `toml:",omitempty"`
 }
 
@@ -66,4 +67,5 @@ type RelayConfig struct {
 	SszEnabled             bool
 	GzipEnabled            bool
 	ComplianceListsEnabled bool
+	BloxrouteAuthHeader    string
 }
