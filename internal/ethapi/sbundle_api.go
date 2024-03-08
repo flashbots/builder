@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
 	"math/big"
 	"time"
 
@@ -252,6 +253,14 @@ func (api *MevAPI) SimBundle(ctx context.Context, args SendMevBundleArgs, aux Si
 	}
 	if aux.BaseFee != nil {
 		header.BaseFee = aux.BaseFee.ToInt()
+	}
+
+	if api.b.ChainConfig().IsCancun(header.Number, header.Time) {
+		var excessBlobGas uint64
+		if parentHeader.ExcessBlobGas != nil && parentHeader.BlobGasUsed != nil {
+			excessBlobGas = eip4844.CalcExcessBlobGas(*parentHeader.ExcessBlobGas, *parentHeader.BlobGasUsed)
+		}
+		header.ExcessBlobGas = &excessBlobGas
 	}
 
 	gp := new(core.GasPool).AddGas(header.GasLimit)
