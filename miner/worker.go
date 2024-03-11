@@ -1419,10 +1419,11 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *atomic.Int32, env *enviro
 	}
 
 	var (
-		newEnv       *environment
-		blockBundles []types.SimulatedBundle
-		usedSbundle  []types.UsedSBundle
-		start        = time.Now()
+		newEnv         *environment
+		blockBundles   []types.SimulatedBundle
+		usedSbundle    []types.UsedSBundle
+		start          = time.Now()
+		complianceList = w.selectComplianceList(env)
 	)
 	switch w.flashbots.algoType {
 	case ALGO_GREEDY_BUCKETS:
@@ -1438,7 +1439,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *atomic.Int32, env *enviro
 			PriceCutoffPercent:     priceCutoffPercent,
 		}
 		builder := newGreedyBucketsBuilder(
-			w.chain, w.chainConfig, algoConf, w.blockList, env,
+			w.chain, w.chainConfig, algoConf, complianceList, env,
 			w.config.BuilderTxSigningKey, interrupt,
 		)
 
@@ -1456,7 +1457,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *atomic.Int32, env *enviro
 			PriceCutoffPercent:     priceCutoffPercent,
 		}
 		builder := newGreedyBucketsMultiSnapBuilder(
-			w.chain, w.chainConfig, algoConf, w.blockList, env,
+			w.chain, w.chainConfig, algoConf, complianceList, env,
 			w.config.BuilderTxSigningKey, interrupt,
 		)
 		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
@@ -1470,7 +1471,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *atomic.Int32, env *enviro
 		}
 
 		builder := newGreedyMultiSnapBuilder(
-			w.chain, w.chainConfig, algoConf, w.blockList, env,
+			w.chain, w.chainConfig, algoConf, complianceList, env,
 			w.config.BuilderTxSigningKey, interrupt,
 		)
 		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
@@ -1486,7 +1487,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *atomic.Int32, env *enviro
 		}
 
 		builder := newGreedyBuilder(
-			w.chain, w.chainConfig, algoConf, w.blockList,
+			w.chain, w.chainConfig, algoConf, complianceList,
 			env, w.config.BuilderTxSigningKey, interrupt,
 		)
 		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
