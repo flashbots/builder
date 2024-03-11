@@ -14,6 +14,9 @@ const (
 type ComplianceList map[common.Address]struct{}
 
 var (
+	// TODO (for external builders): Add your default compliance list here
+	DefaultComplianceList = ComplianceList{}
+
 	SanctionListLock = sync.RWMutex{}
 
 	ComplianceLists = map[string]ComplianceList{

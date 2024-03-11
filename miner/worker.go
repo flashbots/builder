@@ -901,7 +901,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction) (*typ
 	var tracer *logger.AccountTouchTracer
 	var hook func() error
 	config := *w.chain.GetVMConfig()
-	if len(w.blockList) != 0 || env.complianceList != "" {
+	if w.shouldUseComplianceList(env) {
 		tracer = logger.NewAccountTouchTracer()
 		config.Tracer = tracer
 		hook = func() error {
@@ -1946,7 +1946,7 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, sb
 			tmpGasUsed := uint64(0)
 			config := *w.chain.GetVMConfig()
 			var tracer *logger.AccountTouchTracer
-			if len(w.blockList) != 0 || env.complianceList != "" {
+			if w.shouldUseComplianceList(env) {
 				tracer = logger.NewAccountTouchTracer()
 				config.Tracer = tracer
 			}
@@ -1961,7 +1961,7 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, sb
 				}
 				return
 			}
-			if len(w.blockList) != 0 || env.complianceList != "" {
+			if w.shouldUseComplianceList(env) {
 				complianceList := w.selectComplianceList(env)
 				for _, address := range tracer.TouchedAddresses() {
 					if _, in := complianceList[address]; in {
@@ -2065,7 +2065,7 @@ func (w *worker) computeBundleGas(
 
 		config := *w.chain.GetVMConfig()
 		var tracer *logger.AccountTouchTracer
-		if len(w.blockList) != 0 || env.complianceList != "" {
+		if w.shouldUseComplianceList(env) {
 			tracer = logger.NewAccountTouchTracer()
 			config.Tracer = tracer
 		}
@@ -2076,7 +2076,7 @@ func (w *worker) computeBundleGas(
 		if receipt.Status == types.ReceiptStatusFailed && !containsHash(bundle.RevertingTxHashes, receipt.TxHash) {
 			return simulatedBundle{}, errors.New("failed tx")
 		}
-		if len(w.blockList) != 0 || env.complianceList != "" {
+		if w.shouldUseComplianceList(env) {
 			complianceList := w.selectComplianceList(env)
 			for _, address := range tracer.TouchedAddresses() {
 				if _, in := complianceList[address]; in {
@@ -2237,6 +2237,10 @@ func signalToErr(signal int32) error {
 	}
 }
 
+func (w *worker) shouldUseComplianceList(env *environment) bool {
+	return env.complianceList != "" || len(ofac.DefaultComplianceList) != 0 || len(w.blockList) != 0
+}
+
 func (w *worker) selectComplianceList(env *environment) map[common.Address]struct{} {
 	if env.complianceList != "" {
 		list, found := ofac.ComplianceLists[env.complianceList]
@@ -2246,5 +2250,10 @@ func (w *worker) selectComplianceList(env *environment) map[common.Address]struc
 		}
 		return list
 	}
+
+	if len(ofac.DefaultComplianceList) > 0 {
+		return ofac.DefaultComplianceList
+	}
+
 	return w.blockList
 }
