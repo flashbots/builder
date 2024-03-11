@@ -130,7 +130,7 @@ type SubPool interface {
 	Add(txs []*types.Transaction, local bool, sync bool, private bool) []error
 
 	IsPrivateTxHash(hash common.Hash) bool
-	
+
 	// Pending retrieves all currently processable transactions, grouped by origin
 	// account and sorted by nonce.
 	//
