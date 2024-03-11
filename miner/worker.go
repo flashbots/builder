@@ -862,7 +862,7 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction) ([]*types.Log, error) {
 	sc := tx.BlobTxSidecar()
 	if sc == nil {
-		panic("blob transaction without blobs in miner")
+		return nil, errors.New("blob transaction without blobs in miner")
 	}
 	// Checking against blob gas limit: It's kind of ugly to perform this check here, but there
 	// isn't really a better place right now. The blob gas limit is checked at block validation time
