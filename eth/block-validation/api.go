@@ -290,9 +290,12 @@ func (api *BlockValidationAPI) validateBlock(block *types.Block, msg *builderApi
 
 	accessVerifier := api.accessVerifier
 
+	// select compliance list to use for block validation
 	if complianceList != "" {
 		log.Info("using compliance list in block validation", "list", complianceList)
 		accessVerifier = NewAccessVerifierWithComplianceList(complianceList)
+	} else if len(ofac.DefaultComplianceList) > 0 {
+		accessVerifier = &AccessVerifier{blacklistedAddresses: ofac.DefaultComplianceList}
 	}
 
 	if accessVerifier != nil {
