@@ -428,7 +428,9 @@ func (st *StackTrie) hashRec(hasher *hasher, path []byte) {
 			if len(child.val) < 32 {
 				nodes[i] = rawNode(child.val)
 			} else {
-				nodes[i] = hashNode(child.val)
+				var hashNodeValue hashNode
+				copy(hashNodeValue[:], child.val)
+				nodes[i] = hashNodeValue
 			}
 
 			// Release child back to pool.
@@ -446,7 +448,9 @@ func (st *StackTrie) hashRec(hasher *hasher, path []byte) {
 		if len(st.children[0].val) < 32 {
 			n.Val = rawNode(st.children[0].val)
 		} else {
-			n.Val = hashNode(st.children[0].val)
+			var hashNodeValue hashNode
+			copy(hashNodeValue[:], st.children[0].val)
+			n.Val = hashNodeValue
 		}
 
 		n.encode(hasher.encbuf)
@@ -476,7 +480,8 @@ func (st *StackTrie) hashRec(hasher *hasher, path []byte) {
 
 	// Write the hash to the 'val'. We allocate a new val here to not mutate
 	// input values
-	st.val = hasher.hashData(encodedNode)
+	hashNodeValue := hasher.hashData(encodedNode)
+	st.val = hashNodeValue[:]
 	if st.writeFn != nil {
 		st.writeFn(st.owner, path, common.BytesToHash(st.val), encodedNode)
 	}

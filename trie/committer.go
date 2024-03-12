@@ -53,7 +53,7 @@ func (c *committer) Commit(n node) hashNode {
 func (c *committer) commit(path []byte, n node) node {
 	// if this path is clean, use available cached data
 	hash, dirty := n.cache()
-	if hash != nil && !dirty {
+	if hash != nilHashNode && !dirty {
 		return hash
 	}
 	// Commit children, then parent, and remove the dirty flag.
@@ -130,7 +130,7 @@ func (c *committer) store(path []byte, n node) node {
 	// In theory, we should check if the node is leaf here (embedded node
 	// usually is leaf node). But small value (less than 32bytes) is not
 	// our target (leaves in account trie only).
-	if hash == nil {
+	if hash == nilHashNode {
 		// The node is embedded in its parent, in other words, this node
 		// will not be stored in the database independently, mark it as
 		// deleted only if the node was existent in database before.
@@ -143,7 +143,7 @@ func (c *committer) store(path []byte, n node) node {
 	// The size is used for mem tracking, does not need to be exact
 	var (
 		size  = estimateSize(n)
-		nhash = common.BytesToHash(hash)
+		nhash = common.BytesToHash(hash[:])
 		mnode = &memoryNode{
 			hash: nhash,
 			node: simplifyNode(n),

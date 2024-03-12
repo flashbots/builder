@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/core"
 	"math/big"
 	_ "os"
 	"sync"
@@ -346,9 +347,6 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 		return fmt.Errorf("could not get validator while submitting block for slot %d - %w", attrs.Slot, err)
 	}
 
-	attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
-	attrs.GasLimit = vd.GasLimit
-
 	proposerPubkey, err := utils.HexToPubkey(string(vd.Pubkey))
 	if err != nil {
 		return fmt.Errorf("could not parse pubkey (%s) - %w", vd.Pubkey, err)
@@ -363,6 +361,9 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 		return fmt.Errorf("parent block hash not found in block tree given head block hash %s", attrs.HeadHash)
 	}
 
+	attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
+	attrs.GasLimit = core.CalcGasLimit(parentBlock.GasLimit(), vd.GasLimit)
+
 	b.slotMu.Lock()
 	defer b.slotMu.Unlock()
 
@@ -375,7 +376,11 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 		b.slotCtxCancel()
 	}
 
-	slotCtx, slotCtxCancel := context.WithTimeout(context.Background(), 12*time.Second)
+	slotTime := time.Unix(int64(attrs.Timestamp), 0).UTC()
+	ctxDuration := slotTime.Sub(time.Now()) + (800 * time.Millisecond)
+
+	//slotCtx, slotCtxCancel := context.WithTimeout(context.Background(), 12*time.Second)
+	slotCtx, slotCtxCancel := context.WithTimeout(context.Background(), ctxDuration)
 	b.slotAttrs = *attrs
 	b.slotCtx = slotCtx
 	b.slotCtxCancel = slotCtxCancel

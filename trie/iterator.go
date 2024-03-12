@@ -240,7 +240,10 @@ func (it *nodeIterator) NodeBlob() []byte {
 	if it.Hash() == (common.Hash{}) {
 		return nil // skip the non-standalone node
 	}
-	blob, err := it.resolveBlob(it.Hash().Bytes(), it.Path())
+
+	var hashNodeValue hashNode
+	copy(hashNodeValue[:], it.Hash().Bytes())
+	blob, err := it.resolveBlob(hashNodeValue, it.Path())
 	if err != nil {
 		it.err = err
 		return nil
@@ -376,8 +379,8 @@ func (it *nodeIterator) peekSeek(seekKey []byte) (*nodeIteratorState, *int, []by
 
 func (it *nodeIterator) resolveHash(hash hashNode, path []byte) (node, error) {
 	if it.resolver != nil {
-		if blob := it.resolver(it.trie.owner, path, common.BytesToHash(hash)); len(blob) > 0 {
-			if resolved, err := decodeNode(hash, blob); err == nil {
+		if blob := it.resolver(it.trie.owner, path, common.BytesToHash(hash[:])); len(blob) > 0 {
+			if resolved, err := decodeNode(hash[:], blob); err == nil {
 				return resolved, nil
 			}
 		}
@@ -387,12 +390,12 @@ func (it *nodeIterator) resolveHash(hash hashNode, path []byte) (node, error) {
 	// loaded blob will be tracked, while it's not required here since
 	// all loaded nodes won't be linked to trie at all and track nodes
 	// may lead to out-of-memory issue.
-	return it.trie.reader.node(path, common.BytesToHash(hash))
+	return it.trie.reader.node(path, common.BytesToHash(hash[:]))
 }
 
 func (it *nodeIterator) resolveBlob(hash hashNode, path []byte) ([]byte, error) {
 	if it.resolver != nil {
-		if blob := it.resolver(it.trie.owner, path, common.BytesToHash(hash)); len(blob) > 0 {
+		if blob := it.resolver(it.trie.owner, path, common.BytesToHash(hash[:])); len(blob) > 0 {
 			return blob, nil
 		}
 	}
@@ -401,7 +404,7 @@ func (it *nodeIterator) resolveBlob(hash hashNode, path []byte) ([]byte, error) 
 	// loaded blob will be tracked, while it's not required here since
 	// all loaded nodes won't be linked to trie at all and track nodes
 	// may lead to out-of-memory issue.
-	return it.trie.reader.nodeBlob(path, common.BytesToHash(hash))
+	return it.trie.reader.nodeBlob(path, common.BytesToHash(hash[:]))
 }
 
 func (st *nodeIteratorState) resolve(it *nodeIterator, path []byte) error {
@@ -411,7 +414,7 @@ func (st *nodeIteratorState) resolve(it *nodeIterator, path []byte) error {
 			return err
 		}
 		st.node = resolved
-		st.hash = common.BytesToHash(hash)
+		st.hash = common.BytesToHash(hash[:])
 	}
 	return nil
 }
@@ -427,7 +430,7 @@ func findChild(n *fullNode, index int, path []byte, ancestor common.Hash) (node,
 			child = n.Children[index]
 			hash, _ := child.cache()
 			state = &nodeIteratorState{
-				hash:    common.BytesToHash(hash),
+				hash:    common.BytesToHash(hash[:]),
 				node:    child,
 				parent:  ancestor,
 				index:   -1,
@@ -454,7 +457,7 @@ func (it *nodeIterator) nextChild(parent *nodeIteratorState, ancestor common.Has
 		if parent.index < 0 {
 			hash, _ := node.Val.cache()
 			state := &nodeIteratorState{
-				hash:    common.BytesToHash(hash),
+				hash:    common.BytesToHash(hash[:]),
 				node:    node.Val,
 				parent:  ancestor,
 				index:   -1,
@@ -500,7 +503,7 @@ func (it *nodeIterator) nextChildAt(parent *nodeIteratorState, ancestor common.H
 		if parent.index < 0 {
 			hash, _ := n.Val.cache()
 			state := &nodeIteratorState{
-				hash:    common.BytesToHash(hash),
+				hash:    common.BytesToHash(hash[:]),
 				node:    n.Val,
 				parent:  ancestor,
 				index:   -1,

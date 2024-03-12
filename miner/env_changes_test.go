@@ -71,7 +71,8 @@ func TestBundleCommitSnaps(t *testing.T) {
 		BlockNumber: env.header.Number,
 	}
 
-	simBundle, err := simulateBundle(env, bundle, chData, nil)
+	envCopy := env.copy()
+	simBundle, err := simulateBundle(envCopy, bundle, chData, nil)
 	if err != nil {
 		t.Fatal("Failed to simulate bundle", err)
 	}

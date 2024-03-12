@@ -472,7 +472,7 @@ func (s *Sync) children(req *nodeRequest, object node) ([]*nodeRequest, error) {
 				// If database says duplicate, then at least the trie node is present
 				// and we hold the assumption that it's NOT legacy contract code.
 				var (
-					chash        = common.BytesToHash(node)
+					chash        = common.BytesToHash(node[:])
 					owner, inner = ResolvePath(child.path)
 				)
 				if rawdb.HasTrieNode(s.database, owner, inner, chash, s.scheme) {

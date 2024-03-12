@@ -19,14 +19,17 @@ package types
 import (
 	"bytes"
 	"container/heap"
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
+	"github.com/consensys/gnark-crypto/field/pool"
 	"io"
 	"math/big"
+	"sort"
 	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/google/uuid"
@@ -177,6 +180,10 @@ func (tx *Transaction) UnmarshalBinary(b []byte) error {
 	}
 	tx.setDecoded(inner, uint64(len(b)))
 	return nil
+}
+
+func (tx *Transaction) Time() time.Time {
+	return tx.time
 }
 
 // decodeTyped decodes a typed transaction from the canonical format.
@@ -335,11 +342,18 @@ func (tx *Transaction) EffectiveGasTip(baseFee *big.Int) (*big.Int, error) {
 		return tx.GasTipCap(), nil
 	}
 	var err error
-	gasFeeCap := tx.GasFeeCap()
+	//gasFeeCap := tx.GasFeeCap()
+	ret := new(big.Int)
+	gasFeeCap := tx.inner.gasFeeCap()
 	if gasFeeCap.Cmp(baseFee) == -1 {
 		err = ErrGasFeeCapTooLow
 	}
-	return math.BigMin(tx.GasTipCap(), gasFeeCap.Sub(gasFeeCap, baseFee)), err
+	ret = ret.Sub(gasFeeCap, baseFee)
+	tip := tx.inner.gasTipCap()
+	if tip.Cmp(ret) < 0 {
+		ret.Set(tip)
+	}
+	return ret, err
 }
 
 // EffectiveGasTipValue is identical to EffectiveGasTip, but does not return an
@@ -408,6 +422,23 @@ func (tx *Transaction) WithSignature(signer Signer, sig []byte) (*Transaction, e
 	cpy := tx.inner.copy()
 	cpy.setSignatureValues(signer.ChainID(), v, r, s)
 	return &Transaction{inner: cpy, time: tx.time}, nil
+}
+
+func (tx *Transaction) Validate() error {
+	if tx.inner.gasFeeCap().BitLen() > 256 {
+		return errors.New("max fee per gas higher than 2^256-1")
+	}
+
+	if tx.inner.gasTipCap().BitLen() > 256 {
+		return errors.New("max priority fee per gas higher than 2^256-1")
+	}
+
+	// Ensure gasFeeCap is greater than or equal to gasTipCap.
+	if tx.inner.gasFeeCap().Cmp(tx.inner.gasTipCap()) < 0 {
+		return errors.New("max priority fee per gas higher than max fee per gas")
+	}
+
+	return nil
 }
 
 // Transactions implements DerivableList for transactions.
@@ -507,6 +538,8 @@ func (o _SBundleOrder) AsSBundle() *SimSBundle     { return o.sbundle }
 type TxWithMinerFee struct {
 	order    _Order
 	minerFee *big.Int
+
+	_profit *big.Int
 }
 
 func (t *TxWithMinerFee) Tx() *Transaction {
@@ -527,19 +560,44 @@ func (t *TxWithMinerFee) Price() *big.Int {
 
 func (t *TxWithMinerFee) Profit(baseFee *big.Int, gasUsed uint64) *big.Int {
 	if tx := t.Tx(); tx != nil {
-		profit := new(big.Int).Sub(tx.GasPrice(), baseFee)
+		var (
+			gasUsedBigInt = pool.BigInt.Get()
+			remainingGas  = pool.BigInt.Get()
+		)
+		defer func() {
+			pool.BigInt.Put(gasUsedBigInt)
+			pool.BigInt.Put(remainingGas)
+		}()
+		//t._profit.Sub(tx.GasPrice(), baseFee).Mul(t._profit, new(big.Int).SetUint64(gasUsed))
+		//profit := new(big.Int).Sub(tx.GasPrice(), baseFee)
 		if gasUsed != 0 {
-			profit.Mul(profit, new(big.Int).SetUint64(gasUsed))
+			gasUsedBigInt.SetUint64(gasUsed)
+			t._profit.Mul(remainingGas.Sub(tx.inner.gasPrice(), baseFee), gasUsedBigInt)
+			//profit.Mul(profit, gasUsedBigInt)
 		} else {
-			profit.Mul(profit, new(big.Int).SetUint64(tx.Gas()))
+			gasUsedBigInt.SetUint64(tx.Gas())
+			t._profit.Mul(remainingGas.Sub(tx.inner.gasPrice(), baseFee), gasUsedBigInt)
+			//profit.Mul(profit, gasUsedBigInt)
 		}
-		return profit
+		return t._profit
 	} else if bundle := t.Bundle(); bundle != nil {
 		return bundle.EthSentToCoinbase
 	} else if sbundle := t.SBundle(); sbundle != nil {
 		return sbundle.Profit
 	} else {
 		panic("profit called on unsupported order type")
+	}
+}
+
+func (t *TxWithMinerFee) Hash() common.Hash {
+	if tx := t.Tx(); tx != nil {
+		return tx.Hash()
+	} else if bundle := t.Bundle(); bundle != nil {
+		return bundle.OriginalBundle.Hash
+	} else if sbundle := t.SBundle(); sbundle != nil {
+		return sbundle.Bundle.Hash()
+	} else {
+		panic("hash called on unsupported order type")
 	}
 }
 
@@ -570,6 +628,7 @@ func NewTxWithMinerFee(tx *Transaction, baseFee *big.Int) (*TxWithMinerFee, erro
 	return &TxWithMinerFee{
 		order:    _TxOrder{tx},
 		minerFee: minerFee,
+		_profit:  new(big.Int),
 	}, nil
 }
 
@@ -771,6 +830,7 @@ type LatestUuidBundle struct {
 	Uuid           uuid.UUID
 	SigningAddress common.Address
 	BundleHash     common.Hash
+	BundleUUID     uuid.UUID
 }
 
 type MevBundle struct {
@@ -782,6 +842,23 @@ type MevBundle struct {
 	MaxTimestamp      uint64
 	RevertingTxHashes []common.Hash
 	Hash              common.Hash
+}
+
+func (b *MevBundle) UniquePayload() []byte {
+	var buf []byte
+	buf = binary.AppendVarint(buf, b.BlockNumber.Int64())
+	buf = append(buf, b.Hash[:]...)
+	sort.Slice(b.RevertingTxHashes, func(i, j int) bool {
+		return bytes.Compare(b.RevertingTxHashes[i][:], b.RevertingTxHashes[j][:]) <= 0
+	})
+	for _, txHash := range b.RevertingTxHashes {
+		buf = append(buf, txHash[:]...)
+	}
+	return buf
+}
+
+func (b *MevBundle) ComputeUUID() uuid.UUID {
+	return uuid.NewHash(sha256.New(), uuid.Nil, b.UniquePayload(), 5)
 }
 
 func (b *MevBundle) RevertingHash(hash common.Hash) bool {

@@ -120,6 +120,8 @@ func (b *bundleFetcher) fetchAndPush(ctx context.Context, pushMevBundles func(bu
 	}
 }
 
+var bundleHasher = sha3.NewLegacyKeccak256()
+
 func (b *bundleFetcher) dbBundleToMevBundle(arg DbBundle) (*types.MevBundle, error) {
 	signedTxsStr := strings.Split(arg.ParamSignedTxs, ",")
 	if len(signedTxsStr) == 0 {
@@ -156,7 +158,8 @@ func (b *bundleFetcher) dbBundleToMevBundle(arg DbBundle) (*types.MevBundle, err
 	if arg.ParamTimestamp != nil {
 		minTimestamp = *arg.ParamTimestamp
 	}
-	bundleHasher := sha3.NewLegacyKeccak256()
+	//bundleHasher := sha3.NewLegacyKeccak256()
+	bundleHasher.Reset()
 	for _, tx := range txs {
 		bundleHasher.Write(tx.Hash().Bytes())
 	}

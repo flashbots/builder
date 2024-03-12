@@ -41,7 +41,12 @@ type signerList struct {
 }
 
 func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, interrupt *int32) (types.SimulatedBundle, error) {
-	stateDB := env.state.Copy()
+	// NOTE(wazzymandias): We are referencing the environment StateDB here - notice that it is not a copy.
+	// For test scenarios where bundles depend on previous bundle transactions to succeed, it is
+	// necessary to reference the same StateDB in order to avoid nonce too high errors.
+	// As a result, it is recommended that the caller make a copy before invoking this function, in order to
+	// ensure transaction serializability across bundles.
+	stateDB := env.state
 	gasPool := new(core.GasPool).AddGas(env.header.GasLimit)
 
 	var totalGasUsed uint64

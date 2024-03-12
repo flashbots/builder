@@ -58,7 +58,7 @@ func returnHasherToPool(h *hasher) {
 // original node initialized with the computed hash to replace the original one.
 func (h *hasher) hash(n node, force bool) (hashed node, cached node) {
 	// Return the cached hash if it's available
-	if hash, _ := n.cache(); hash != nil {
+	if hash, _ := n.cache(); hash != nilHashNode {
 		return hash, n
 	}
 	// Trie not processed yet, walk the children
@@ -71,7 +71,7 @@ func (h *hasher) hash(n node, force bool) (hashed node, cached node) {
 		if hn, ok := hashed.(hashNode); ok {
 			cached.flags.hash = hn
 		} else {
-			cached.flags.hash = nil
+			cached.flags.hash = nilHashNode
 		}
 		return hashed, cached
 	case *fullNode:
@@ -80,7 +80,7 @@ func (h *hasher) hash(n node, force bool) (hashed node, cached node) {
 		if hn, ok := hashed.(hashNode); ok {
 			cached.flags.hash = hn
 		} else {
-			cached.flags.hash = nil
+			cached.flags.hash = nilHashNode
 		}
 		return hashed, cached
 	default:
@@ -183,10 +183,10 @@ func (h *hasher) encodedBytes() []byte {
 
 // hashData hashes the provided data
 func (h *hasher) hashData(data []byte) hashNode {
-	n := make(hashNode, 32)
+	n := hashNode{}
 	h.sha.Reset()
 	h.sha.Write(data)
-	h.sha.Read(n)
+	h.sha.Read(n[:])
 	return n
 }
 

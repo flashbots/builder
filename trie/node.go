@@ -43,13 +43,16 @@ type (
 		Val   node
 		flags nodeFlag
 	}
-	hashNode  []byte
+	hashNode  [32]byte
 	valueNode []byte
 )
 
 // nilValueNode is used when collapsing internal trie nodes for hashing, since
 // unset children need to serialize correctly.
 var nilValueNode = valueNode(nil)
+
+var nilHashNode = hashNode([32]byte{})
+var emptyHashNode = hashNode{}
 
 // EncodeRLP encodes a full node into the consensus RLP format.
 func (n *fullNode) EncodeRLP(w io.Writer) error {
@@ -69,8 +72,8 @@ type nodeFlag struct {
 
 func (n *fullNode) cache() (hashNode, bool)  { return n.flags.hash, n.flags.dirty }
 func (n *shortNode) cache() (hashNode, bool) { return n.flags.hash, n.flags.dirty }
-func (n hashNode) cache() (hashNode, bool)   { return nil, true }
-func (n valueNode) cache() (hashNode, bool)  { return nil, true }
+func (n hashNode) cache() (hashNode, bool)   { return nilHashNode, true }
+func (n valueNode) cache() (hashNode, bool)  { return nilHashNode, true }
 
 // Pretty printing.
 func (n *fullNode) String() string  { return n.fstring("") }
@@ -93,10 +96,15 @@ func (n *shortNode) fstring(ind string) string {
 	return fmt.Sprintf("{%x: %v} ", n.Key, n.Val.fstring(ind+"  "))
 }
 func (n hashNode) fstring(ind string) string {
-	return fmt.Sprintf("<%x> ", []byte(n))
+	return fmt.Sprintf("<%x> ", []byte(n[:]))
 }
 func (n valueNode) fstring(ind string) string {
 	return fmt.Sprintf("%x ", []byte(n))
+}
+
+func (n hashNode) Copy(input []byte) hashNode {
+	copy(n[:], input)
+	return n
 }
 
 // mustDecodeNode is a wrapper of decodeNode and panic if any error is encountered.
@@ -155,7 +163,10 @@ func decodeShort(hash, elems []byte) (node, error) {
 	if err != nil {
 		return nil, err
 	}
-	flag := nodeFlag{hash: hash}
+
+	var hashVal hashNode
+	copy(hashVal[:], hash)
+	flag := nodeFlag{hash: hashVal}
 	key := compactToHex(kbuf)
 	if hasTerm(key) {
 		// value node
@@ -165,15 +176,21 @@ func decodeShort(hash, elems []byte) (node, error) {
 		}
 		return &shortNode{key, valueNode(val), flag}, nil
 	}
+	s := &shortNode{Key: key, flags: flag}
 	r, _, err := decodeRef(rest)
 	if err != nil {
 		return nil, wrapError(err, "val")
 	}
-	return &shortNode{key, r, flag}, nil
+	s.Val = r
+
+	return s, nil
+	//return &shortNode{key, r, flag, [32]byte{}}, nil
 }
 
 func decodeFull(hash, elems []byte) (*fullNode, error) {
-	n := &fullNode{flags: nodeFlag{hash: hash}}
+	var hashVal hashNode
+	copy(hashVal[:], hash)
+	n := &fullNode{flags: nodeFlag{hash: hashVal}}
 	for i := 0; i < 16; i++ {
 		cld, rest, err := decodeRef(elems)
 		if err != nil {
@@ -212,7 +229,7 @@ func decodeRef(buf []byte) (node, []byte, error) {
 		// empty node
 		return nil, rest, nil
 	case kind == rlp.String && len(val) == 32:
-		return hashNode(val), rest, nil
+		return hashNode{}.Copy(val), rest, nil
 	default:
 		return nil, nil, fmt.Errorf("invalid RLP string size %d (want 0 or 32)", len(val))
 	}
