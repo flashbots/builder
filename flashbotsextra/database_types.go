@@ -38,8 +38,9 @@ type BuiltBlockBundle struct {
 }
 
 type DbBundle struct {
-	DbId       uint64 `db:"id"`
-	BundleHash string `db:"bundle_hash"`
+	DbId       uint64    `db:"id"`
+	BundleHash string    `db:"bundle_hash"`
+	BundleUUID uuid.UUID `db:"bundle_uuid"`
 
 	ParamSignedTxs         string    `db:"param_signed_txs"`
 	ParamBlockNumber       uint64    `db:"param_block_number"`
@@ -58,6 +59,7 @@ type DbLatestUuidBundle struct {
 	Uuid           uuid.UUID `db:"replacement_uuid"`
 	SigningAddress string    `db:"signing_address"`
 	BundleHash     string    `db:"bundle_hash"`
+	BundleUUID     uuid.UUID `db:"bundle_uuid"`
 }
 
 type blockAndBundleId struct {
@@ -93,8 +95,8 @@ func SimulatedBundleToDbBundle(bundle *types.SimulatedBundle) DbBundle {
 	}
 
 	return DbBundle{
-		BundleHash: bundle.OriginalBundle.Hash.String(),
-
+		BundleHash:             bundle.OriginalBundle.Hash.String(),
+		BundleUUID:             bundle.OriginalBundle.ComputeUUID(),
 		ParamSignedTxs:         strings.Join(signedTxsStrings, ","),
 		ParamBlockNumber:       bundle.OriginalBundle.BlockNumber.Uint64(),
 		ParamTimestamp:         &bundle.OriginalBundle.MinTimestamp,

@@ -56,6 +56,7 @@ const (
 	ALGO_GREEDY_BUCKETS
 	ALGO_GREEDY_MULTISNAP
 	ALGO_GREEDY_BUCKETS_MULTISNAP
+	ALGO_TOTAL_PROFIT
 )
 
 func (a AlgoType) String() string {
@@ -70,6 +71,8 @@ func (a AlgoType) String() string {
 		return "greedy-buckets"
 	case ALGO_GREEDY_BUCKETS_MULTISNAP:
 		return "greedy-buckets-multi-snap"
+	case ALGO_TOTAL_PROFIT:
+		return "total-profit"
 	default:
 		return "unsupported"
 	}
@@ -87,6 +90,8 @@ func AlgoTypeFlagToEnum(algoString string) (AlgoType, error) {
 		return ALGO_GREEDY_MULTISNAP, nil
 	case ALGO_GREEDY_BUCKETS_MULTISNAP.String():
 		return ALGO_GREEDY_BUCKETS_MULTISNAP, nil
+	case ALGO_TOTAL_PROFIT.String():
+		return ALGO_TOTAL_PROFIT, nil
 	default:
 		return ALGO_MEV_GETH, errors.New("algo not recognized")
 	}

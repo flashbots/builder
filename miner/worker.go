@@ -1312,7 +1312,7 @@ func (w *worker) fillTransactionsSelectAlgo(interrupt *int32, env *environment) 
 		err             error
 	)
 	switch w.flashbots.algoType {
-	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP:
+	case ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP, ALGO_TOTAL_PROFIT:
 		blockBundles, allBundles, usedSbundles, mempoolTxHashes, err = w.fillTransactionsAlgoWorker(interrupt, env)
 	case ALGO_MEV_GETH:
 		blockBundles, allBundles, mempoolTxHashes, err = w.fillTransactions(interrupt, env)
@@ -1460,6 +1460,20 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *int32, env *environment) 
 		}
 
 		builder := newGreedyMultiSnapBuilder(
+			w.chain, w.chainConfig, algoConf, w.blockList, env,
+			w.config.BuilderTxSigningKey, interrupt,
+		)
+		newEnv, blockBundles, usedSbundle = builder.buildBlock(bundlesToConsider, sbundlesToConsider, pending)
+	case ALGO_TOTAL_PROFIT:
+		// For total profit builder, set algorithm configuration to default values,
+		// except DropRevertibleTxOnErr which is passed in from worker config
+		algoConf := &algorithmConfig{
+			DropRevertibleTxOnErr:  w.config.DiscardRevertibleTxOnErr,
+			EnforceProfit:          defaultAlgorithmConfig.EnforceProfit,
+			ProfitThresholdPercent: defaultAlgorithmConfig.ProfitThresholdPercent,
+		}
+
+		builder := newGreedyProfitBuilder(
 			w.chain, w.chainConfig, algoConf, w.blockList, env,
 			w.config.BuilderTxSigningKey, interrupt,
 		)
@@ -1621,11 +1635,11 @@ func (w *worker) finalizeBlock(work *environment, withdrawals types.Withdrawals,
 	}
 
 	if w.config.BuilderTxSigningKey == nil {
-		return block, big.NewInt(0), nil
+		return block, common.Big0, nil
 	}
 
 	if noTxs {
-		return block, big.NewInt(0), nil
+		return block, common.Big0, nil
 	}
 
 	blockProfit, err := w.checkProposerPayment(work, validatorCoinbase)
@@ -1651,7 +1665,7 @@ func (w *worker) checkProposerPayment(work *environment, validatorCoinbase commo
 	}
 	lastTxTo := lastTx.To()
 	if lastTxTo == nil || *lastTxTo != validatorCoinbase {
-		log.Error("last transaction is not to the proposer!", "lastTx", lastTx)
+		log.Error("last transaction is not to the proposer!", "lastTx", lastTx, "foundTo", lastTxTo, "expectedTo", validatorCoinbase.String())
 		return nil, errors.New("last transaction is not proposer payment")
 	}
 
@@ -1729,11 +1743,14 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		if interval != nil {
 			interval()
 		}
+
+		w.snapshotMu.Lock()
 		// Create a local environment copy, avoid the data race with snapshot state.
 		// https://github.com/ethereum/go-ethereum/issues/24299
-		env := env.copy()
+		//env := env.copy()
 		// Withdrawals are set to nil here, because this is only called in PoW.
 		block, err := w.engine.FinalizeAndAssemble(w.chain, env.header, env.state, env.txs, env.unclelist(), env.receipts, nil)
+		w.snapshotMu.Unlock()
 		if err != nil {
 			return err
 		}
@@ -1754,9 +1771,9 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 			}
 		}
 	}
-	if update {
-		w.updateSnapshot(env)
-	}
+	//if update {
+	//	w.updateSnapshot(env)
+	//}
 	return nil
 }
 

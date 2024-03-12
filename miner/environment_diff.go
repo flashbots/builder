@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"github.com/consensys/gnark-crypto/field/pool"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -202,13 +203,19 @@ func (envDiff *environmentDiff) commitBundle(bundle *types.SimulatedBundle, chDa
 	var (
 		bundleProfit = coinbaseBalanceDelta
 		// EGP = Effective Gas Price (Profit / GasUsed)
-		simulatedEGP                    = new(big.Int).Set(bundle.MevGasPrice)
-		actualEGP                       *big.Int
+		simulatedEGP                    = pool.BigInt.Get().Set(bundle.MevGasPrice)
+		actualEGP                       = pool.BigInt.Get()
 		tolerablePriceDifferencePercent = 1
 
-		simulatedBundleProfit = new(big.Int).Set(bundle.TotalEth)
-		actualBundleProfit    = new(big.Int).Set(bundleProfit)
+		simulatedBundleProfit = pool.BigInt.Get().Set(bundle.TotalEth)
+		actualBundleProfit    = pool.BigInt.Get().Set(bundleProfit)
 	)
+	defer func() {
+		pool.BigInt.Put(simulatedEGP)
+		pool.BigInt.Put(actualEGP)
+		pool.BigInt.Put(simulatedBundleProfit)
+		pool.BigInt.Put(actualBundleProfit)
+	}()
 
 	if gasUsed == 0 {
 		return errors.New("bundle gas used is 0")

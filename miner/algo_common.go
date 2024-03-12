@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"github.com/consensys/gnark-crypto/field/pool"
 	"math/big"
 	"sync/atomic"
 
@@ -287,143 +288,112 @@ func commitPayoutTx(parameters PayoutTransactionParams) (*types.Receipt, error) 
 	return receipt, err
 }
 
-func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint64, isEOA bool, availableFunds *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
-	if isEOA {
-		diff := newEnvironmentDiff(env)
-		rec, err := applyPayoutTx(diff, sender, receiver, gas, availableFunds, prv, chData)
-		if err != nil {
-			return nil, err
+func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint64,
+	isEOA bool, availableFunds *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
+	var (
+		amount  = pool.BigInt.Get()
+		burned  = pool.BigInt.Get()
+		gasUsed = pool.BigInt.Get()
+	)
+	defer func() {
+		pool.BigInt.Put(amount)
+		pool.BigInt.Put(burned)
+		pool.BigInt.Put(gasUsed)
+	}()
+
+	var insertPayoutTxFunc = func(changes *envChanges, sender, receiver common.Address,
+		gas uint64, amountWithFees *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
+
+		amount = amount.Sub(amountWithFees, burned.Mul(env.header.BaseFee, gasUsed.SetUint64(gas)))
+		if amount.Sign() < 0 {
+			return nil, errors.New("not enough funds available")
 		}
-		diff.applyToBaseEnv()
+
+		rec, err := changes.commitPayoutTx(amount, sender, receiver, gas, prv, chData)
+		if err != nil {
+			return nil, errors.Join(fmt.Errorf("failed to commit payment tx: %w", err), changes.discard())
+		} else if rec.Status != types.ReceiptStatusSuccessful {
+			return nil, errors.Join(fmt.Errorf("payment tx failed"), changes.discard())
+		}
+
 		return rec, nil
 	}
 
-	var err error
-	for i := 0; i < 6; i++ {
-		diff := newEnvironmentDiff(env)
-		var rec *types.Receipt
-		rec, err = applyPayoutTx(diff, sender, receiver, gas, availableFunds, prv, chData)
+	if isEOA {
+		changes, err := newEnvChanges(env)
 		if err != nil {
+			return nil, err
+		}
+
+		rec, err := insertPayoutTxFunc(changes, sender, receiver, gas, availableFunds, prv, chData)
+		if err != nil {
+			return nil, err
+		}
+
+		return rec, changes.apply()
+	}
+
+	var (
+		err     error
+		changes *envChanges
+	)
+	initialHeader := types.CopyHeader(env.header)
+	for i := 0; i < 6; i++ {
+		diffHeader := types.CopyHeader(initialHeader)
+		env.header = diffHeader
+		changes, err = newEnvChanges(env)
+		if err != nil {
+			break
+		}
+
+		var rec *types.Receipt
+		rec, err = insertPayoutTxFunc(changes, sender, receiver, gas, availableFunds, prv, chData)
+		if err != nil {
+			log.Error("Failed to insert payout tx", "err", err, "attempt", i)
 			gas += 1000
 			continue
 		}
 
 		if gas == rec.GasUsed {
-			diff.applyToBaseEnv()
-			return rec, nil
+			return rec, changes.apply()
 		}
 
-		exactEnvDiff := newEnvironmentDiff(env)
-		exactRec, err := applyPayoutTx(exactEnvDiff, sender, receiver, rec.GasUsed, availableFunds, prv, chData)
-		if err != nil {
-			diff.applyToBaseEnv()
-			return rec, nil
+		if err := changes.discard(); err != nil {
+			log.Error("Failed to discard changes on insert payout tx", "err", err, "attempt", i)
+			return nil, err
 		}
-		exactEnvDiff.applyToBaseEnv()
-		return exactRec, nil
+
+		var exactEnvChanges *envChanges
+		exactHeader := types.CopyHeader(initialHeader)
+		env.header = exactHeader
+		exactEnvChanges, err = newEnvChanges(env)
+		if err != nil {
+			return nil, err
+		}
+
+		var exactRec *types.Receipt
+		exactRec, err = insertPayoutTxFunc(exactEnvChanges, sender, receiver, rec.GasUsed, availableFunds, prv, chData)
+		if err != nil {
+			log.Error("Failed to insert payout tx for exact receipt", "err", err, "attempt", i)
+			env.header = types.CopyHeader(initialHeader)
+			if changes, err = newEnvChanges(env); err != nil {
+				panic(err)
+			}
+			if rec, err = insertPayoutTxFunc(changes, sender, receiver, gas, availableFunds, prv, chData); err != nil {
+				panic(err)
+			}
+			return rec, changes.apply()
+		}
+
+		return exactRec, exactEnvChanges.apply()
 	}
 
 	if err == nil {
 		return nil, errors.New("could not estimate gas")
 	}
 
+	log.Error("Failed to insert payout tx", "err", err)
 	return nil, err
-}
-
-// BuildMultiTxSnapBlock attempts to build a block with input orders using state.MultiTxSnapshot. If a failure occurs attempting to commit a given order,
-// it reverts to previous state and the next order is attempted.
-func BuildMultiTxSnapBlock(
-	inputEnvironment *environment,
-	key *ecdsa.PrivateKey,
-	chData chainData,
-	algoConf algorithmConfig,
-	orders *types.TransactionsByPriceAndNonce) ([]types.SimulatedBundle, []types.UsedSBundle, error) {
-	// NOTE(wazzymandias): BuildMultiTxSnapBlock uses envChanges which is different from envDiff struct.
-	//   Eventually the structs should be consolidated but for now they represent the difference between using state
-	//   copies for building blocks (envDiff) versus using MultiTxSnapshot (envChanges).
-	var (
-		usedBundles      []types.SimulatedBundle
-		usedSbundles     []types.UsedSBundle
-		orderFailed      bool
-		buildBlockErrors []error
-	)
-
-	changes, err := newEnvChanges(inputEnvironment)
-	if err != nil {
-		return nil, nil, err
-	}
-	opMap := map[bool]func() error{
-		true:  changes.env.state.MultiTxSnapshotRevert,
-		false: changes.env.state.MultiTxSnapshotCommit,
-	}
-
-	for {
-		order := orders.Peek()
-		if order == nil {
-			break
-		}
-
-		orderFailed = false
-		// if snapshot cannot be instantiated, return early
-		if err = changes.env.state.NewMultiTxSnapshot(); err != nil {
-			log.Error("Failed to create snapshot", "err", err)
-			return nil, nil, err
-		}
-
-		if tx := order.Tx(); tx != nil {
-			_, skip, err := changes.commitTx(tx, chData)
-			switch skip {
-			case shiftTx:
-				orders.Shift()
-			case popTx:
-				orders.Pop()
-			}
-
-			if err != nil {
-				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to commit tx: %w", err))
-				orderFailed = true
-			}
-		} else if bundle := order.Bundle(); bundle != nil {
-			err = changes.commitBundle(bundle, chData, algoConf)
-			orders.Pop()
-			if err != nil {
-				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
-				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to commit bundle: %w", err))
-				orderFailed = true
-			} else {
-				usedBundles = append(usedBundles, *bundle)
-			}
-		} else if sbundle := order.SBundle(); sbundle != nil {
-			err = changes.CommitSBundle(sbundle, chData, key, algoConf)
-			usedEntry := types.UsedSBundle{
-				Bundle:  sbundle.Bundle,
-				Success: err == nil,
-			}
-			if err != nil {
-				log.Trace("Could not apply sbundle", "bundle", sbundle.Bundle.Hash(), "err", err)
-
-				buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to commit sbundle: %w", err))
-				orderFailed = true
-			}
-			usedSbundles = append(usedSbundles, usedEntry)
-		} else {
-			// note: this should never happen because we should not be inserting invalid transaction types into
-			// the orders heap
-			panic("unsupported order type found")
-		}
-
-		if err = opMap[orderFailed](); err != nil {
-			log.Error("Failed to apply changes with multi-transaction snapshot", "err", err)
-			buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to apply changes: %w", err))
-		}
-	}
-
-	if err = changes.apply(); err != nil {
-		log.Error("Failed to apply changes with multi-transaction snapshot", "err", err)
-		buildBlockErrors = append(buildBlockErrors, fmt.Errorf("failed to apply changes: %w", err))
-	}
-
-	return usedBundles, usedSbundles, errors.Join(buildBlockErrors...)
 }
 
 // CheckRetryOrderAndReinsert checks if the order has been retried up to the retryLimit and if not, reinserts the order into the orders heap.

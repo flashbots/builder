@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"github.com/consensys/gnark-crypto/field/pool"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -108,8 +109,11 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 
 func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainData, algoConf algorithmConfig) error {
 	var (
-		profitBefore   = new(big.Int).Set(c.profit)
-		coinbaseBefore = new(big.Int).Set(c.env.state.GetBalance(c.env.coinbase))
+		//profitBefore   = new(big.Int).Set(c.profit)
+		bundleProfit = pool.BigInt.Get()
+		profitBefore = pool.BigInt.Get().Set(c.profit)
+		//coinbaseBefore = new(big.Int).Set(c.env.state.GetBalance(c.env.coinbase))
+		coinbaseBefore = pool.BigInt.Get().Set(c.env.state.GetBalance(c.env.coinbase))
 		gasUsedBefore  = c.usedGas
 		gasPoolBefore  = new(core.GasPool).AddGas(c.gasPool.Gas())
 		txsBefore      = c.txs[:]
@@ -118,6 +122,11 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 
 		bundleErr error
 	)
+	defer func() {
+		pool.BigInt.Put(profitBefore)
+		pool.BigInt.Put(coinbaseBefore)
+		pool.BigInt.Put(bundleProfit)
+	}()
 
 	for _, tx := range bundle.OriginalBundle.Txs {
 		txHash := tx.Hash()
@@ -125,18 +134,7 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 		//   similar to mev-share bundles. See SBundlesPool.validateTx() for reference.
 		if hasBaseFee && tx.Type() == types.DynamicFeeTxType {
 			// Sanity check for extremely large numbers
-			if tx.GasFeeCap().BitLen() > 256 {
-				bundleErr = core.ErrFeeCapVeryHigh
-				break
-			}
-			if tx.GasTipCap().BitLen() > 256 {
-				bundleErr = core.ErrTipVeryHigh
-				break
-			}
-
-			// Ensure gasFeeCap is greater than or equal to gasTipCap.
-			if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
-				bundleErr = core.ErrTipAboveFeeCap
+			if bundleErr = tx.Validate(); bundleErr != nil {
 				break
 			}
 		}
@@ -147,15 +145,15 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 			isRevertibleTx := bundle.OriginalBundle.RevertingHash(txHash)
 			// if drop enabled, and revertible tx has error on commit, we skip the transaction and continue with next one
 			if algoConf.DropRevertibleTxOnErr && isRevertibleTx {
-				log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
-					"tx", txHash, "err", err)
+				//log.Trace("Found error on commit for revertible tx, but discard on err is enabled so skipping.",
+				//	"tx", txHash, "err", err)
 			} else {
 				bundleErr = err
 			}
 		case receipt != nil:
 			if receipt.Status == types.ReceiptStatusFailed && !bundle.OriginalBundle.RevertingHash(txHash) {
 				// if transaction reverted and isn't specified as reverting hash, return error
-				log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
+				//log.Trace("Bundle tx failed", "bundle", bundle.OriginalBundle.Hash, "tx", txHash, "err", err)
 				bundleErr = errors.New("bundle tx revert")
 			}
 		case receipt == nil && err == nil:
@@ -179,9 +177,9 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 		return ErrMevGasPriceNotSet
 	}
 
+	bundleProfit.Sub(c.env.state.GetBalance(c.env.coinbase), coinbaseBefore)
 	var (
-		bundleProfit = new(big.Int).Sub(c.env.state.GetBalance(c.env.coinbase), coinbaseBefore)
-		gasUsed      = c.usedGas - gasUsedBefore
+		gasUsed = c.usedGas - gasUsedBefore
 
 		// EGP = Effective Gas Price (Profit / GasUsed)
 		simulatedEGP                    = new(big.Int).Set(bundle.MevGasPrice)
@@ -245,7 +243,12 @@ func (c *envChanges) CommitSBundle(sbundle *types.SimSBundle, chData chainData, 
 		return errors.New("coinbase balance decreased")
 	}
 
-	gotEGP := new(big.Int).Div(coinbaseDelta, gasDelta)
+	var gotEGP *big.Int
+	if gasDelta.Cmp(common.Big0) == 0 {
+		gotEGP = new(big.Int).SetUint64(0)
+	} else {
+		gotEGP = new(big.Int).Div(coinbaseDelta, gasDelta)
+	}
 	simEGP := new(big.Int).Set(sbundle.MevGasPrice)
 
 	// allow > 1% difference
