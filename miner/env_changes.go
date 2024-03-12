@@ -4,12 +4,12 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
-	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/holiman/uint256"
 )
 
 // envChanges is a helper struct to apply and discard changes to the environment
@@ -17,7 +17,7 @@ type envChanges struct {
 	env      *environment
 	gasPool  *core.GasPool
 	usedGas  uint64
-	profit   *big.Int
+	profit   *uint256.Int
 	txs      []*types.Transaction
 	receipts []*types.Receipt
 }
@@ -31,24 +31,25 @@ func newEnvChanges(env *environment) (*envChanges, error) {
 		env:      env,
 		gasPool:  new(core.GasPool).AddGas(env.gasPool.Gas()),
 		usedGas:  env.header.GasUsed,
-		profit:   new(big.Int).Set(env.profit),
+		profit:   new(uint256.Int).Set(env.profit),
 		txs:      make([]*types.Transaction, 0),
 		receipts: make([]*types.Receipt, 0),
 	}, nil
 }
 
 func (c *envChanges) commitPayoutTx(
-	amount *big.Int, sender, receiver common.Address,
-	gas uint64, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
+	amount *uint256.Int, sender, receiver common.Address,
+	gas uint64, prv *ecdsa.PrivateKey, chData chainData,
+) (*types.Receipt, error) {
 	return commitPayoutTx(PayoutTransactionParams{
-		Amount:        amount,
+		Amount:        amount.ToBig(),
 		BaseFee:       c.env.header.BaseFee,
 		ChainData:     chData,
 		Gas:           gas,
 		CommitFn:      c.commitTx,
 		Receiver:      receiver,
 		Sender:        sender,
-		SenderBalance: c.env.state.GetBalance(sender),
+		SenderBalance: c.env.state.GetBalance(sender).ToBig(),
 		SenderNonce:   c.env.state.GetNonce(sender),
 		Signer:        c.env.signer,
 		PrivateKey:    prv,
@@ -99,7 +100,7 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 		}
 	}
 
-	c.profit = c.profit.Add(c.profit, new(big.Int).Mul(new(big.Int).SetUint64(receipt.GasUsed), gasPrice))
+	c.profit = c.profit.Add(c.profit, new(uint256.Int).Mul(new(uint256.Int).SetUint64(receipt.GasUsed), uint256.MustFromBig(gasPrice)))
 	c.txs = append(c.txs, tx)
 	c.receipts = append(c.receipts, receipt)
 
@@ -108,8 +109,8 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 
 func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainData, algoConf algorithmConfig) error {
 	var (
-		profitBefore   = new(big.Int).Set(c.profit)
-		coinbaseBefore = new(big.Int).Set(c.env.state.GetBalance(c.env.coinbase))
+		profitBefore   = new(uint256.Int).Set(c.profit)
+		coinbaseBefore = new(uint256.Int).Set(c.env.state.GetBalance(c.env.coinbase))
 		gasUsedBefore  = c.usedGas
 		gasPoolBefore  = new(core.GasPool).AddGas(c.gasPool.Gas())
 		txsBefore      = c.txs[:]
@@ -180,23 +181,23 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 	}
 
 	var (
-		bundleProfit = new(big.Int).Sub(c.env.state.GetBalance(c.env.coinbase), coinbaseBefore)
+		bundleProfit = new(uint256.Int).Sub(c.env.state.GetBalance(c.env.coinbase), coinbaseBefore)
 		gasUsed      = c.usedGas - gasUsedBefore
 
 		// EGP = Effective Gas Price (Profit / GasUsed)
-		simulatedEGP                    = new(big.Int).Set(bundle.MevGasPrice)
-		actualEGP                       *big.Int
+		simulatedEGP                    = new(uint256.Int).Set(bundle.MevGasPrice)
+		actualEGP                       *uint256.Int
 		tolerablePriceDifferencePercent = 1
 
-		simulatedBundleProfit = new(big.Int).Set(bundle.TotalEth)
-		actualBundleProfit    = new(big.Int).Set(bundleProfit)
+		simulatedBundleProfit = new(uint256.Int).Set(bundle.TotalEth)
+		actualBundleProfit    = new(uint256.Int).Set(bundleProfit)
 	)
 
 	if gasUsed == 0 {
 		c.rollback(gasUsedBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
 		return errors.New("bundle gas used is 0")
 	} else {
-		actualEGP = new(big.Int).Div(bundleProfit, big.NewInt(int64(gasUsed)))
+		actualEGP = new(uint256.Int).Div(bundleProfit, uint256.NewInt(gasUsed))
 	}
 
 	err := ValidateGasPriceAndProfit(algoConf,
@@ -220,12 +221,12 @@ func (c *envChanges) CommitSBundle(sbundle *types.SimSBundle, chData chainData, 
 	}
 
 	var (
-		coinbaseBefore = new(big.Int).Set(c.env.state.GetBalance(c.env.coinbase))
+		coinbaseBefore = new(uint256.Int).Set(c.env.state.GetBalance(c.env.coinbase))
 		gasPoolBefore  = new(core.GasPool).AddGas(c.gasPool.Gas())
 		gasBefore      = c.usedGas
 		txsBefore      = c.txs[:]
 		receiptsBefore = c.receipts[:]
-		profitBefore   = new(big.Int).Set(c.profit)
+		profitBefore   = new(uint256.Int).Set(c.profit)
 	)
 
 	if err := c.commitSBundle(sbundle.Bundle, chData, key, algoConf); err != nil {
@@ -237,20 +238,20 @@ func (c *envChanges) CommitSBundle(sbundle *types.SimSBundle, chData chainData, 
 		coinbaseAfter = c.env.state.GetBalance(c.env.header.Coinbase)
 		gasAfter      = c.usedGas
 
-		coinbaseDelta = new(big.Int).Sub(coinbaseAfter, coinbaseBefore)
-		gasDelta      = new(big.Int).SetUint64(gasAfter - gasBefore)
+		coinbaseDelta = new(uint256.Int).Sub(coinbaseAfter, coinbaseBefore)
+		gasDelta      = new(uint256.Int).SetUint64(gasAfter - gasBefore)
 	)
-	if coinbaseDelta.Cmp(common.Big0) < 0 {
+	if coinbaseDelta.Cmp(common.U2560) < 0 {
 		c.rollback(gasBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
 		return errors.New("coinbase balance decreased")
 	}
 
-	gotEGP := new(big.Int).Div(coinbaseDelta, gasDelta)
-	simEGP := new(big.Int).Set(sbundle.MevGasPrice)
+	gotEGP := new(uint256.Int).Div(coinbaseDelta, gasDelta)
+	simEGP := new(uint256.Int).Set(sbundle.MevGasPrice)
 
 	// allow > 1% difference
-	actualEGP := new(big.Int).Mul(gotEGP, common.Big100)
-	simulatedEGP := new(big.Int).Mul(simEGP, big.NewInt(99))
+	actualEGP := new(uint256.Int).Mul(gotEGP, common.U256100)
+	simulatedEGP := new(uint256.Int).Mul(simEGP, uint256.NewInt(99))
 
 	if simulatedEGP.Cmp(actualEGP) > 0 {
 		c.rollback(gasBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
@@ -262,13 +263,13 @@ func (c *envChanges) CommitSBundle(sbundle *types.SimSBundle, chData chainData, 
 
 	if algoConf.EnforceProfit {
 		// if profit is enforced between simulation and actual commit, only allow >-1% divergence
-		simulatedProfit := new(big.Int).Set(sbundle.Profit)
-		actualProfit := new(big.Int).Set(coinbaseDelta)
+		simulatedProfit := new(uint256.Int).Set(sbundle.Profit)
+		actualProfit := new(uint256.Int).Set(coinbaseDelta)
 
 		// We want to make simulated profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
 		simulatedProfitMultiple := common.PercentOf(simulatedProfit, algoConf.ProfitThresholdPercent)
-		actualProfitMultiple := new(big.Int).Mul(actualProfit, common.Big100)
+		actualProfitMultiple := new(uint256.Int).Mul(actualProfit, common.U256100)
 
 		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
 			log.Trace("Lower sbundle profit found after inclusion", "sbundle", sbundle.Bundle.Hash())
@@ -304,16 +305,16 @@ func (c *envChanges) commitSBundle(sbundle *types.SBundle, chData chainData, key
 	}
 
 	var (
-		totalProfit      *big.Int = new(big.Int)
-		refundableProfit *big.Int = new(big.Int)
+		totalProfit      *uint256.Int = new(uint256.Int)
+		refundableProfit *uint256.Int = new(uint256.Int)
 
-		coinbaseDelta  = new(big.Int)
-		coinbaseBefore *big.Int
+		coinbaseDelta  = new(uint256.Int)
+		coinbaseBefore *uint256.Int
 	)
 
 	// insert body and check it
 	for i, el := range sbundle.Body {
-		coinbaseDelta.Set(common.Big0)
+		coinbaseDelta.Set(common.U2560)
 		coinbaseBefore = c.env.state.GetBalance(c.env.coinbase)
 
 		if el.Tx != nil {
@@ -350,7 +351,7 @@ func (c *envChanges) commitSBundle(sbundle *types.SBundle, chData chainData, key
 	}
 
 	// enforce constraints
-	coinbaseDelta.Set(common.Big0)
+	coinbaseDelta.Set(common.U2560)
 	coinbaseBefore = c.env.state.GetBalance(c.env.header.Coinbase)
 	for i, el := range refundPercents {
 		if !refundIdx[i] {
@@ -361,14 +362,14 @@ func (c *envChanges) commitSBundle(sbundle *types.SBundle, chData chainData, key
 			return err
 		}
 
-		maxPayoutCost := new(big.Int).Set(core.SbundlePayoutMaxCost)
-		maxPayoutCost.Mul(maxPayoutCost, big.NewInt(int64(len(refundConfig))))
-		maxPayoutCost.Mul(maxPayoutCost, c.env.header.BaseFee)
+		maxPayoutCost := new(uint256.Int).Set(core.SbundlePayoutMaxCost)
+		maxPayoutCost.Mul(maxPayoutCost, uint256.NewInt(uint64(len(refundConfig))))
+		maxPayoutCost.Mul(maxPayoutCost, uint256.MustFromBig(c.env.header.BaseFee))
 
 		allocatedValue := common.PercentOf(refundableProfit, el)
 		allocatedValue.Sub(allocatedValue, maxPayoutCost)
 
-		if allocatedValue.Cmp(common.Big0) < 0 {
+		if allocatedValue.Cmp(common.U2560) < 0 {
 			return fmt.Errorf("negative payout")
 		}
 
@@ -389,7 +390,7 @@ func (c *envChanges) commitSBundle(sbundle *types.SBundle, chData chainData, key
 	coinbaseDelta.Sub(coinbaseDelta, coinbaseBefore)
 	totalProfit.Add(totalProfit, coinbaseDelta)
 
-	if totalProfit.Cmp(common.Big0) < 0 {
+	if totalProfit.Cmp(common.U2560) < 0 {
 		return fmt.Errorf("negative profit")
 	}
 	return nil
@@ -403,8 +404,9 @@ func (c *envChanges) discard() error {
 // rollback reverts all changes to the environment - whereas apply and discard update the state, rollback only updates the environment
 // the intended use is to call rollback after a commit operation has failed
 func (c *envChanges) rollback(
-	gasUsedBefore uint64, gasPoolBefore *core.GasPool, profitBefore *big.Int,
-	txsBefore []*types.Transaction, receiptsBefore []*types.Receipt) {
+	gasUsedBefore uint64, gasPoolBefore *core.GasPool, profitBefore *uint256.Int,
+	txsBefore []*types.Transaction, receiptsBefore []*types.Receipt,
+) {
 	c.usedGas = gasUsedBefore
 	c.gasPool = gasPoolBefore
 	c.txs = txsBefore

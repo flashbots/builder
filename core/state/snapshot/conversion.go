@@ -17,7 +17,6 @@
 package snapshot
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -301,7 +300,7 @@ func generateTrieRoot(db ethdb.KeyValueWriter, scheme string, it Iterator, accou
 				fullData []byte
 			)
 			if leafCallback == nil {
-				fullData, err = FullAccountRLP(it.(AccountIterator).Account())
+				fullData, err = types.FullAccountRLP(it.(AccountIterator).Account())
 				if err != nil {
 					return stop(err)
 				}
@@ -313,7 +312,7 @@ func generateTrieRoot(db ethdb.KeyValueWriter, scheme string, it Iterator, accou
 					return stop(err)
 				}
 				// Fetch the next account and process it concurrently
-				account, err := FullAccount(it.(AccountIterator).Account())
+				account, err := types.FullAccount(it.(AccountIterator).Account())
 				if err != nil {
 					return stop(err)
 				}
@@ -323,7 +322,7 @@ func generateTrieRoot(db ethdb.KeyValueWriter, scheme string, it Iterator, accou
 						results <- err
 						return
 					}
-					if !bytes.Equal(account.Root, subroot.Bytes()) {
+					if account.Root != subroot {
 						results <- fmt.Errorf("invalid subroot(path %x), want %x, have %x", hash, account.Root, subroot)
 						return
 					}
@@ -363,21 +362,15 @@ func generateTrieRoot(db ethdb.KeyValueWriter, scheme string, it Iterator, accou
 }
 
 func stackTrieGenerate(db ethdb.KeyValueWriter, scheme string, owner common.Hash, in chan trieKV, out chan common.Hash) {
-	var nodeWriter trie.NodeWriteFunc
+	options := trie.NewStackTrieOptions()
 	if db != nil {
-		nodeWriter = func(owner common.Hash, path []byte, hash common.Hash, blob []byte) {
+		options = options.WithWriter(func(path []byte, hash common.Hash, blob []byte) {
 			rawdb.WriteTrieNode(db, owner, path, hash, blob, scheme)
-		}
+		})
 	}
-	t := trie.NewStackTrieWithOwner(nodeWriter, owner)
+	t := trie.NewStackTrie(options)
 	for leaf := range in {
-		t.TryUpdate(leaf.key[:], leaf.value)
+		t.Update(leaf.key[:], leaf.value)
 	}
-	var root common.Hash
-	if db == nil {
-		root = t.Hash()
-	} else {
-		root, _ = t.Commit()
-	}
-	out <- root
+	out <- t.Commit()
 }

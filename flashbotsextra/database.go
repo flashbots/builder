@@ -6,6 +6,7 @@ import (
 	"time"
 
 	apiv1 "github.com/attestantio/go-builder-client/api/v1"
+	builderApiV1 "github.com/attestantio/go-builder-client/api/v1"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/jmoiron/sqlx"
@@ -18,7 +19,7 @@ const (
 )
 
 type BlockConsumer interface {
-	ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, OrdersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, bidTrace *apiv1.BidTrace) error
+	ConsumeBuiltBlock(block *types.Block, blockValue *big.Int, OrdersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, bidTrace *builderApiV1.BidTrace) error
 }
 type IDatabaseService interface {
 	GetPriorityBundles(ctx context.Context, blockNum int64, isHighPrio bool) ([]DbBundle, error)
@@ -76,7 +77,7 @@ func NewDatabaseService(postgresDSN string) (*DatabaseService, error) {
 	}, nil
 }
 
-func Min(l int, r int) int {
+func Min(l, r int) int {
 	if l < r {
 		return l
 	}

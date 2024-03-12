@@ -17,12 +17,12 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/consensus"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/core/utils"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
 )
@@ -68,20 +68,48 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 	if hash := types.DeriveSha(block.Transactions(), trie.NewStackTrie(nil)); hash != header.TxHash {
 		return fmt.Errorf("transaction root hash mismatch (header value %x, calculated %x)", header.TxHash, hash)
 	}
+
 	// Withdrawals are present after the Shanghai fork.
 	if header.WithdrawalsHash != nil {
 		// Withdrawals list must be present in body after Shanghai.
 		if block.Withdrawals() == nil {
-			return fmt.Errorf("missing withdrawals in block body")
+			return errors.New("missing withdrawals in block body")
 		}
 		if hash := types.DeriveSha(block.Withdrawals(), trie.NewStackTrie(nil)); hash != *header.WithdrawalsHash {
 			return fmt.Errorf("withdrawals root hash mismatch (header value %x, calculated %x)", *header.WithdrawalsHash, hash)
 		}
 	} else if block.Withdrawals() != nil {
-		// Withdrawals are not allowed prior to shanghai fork
-		return fmt.Errorf("withdrawals present in block body")
+		// Withdrawals are not allowed prior to Shanghai fork
+		return errors.New("withdrawals present in block body")
 	}
 
+	// Blob transactions may be present after the Cancun fork.
+	var blobs int
+	for i, tx := range block.Transactions() {
+		// Count the number of blobs to validate against the header's blobGasUsed
+		blobs += len(tx.BlobHashes())
+
+		// If the tx is a blob tx, it must NOT have a sidecar attached to be valid in a block.
+		if tx.BlobTxSidecar() != nil {
+			return fmt.Errorf("unexpected blob sidecar in transaction at index %d", i)
+		}
+
+		// The individual checks for blob validity (version-check + not empty)
+		// happens in StateTransition.
+	}
+
+	// Check blob gas usage.
+	if header.BlobGasUsed != nil {
+		if want := *header.BlobGasUsed / params.BlobTxBlobGasPerBlob; uint64(blobs) != want { // div because the header is surely good vs the body might be bloated
+			return fmt.Errorf("blob gas used mismatch (header %v, calculated %v)", *header.BlobGasUsed, blobs*params.BlobTxBlobGasPerBlob)
+		}
+	} else {
+		if blobs > 0 {
+			return errors.New("data blobs present in block body")
+		}
+	}
+
+	// Ancestor block must be known.
 	if !v.bc.HasBlockAndState(block.ParentHash(), block.NumberU64()-1) {
 		if !v.bc.HasBlock(block.ParentHash(), block.NumberU64()-1) {
 			return consensus.ErrUnknownAncestor
@@ -117,6 +145,28 @@ func (v *BlockValidator) ValidateState(block *types.Block, statedb *state.StateD
 	return nil
 }
 
+// CalcGasLimit computes the gas limit of the next block after parent. It aims
+// to keep the baseline gas close to the provided target, and increase it towards
+// the target if the baseline gas is lower.
 func CalcGasLimit(parentGasLimit, desiredLimit uint64) uint64 {
-	return utils.CalcGasLimit(parentGasLimit, desiredLimit)
+	delta := parentGasLimit/params.GasLimitBoundDivisor - 1
+	limit := parentGasLimit
+	if desiredLimit < params.MinGasLimit {
+		desiredLimit = params.MinGasLimit
+	}
+	// If we're outside our allowed gas range, we try to hone towards them
+	if limit < desiredLimit {
+		limit = parentGasLimit + delta
+		if limit > desiredLimit {
+			limit = desiredLimit
+		}
+		return limit
+	}
+	if limit > desiredLimit {
+		limit = parentGasLimit - delta
+		if limit < desiredLimit {
+			limit = desiredLimit
+		}
+	}
+	return limit
 }

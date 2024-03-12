@@ -47,5 +47,8 @@ profile.cov
 /dashboard/assets/package-lock.json
 
 **/yarn-error.log
+logs/
 /ofac_blacklist.json
 /blacklist.json
+
+tests/spec-tests/

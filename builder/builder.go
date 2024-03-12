@@ -9,16 +9,20 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethereum/go-ethereum/core"
-
-	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
-	capellaapi "github.com/attestantio/go-builder-client/api/capella"
-	apiv1 "github.com/attestantio/go-builder-client/api/v1"
+	builderApi "github.com/attestantio/go-builder-client/api"
+	builderApiBellatrix "github.com/attestantio/go-builder-client/api/bellatrix"
+	builderApiCapella "github.com/attestantio/go-builder-client/api/capella"
+	builderApiDeneb "github.com/attestantio/go-builder-client/api/deneb"
+	builderApiV1 "github.com/attestantio/go-builder-client/api/v1"
+	builderSpec "github.com/attestantio/go-builder-client/spec"
+	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/capella"
+	"github.com/attestantio/go-eth2-client/spec/deneb"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/ethereum/go-ethereum/beacon/engine"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	blockvalidation "github.com/ethereum/go-ethereum/eth/block-validation"
 	"github.com/ethereum/go-ethereum/flashbotsextra"
@@ -50,8 +54,7 @@ type ValidatorData struct {
 }
 
 type IRelay interface {
-	SubmitBlock(msg *bellatrixapi.SubmitBlockRequest, vd ValidatorData) error
-	SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, vd ValidatorData) error
+	SubmitBlock(msg *builderSpec.VersionedSubmitBlockRequest, vd ValidatorData) error
 	GetValidatorForSlot(nextSlot uint64) (ValidatorData, error)
 	Config() RelayConfig
 	Start() error
@@ -107,6 +110,32 @@ type BuilderArgs struct {
 	submissionOffsetFromEndOfSlot time.Duration
 
 	limiter *rate.Limiter
+}
+
+// SubmitBlockOpts is a struct that contains all the arguments needed to submit a block to the relay
+type SubmitBlockOpts struct {
+	// Block is the block to submit
+	Block *types.Block
+	// BlockValue is the block value
+	BlockValue *big.Int
+	// BlobSidecars are the blob sidecars
+	BlobSidecars []*types.BlobTxSidecar
+	// OrdersClosedAt is the time at which orders were closed
+	OrdersClosedAt time.Time
+	// SealedAt is the time at which the block was sealed
+	SealedAt time.Time
+	// CommitedBundles are the bundles that were committed
+	CommitedBundles []types.SimulatedBundle
+	// AllBundles are all the bundles that were simulated
+	AllBundles []types.SimulatedBundle
+	// UsedSbundles are the share bundles that were used
+	UsedSbundles []types.UsedSBundle
+	// ProposerPubkey is the proposer's pubkey
+	ProposerPubkey phase0.BLSPubKey
+	// ValidatorData is the information about the validator
+	ValidatorData ValidatorData
+	// PayloadAttributes are the payload attributes used for block building
+	PayloadAttributes *types.BuilderPayloadAttributes
 }
 
 func NewBuilder(args BuilderArgs) (*Builder, error) {
@@ -207,143 +236,120 @@ func (b *Builder) Stop() error {
 	return nil
 }
 
-func (b *Builder) onSealedBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
-	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
-	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
-	if b.eth.Config().IsShanghai(block.Time()) {
-		if err := b.submitCapellaBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, proposerPubkey, vd, attrs); err != nil {
-			return err
-		}
+func (b *Builder) onSealedBlock(opts SubmitBlockOpts) error {
+	executableData := engine.BlockToExecutableData(opts.Block, opts.BlockValue, opts.BlobSidecars)
+	var dataVersion spec.DataVersion
+	if b.eth.Config().IsCancun(opts.Block.Number(), opts.Block.Time()) {
+		dataVersion = spec.DataVersionDeneb
+	} else if b.eth.Config().IsShanghai(opts.Block.Number(), opts.Block.Time()) {
+		dataVersion = spec.DataVersionCapella
 	} else {
-		if err := b.submitBellatrixBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, proposerPubkey, vd, attrs); err != nil {
-			return err
-		}
+		dataVersion = spec.DataVersionBellatrix
 	}
 
-	log.Info("submitted block", "slot", attrs.Slot, "value", blockValue.String(), "parent", block.ParentHash,
-		"hash", block.Hash(), "#commitedBundles", len(commitedBundles))
-
-	return nil
-}
-
-func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
-	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
-	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
-	executableData := engine.BlockToExecutableData(block, blockValue)
-	payload, err := executableDataToExecutionPayload(executableData.ExecutionPayload)
-	if err != nil {
-		log.Error("could not format execution payload", "err", err)
-		return err
-	}
-
-	value, overflow := uint256.FromBig(blockValue)
+	value, overflow := uint256.FromBig(opts.BlockValue)
 	if overflow {
-		log.Error("could not set block value due to value overflow")
+		err := fmt.Errorf("could not set block value due to value overflow")
+		log.Error(err.Error())
 		return err
 	}
 
-	blockBidMsg := apiv1.BidTrace{
-		Slot:                 attrs.Slot,
-		ParentHash:           payload.ParentHash,
-		BlockHash:            payload.BlockHash,
+	blockBidMsg := builderApiV1.BidTrace{
+		Slot:                 opts.PayloadAttributes.Slot,
+		ParentHash:           phase0.Hash32(opts.Block.ParentHash()),
+		BlockHash:            phase0.Hash32(opts.Block.Hash()),
 		BuilderPubkey:        b.builderPublicKey,
-		ProposerPubkey:       proposerPubkey,
-		ProposerFeeRecipient: vd.FeeRecipient,
+		ProposerPubkey:       opts.ProposerPubkey,
+		ProposerFeeRecipient: opts.ValidatorData.FeeRecipient,
 		GasLimit:             executableData.ExecutionPayload.GasLimit,
 		GasUsed:              executableData.ExecutionPayload.GasUsed,
 		Value:                value,
 	}
 
-	signature, err := ssz.SignMessage(&blockBidMsg, b.builderSigningDomain, b.builderSecretKey)
+	versionedBlockRequest, err := b.getBlockRequest(executableData, dataVersion, &blockBidMsg)
 	if err != nil {
-		log.Error("could not sign builder bid", "err", err)
+		log.Error("could not get block request", "err", err)
 		return err
 	}
 
-	blockSubmitReq := bellatrixapi.SubmitBlockRequest{
-		Signature:        signature,
-		Message:          &blockBidMsg,
-		ExecutionPayload: payload,
-	}
-
 	if b.dryRun {
-		err = b.validator.ValidateBuilderSubmissionV1(&blockvalidation.BuilderBlockValidationRequest{SubmitBlockRequest: blockSubmitReq, RegisteredGasLimit: vd.GasLimit})
+		switch dataVersion {
+		case spec.DataVersionBellatrix:
+			err = b.validator.ValidateBuilderSubmissionV1(&blockvalidation.BuilderBlockValidationRequest{SubmitBlockRequest: *versionedBlockRequest.Bellatrix, RegisteredGasLimit: opts.ValidatorData.GasLimit})
+		case spec.DataVersionCapella:
+			err = b.validator.ValidateBuilderSubmissionV2(&blockvalidation.BuilderBlockValidationRequestV2{SubmitBlockRequest: *versionedBlockRequest.Capella, RegisteredGasLimit: opts.ValidatorData.GasLimit})
+		case spec.DataVersionDeneb:
+			err = b.validator.ValidateBuilderSubmissionV3(&blockvalidation.BuilderBlockValidationRequestV3{SubmitBlockRequest: *versionedBlockRequest.Deneb, RegisteredGasLimit: opts.ValidatorData.GasLimit, ParentBeaconBlockRoot: *opts.Block.BeaconRoot()})
+		}
 		if err != nil {
-			log.Error("could not validate bellatrix block", "err", err)
+			log.Error("could not validate block", "version", dataVersion.String(), "err", err)
 		}
 	} else {
-		go b.processBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
-		err = b.relay.SubmitBlock(&blockSubmitReq, vd)
+		go b.processBuiltBlock(opts.Block, opts.BlockValue, opts.OrdersClosedAt, opts.SealedAt, opts.CommitedBundles, opts.AllBundles, opts.UsedSbundles, &blockBidMsg)
+		err = b.relay.SubmitBlock(versionedBlockRequest, opts.ValidatorData)
 		if err != nil {
-			log.Error("could not submit bellatrix block", "err", err, "#commitedBundles", len(commitedBundles))
+			log.Error("could not submit block", "err", err, "verion", dataVersion, "#commitedBundles", len(opts.CommitedBundles))
 			return err
 		}
 	}
 
-	log.Info("submitted bellatrix block", "slot", blockBidMsg.Slot, "value", blockBidMsg.Value.String(), "parent", blockBidMsg.ParentHash, "hash", block.Hash(), "#commitedBundles", len(commitedBundles))
+	log.Info("submitted block", "version", dataVersion.String(), "slot", opts.PayloadAttributes.Slot, "value", opts.BlockValue.String(), "parent", opts.Block.ParentHash().String(),
+		"hash", opts.Block.Hash(), "#commitedBundles", len(opts.CommitedBundles))
 
 	return nil
 }
 
-func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, ordersClosedAt, sealedAt time.Time,
-	commitedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
-	proposerPubkey phase0.BLSPubKey, vd ValidatorData, attrs *types.BuilderPayloadAttributes) error {
-	executableData := engine.BlockToExecutableData(block, blockValue)
-	payload, err := executableDataToCapellaExecutionPayload(executableData.ExecutionPayload)
+func (b *Builder) getBlockRequest(executableData *engine.ExecutionPayloadEnvelope, dataVersion spec.DataVersion, blockBidMsg *builderApiV1.BidTrace) (*builderSpec.VersionedSubmitBlockRequest, error) {
+	payload, err := executableDataToExecutionPayload(executableData, dataVersion)
 	if err != nil {
 		log.Error("could not format execution payload", "err", err)
-		return err
+		return nil, err
 	}
 
-	value, overflow := uint256.FromBig(blockValue)
-	if overflow {
-		log.Error("could not set block value due to value overflow")
-		return err
-	}
-
-	blockBidMsg := apiv1.BidTrace{
-		Slot:                 attrs.Slot,
-		ParentHash:           payload.ParentHash,
-		BlockHash:            payload.BlockHash,
-		BuilderPubkey:        b.builderPublicKey,
-		ProposerPubkey:       proposerPubkey,
-		ProposerFeeRecipient: vd.FeeRecipient,
-		GasLimit:             executableData.ExecutionPayload.GasLimit,
-		GasUsed:              executableData.ExecutionPayload.GasUsed,
-		Value:                value,
-	}
-
-	signature, err := ssz.SignMessage(&blockBidMsg, b.builderSigningDomain, b.builderSecretKey)
+	signature, err := ssz.SignMessage(blockBidMsg, b.builderSigningDomain, b.builderSecretKey)
 	if err != nil {
 		log.Error("could not sign builder bid", "err", err)
-		return err
+		return nil, err
 	}
 
-	blockSubmitReq := capellaapi.SubmitBlockRequest{
-		Signature:        signature,
-		Message:          &blockBidMsg,
-		ExecutionPayload: payload,
-	}
-
-	if b.dryRun {
-		err = b.validator.ValidateBuilderSubmissionV2(&blockvalidation.BuilderBlockValidationRequestV2{SubmitBlockRequest: blockSubmitReq, RegisteredGasLimit: vd.GasLimit})
-		if err != nil {
-			log.Error("could not validate block for capella", "err", err)
+	var versionedBlockRequest builderSpec.VersionedSubmitBlockRequest
+	switch dataVersion {
+	case spec.DataVersionBellatrix:
+		blockSubmitReq := builderApiBellatrix.SubmitBlockRequest{
+			Signature:        signature,
+			Message:          blockBidMsg,
+			ExecutionPayload: payload.Bellatrix,
 		}
-	} else {
-		go b.processBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
-		err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
-		if err != nil {
-			log.Error("could not submit capella block", "err", err, "#commitedBundles", len(commitedBundles))
-			return err
+		versionedBlockRequest = builderSpec.VersionedSubmitBlockRequest{
+			Version:   spec.DataVersionBellatrix,
+			Bellatrix: &blockSubmitReq,
+		}
+	case spec.DataVersionCapella:
+		blockSubmitReq := builderApiCapella.SubmitBlockRequest{
+			Signature:        signature,
+			Message:          blockBidMsg,
+			ExecutionPayload: payload.Capella,
+		}
+		versionedBlockRequest = builderSpec.VersionedSubmitBlockRequest{
+			Version: spec.DataVersionCapella,
+			Capella: &blockSubmitReq,
+		}
+	case spec.DataVersionDeneb:
+		blockSubmitReq := builderApiDeneb.SubmitBlockRequest{
+			Signature:        signature,
+			Message:          blockBidMsg,
+			ExecutionPayload: payload.Deneb.ExecutionPayload,
+			BlobsBundle:      payload.Deneb.BlobsBundle,
+		}
+		versionedBlockRequest = builderSpec.VersionedSubmitBlockRequest{
+			Version: spec.DataVersionDeneb,
+			Deneb:   &blockSubmitReq,
 		}
 	}
-
-	log.Info("submitted capella block", "slot", blockBidMsg.Slot, "value", blockBidMsg.Value.String(), "parent", blockBidMsg.ParentHash, "hash", block.Hash(), "#commitedBundles", len(commitedBundles))
-	return nil
+	return &versionedBlockRequest, err
 }
 
-func (b *Builder) processBuiltBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, bidTrace *apiv1.BidTrace) {
+func (b *Builder) processBuiltBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, bidTrace *builderApiV1.BidTrace) {
 	back := backoff.NewExponentialBackOff()
 	back.MaxInterval = 3 * time.Second
 	back.MaxElapsedTime = 12 * time.Second
@@ -356,6 +362,7 @@ func (b *Builder) processBuiltBlock(block *types.Block, blockValue *big.Int, ord
 		log.Info("successfully relayed block data to consumer")
 	}
 }
+
 func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) error {
 	if attrs == nil {
 		return nil
@@ -407,6 +414,7 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 type blockQueueEntry struct {
 	block           *types.Block
 	blockValue      *big.Int
+	blobSidecars    []*types.BlobTxSidecar
 	ordersCloseTime time.Time
 	sealedAt        time.Time
 	commitedBundles []types.SimulatedBundle
@@ -438,8 +446,20 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 	submitBestBlock := func() {
 		queueMu.Lock()
 		if queueBestEntry.block.Hash() != queueLastSubmittedHash {
-			err := b.onSealedBlock(queueBestEntry.block, queueBestEntry.blockValue, queueBestEntry.ordersCloseTime, queueBestEntry.sealedAt,
-				queueBestEntry.commitedBundles, queueBestEntry.allBundles, queueBestEntry.usedSbundles, proposerPubkey, vd, attrs)
+			submitBlockOpts := SubmitBlockOpts{
+				Block:             queueBestEntry.block,
+				BlockValue:        queueBestEntry.blockValue,
+				BlobSidecars:      queueBestEntry.blobSidecars,
+				OrdersClosedAt:    queueBestEntry.ordersCloseTime,
+				SealedAt:          queueBestEntry.sealedAt,
+				CommitedBundles:   queueBestEntry.commitedBundles,
+				AllBundles:        queueBestEntry.allBundles,
+				UsedSbundles:      queueBestEntry.usedSbundles,
+				ProposerPubkey:    proposerPubkey,
+				ValidatorData:     vd,
+				PayloadAttributes: attrs,
+			}
+			err := b.onSealedBlock(submitBlockOpts)
 
 			if err != nil {
 				log.Error("could not run sealed block hook", "err", err)
@@ -459,7 +479,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 	go runResubmitLoop(ctx, b.limiter, queueSignal, submitBestBlock, slotSubmitStartTime)
 
 	// Populates queue with submissions that increase block profit
-	blockHook := func(block *types.Block, blockValue *big.Int, ordersCloseTime time.Time,
+	blockHook := func(block *types.Block, blockValue *big.Int, sidecars []*types.BlobTxSidecar, ordersCloseTime time.Time,
 		committedBundles, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle,
 	) {
 		if ctx.Err() != nil {
@@ -474,6 +494,7 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 			queueBestEntry = blockQueueEntry{
 				block:           block,
 				blockValue:      new(big.Int).Set(blockValue),
+				blobSidecars:    sidecars,
 				ordersCloseTime: ordersCloseTime,
 				sealedAt:        sealedAt,
 				commitedBundles: committedBundles,
@@ -501,44 +522,32 @@ func (b *Builder) runBuildingJob(slotCtx context.Context, proposerPubkey phase0.
 	})
 }
 
-func executableDataToExecutionPayload(data *engine.ExecutableData) (*bellatrix.ExecutionPayload, error) {
-	transactionData := make([]bellatrix.Transaction, len(data.Transactions))
-	for i, tx := range data.Transactions {
+func executableDataToExecutionPayload(data *engine.ExecutionPayloadEnvelope, version spec.DataVersion) (*builderApi.VersionedSubmitBlindedBlockResponse, error) {
+	// if version in phase0, altair, unsupported version
+	if version == spec.DataVersionUnknown || version == spec.DataVersionPhase0 || version == spec.DataVersionAltair {
+		return nil, fmt.Errorf("unsupported data version %d", version)
+	}
+
+	payload := data.ExecutionPayload
+	blobsBundle := data.BlobsBundle
+
+	transactionData := make([]bellatrix.Transaction, len(payload.Transactions))
+	for i, tx := range payload.Transactions {
 		transactionData[i] = bellatrix.Transaction(tx)
 	}
 
 	baseFeePerGas := new(boostTypes.U256Str)
-	err := baseFeePerGas.FromBig(data.BaseFeePerGas)
+	err := baseFeePerGas.FromBig(payload.BaseFeePerGas)
 	if err != nil {
 		return nil, err
 	}
 
-	return &bellatrix.ExecutionPayload{
-		ParentHash:    [32]byte(data.ParentHash),
-		FeeRecipient:  [20]byte(data.FeeRecipient),
-		StateRoot:     [32]byte(data.StateRoot),
-		ReceiptsRoot:  [32]byte(data.ReceiptsRoot),
-		LogsBloom:     types.BytesToBloom(data.LogsBloom),
-		PrevRandao:    [32]byte(data.Random),
-		BlockNumber:   data.Number,
-		GasLimit:      data.GasLimit,
-		GasUsed:       data.GasUsed,
-		Timestamp:     data.Timestamp,
-		ExtraData:     data.ExtraData,
-		BaseFeePerGas: *baseFeePerGas,
-		BlockHash:     [32]byte(data.BlockHash),
-		Transactions:  transactionData,
-	}, nil
-}
-
-func executableDataToCapellaExecutionPayload(data *engine.ExecutableData) (*capella.ExecutionPayload, error) {
-	transactionData := make([]bellatrix.Transaction, len(data.Transactions))
-	for i, tx := range data.Transactions {
-		transactionData[i] = bellatrix.Transaction(tx)
+	if version == spec.DataVersionBellatrix {
+		return getBellatrixPayload(payload, *baseFeePerGas, transactionData), nil
 	}
 
-	withdrawalData := make([]*capella.Withdrawal, len(data.Withdrawals))
-	for i, wd := range data.Withdrawals {
+	withdrawalData := make([]*capella.Withdrawal, len(payload.Withdrawals))
+	for i, wd := range payload.Withdrawals {
 		withdrawalData[i] = &capella.Withdrawal{
 			Index:          capella.WithdrawalIndex(wd.Index),
 			ValidatorIndex: phase0.ValidatorIndex(wd.Validator),
@@ -546,28 +555,136 @@ func executableDataToCapellaExecutionPayload(data *engine.ExecutableData) (*cape
 			Amount:         phase0.Gwei(wd.Amount),
 		}
 	}
-
-	baseFeePerGas := new(boostTypes.U256Str)
-	err := baseFeePerGas.FromBig(data.BaseFeePerGas)
-	if err != nil {
-		return nil, err
+	if version == spec.DataVersionCapella {
+		return getCapellaPayload(payload, *baseFeePerGas, transactionData, withdrawalData), nil
 	}
 
-	return &capella.ExecutionPayload{
-		ParentHash:    [32]byte(data.ParentHash),
-		FeeRecipient:  [20]byte(data.FeeRecipient),
-		StateRoot:     [32]byte(data.StateRoot),
-		ReceiptsRoot:  [32]byte(data.ReceiptsRoot),
-		LogsBloom:     types.BytesToBloom(data.LogsBloom),
-		PrevRandao:    [32]byte(data.Random),
-		BlockNumber:   data.Number,
-		GasLimit:      data.GasLimit,
-		GasUsed:       data.GasUsed,
-		Timestamp:     data.Timestamp,
-		ExtraData:     data.ExtraData,
-		BaseFeePerGas: *baseFeePerGas,
-		BlockHash:     [32]byte(data.BlockHash),
-		Transactions:  transactionData,
-		Withdrawals:   withdrawalData,
-	}, nil
+	uint256BaseFeePerGas, overflow := uint256.FromBig(payload.BaseFeePerGas)
+	if overflow {
+		return nil, fmt.Errorf("base fee per gas overflow")
+	}
+
+	if len(blobsBundle.Blobs) != len(blobsBundle.Commitments) || len(blobsBundle.Blobs) != len(blobsBundle.Proofs) {
+		return nil, fmt.Errorf("blobs bundle length mismatch")
+	}
+
+	if version == spec.DataVersionDeneb {
+		return getDenebPayload(payload, uint256BaseFeePerGas, transactionData, withdrawalData, blobsBundle), nil
+	}
+
+	return nil, fmt.Errorf("unsupported data version %d", version)
+}
+
+func getBellatrixPayload(
+	payload *engine.ExecutableData,
+	baseFeePerGas [32]byte,
+	transactions []bellatrix.Transaction,
+) *builderApi.VersionedSubmitBlindedBlockResponse {
+	return &builderApi.VersionedSubmitBlindedBlockResponse{
+		Version: spec.DataVersionBellatrix,
+		Bellatrix: &bellatrix.ExecutionPayload{
+			ParentHash:    [32]byte(payload.ParentHash),
+			FeeRecipient:  [20]byte(payload.FeeRecipient),
+			StateRoot:     [32]byte(payload.StateRoot),
+			ReceiptsRoot:  [32]byte(payload.ReceiptsRoot),
+			LogsBloom:     types.BytesToBloom(payload.LogsBloom),
+			PrevRandao:    [32]byte(payload.Random),
+			BlockNumber:   payload.Number,
+			GasLimit:      payload.GasLimit,
+			GasUsed:       payload.GasUsed,
+			Timestamp:     payload.Timestamp,
+			ExtraData:     payload.ExtraData,
+			BaseFeePerGas: baseFeePerGas,
+			BlockHash:     [32]byte(payload.BlockHash),
+			Transactions:  transactions,
+		},
+	}
+}
+
+func getCapellaPayload(
+	payload *engine.ExecutableData,
+	baseFeePerGas [32]byte,
+	transactions []bellatrix.Transaction,
+	withdrawals []*capella.Withdrawal,
+) *builderApi.VersionedSubmitBlindedBlockResponse {
+	return &builderApi.VersionedSubmitBlindedBlockResponse{
+		Version: spec.DataVersionCapella,
+		Capella: &capella.ExecutionPayload{
+			ParentHash:    [32]byte(payload.ParentHash),
+			FeeRecipient:  [20]byte(payload.FeeRecipient),
+			StateRoot:     [32]byte(payload.StateRoot),
+			ReceiptsRoot:  [32]byte(payload.ReceiptsRoot),
+			LogsBloom:     types.BytesToBloom(payload.LogsBloom),
+			PrevRandao:    [32]byte(payload.Random),
+			BlockNumber:   payload.Number,
+			GasLimit:      payload.GasLimit,
+			GasUsed:       payload.GasUsed,
+			Timestamp:     payload.Timestamp,
+			ExtraData:     payload.ExtraData,
+			BaseFeePerGas: baseFeePerGas,
+			BlockHash:     [32]byte(payload.BlockHash),
+			Transactions:  transactions,
+			Withdrawals:   withdrawals,
+		},
+	}
+}
+
+func getBlobsBundle(blobsBundle *engine.BlobsBundleV1) *builderApiDeneb.BlobsBundle {
+	commitments := make([]deneb.KZGCommitment, len(blobsBundle.Commitments))
+	proofs := make([]deneb.KZGProof, len(blobsBundle.Proofs))
+	blobs := make([]deneb.Blob, len(blobsBundle.Blobs))
+
+	// we assume the lengths for blobs bundle is validated beforehand to be the same
+	for i := range blobsBundle.Blobs {
+		var commitment deneb.KZGCommitment
+		copy(commitment[:], blobsBundle.Commitments[i][:])
+		commitments[i] = commitment
+
+		var proof deneb.KZGProof
+		copy(proof[:], blobsBundle.Proofs[i][:])
+		proofs[i] = proof
+
+		var blob deneb.Blob
+		copy(blob[:], blobsBundle.Blobs[i][:])
+		blobs[i] = blob
+	}
+	return &builderApiDeneb.BlobsBundle{
+		Commitments: commitments,
+		Proofs:      proofs,
+		Blobs:       blobs,
+	}
+}
+
+func getDenebPayload(
+	payload *engine.ExecutableData,
+	baseFeePerGas *uint256.Int,
+	transactions []bellatrix.Transaction,
+	withdrawals []*capella.Withdrawal,
+	blobsBundle *engine.BlobsBundleV1,
+) *builderApi.VersionedSubmitBlindedBlockResponse {
+	return &builderApi.VersionedSubmitBlindedBlockResponse{
+		Version: spec.DataVersionDeneb,
+		Deneb: &builderApiDeneb.ExecutionPayloadAndBlobsBundle{
+			ExecutionPayload: &deneb.ExecutionPayload{
+				ParentHash:    [32]byte(payload.ParentHash),
+				FeeRecipient:  [20]byte(payload.FeeRecipient),
+				StateRoot:     [32]byte(payload.StateRoot),
+				ReceiptsRoot:  [32]byte(payload.ReceiptsRoot),
+				LogsBloom:     types.BytesToBloom(payload.LogsBloom),
+				PrevRandao:    [32]byte(payload.Random),
+				BlockNumber:   payload.Number,
+				GasLimit:      payload.GasLimit,
+				GasUsed:       payload.GasUsed,
+				Timestamp:     payload.Timestamp,
+				ExtraData:     payload.ExtraData,
+				BaseFeePerGas: baseFeePerGas,
+				BlockHash:     [32]byte(payload.BlockHash),
+				Transactions:  transactions,
+				Withdrawals:   withdrawals,
+				BlobGasUsed:   *payload.BlobGasUsed,
+				ExcessBlobGas: *payload.ExcessBlobGas,
+			},
+			BlobsBundle: getBlobsBundle(blobsBundle),
+		},
+	}
 }

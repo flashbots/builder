@@ -4,11 +4,11 @@ package txpool
 
 import (
 	"errors"
-	"fmt"
+	"math/big"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 )
@@ -16,6 +16,23 @@ import (
 const (
 	maxSBundleRange   = 30
 	maxSBundleNesting = 1
+
+	// txSlotSize is used to calculate how many data slots a single transaction
+	// takes up based on its size. The slots are used as DoS protection, ensuring
+	// that validating a new transaction remains a constant operation (in reality
+	// O(maxslots), where max slots are 4 currently).
+	txSlotSize = 32 * 1024
+	// txMaxSize is the maximum size a single transaction can have. This field has
+	// non-trivial consequences: larger transactions are significantly harder and
+	// more expensive to propagate; larger transactions also take more resources
+	// to validate whether they fit into the pool or not.
+	txMaxSize = 4 * txSlotSize // 128KB
+	// blobTxMaxSize is the maximum size a single transaction can have, outside
+	// the included blobs. Since blob transactions are pulled instead of pushed,
+	// and only a small metadata is kept in ram, the rest is on disk, there is
+	// no critical limit that should be enforced. Still, capping it to some sane
+	// limit can never hurt.
+	blobTxMaxSize = 1024 * 1024
 )
 
 var (
@@ -37,33 +54,26 @@ type SBundlePool struct {
 
 	signer types.Signer
 
-	// data from tx_pool that is constantly updated
-	istanbul      bool
-	eip2718       bool
-	eip1559       bool
-	shanghai      bool
-	currentMaxGas uint64
+	chainconfig *params.ChainConfig
+	currentHead atomic.Pointer[types.Header]
 }
 
-func NewSBundlePool(signer types.Signer) *SBundlePool {
+func NewSBundlePool(chainConfig *params.ChainConfig) *SBundlePool {
 	return &SBundlePool{
 		bundles:           make(map[common.Hash]*types.SBundle),
 		byBlock:           make(map[uint64][]*types.SBundle),
 		cancelled:         make(map[common.Hash]struct{}),
 		cancelledMaxBlock: make(map[uint64][]common.Hash),
-		signer:            signer,
+		signer:            types.LatestSigner(chainConfig),
+		chainconfig:       chainConfig,
 	}
 }
 
-func (p *SBundlePool) ResetPoolData(pool *TxPool) {
+func (p *SBundlePool) ResetPoolData(head *types.Header) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	p.istanbul = pool.istanbul
-	p.eip2718 = pool.eip2718
-	p.eip1559 = pool.eip1559
-	p.shanghai = pool.shanghai
-	p.currentMaxGas = pool.currentMaxGas
+	p.currentHead.Store(head)
 }
 
 func (p *SBundlePool) Add(bundle *types.SBundle) error {
@@ -177,46 +187,24 @@ func (p *SBundlePool) validateSBundle(level int, b *types.SBundle) error {
 
 // same as core/tx_pool.go but we don't check for gas price and nonce
 func (p *SBundlePool) validateTx(tx *types.Transaction) error {
-	// Accept only legacy transactions until EIP-2718/2930 activates.
-	if !p.eip2718 && tx.Type() != types.LegacyTxType {
-		return core.ErrTxTypeNotSupported
+	opts := &ValidationOptions{
+		Config: p.chainconfig,
+		MinTip: new(big.Int),
 	}
-	// Reject dynamic fee transactions until EIP-1559 activates.
-	if !p.eip1559 && tx.Type() == types.DynamicFeeTxType {
-		return core.ErrTxTypeNotSupported
+
+	if tx.Type() == types.BlobTxType {
+		opts.MaxSize = blobTxMaxSize
+		opts.Accept = 1 << types.BlobTxType
+	} else {
+		opts.MaxSize = txMaxSize
+		opts.Accept = 0 |
+			1<<types.LegacyTxType |
+			1<<types.AccessListTxType |
+			1<<types.DynamicFeeTxType
 	}
-	// Reject transactions over defined size to prevent DOS attacks
-	if tx.Size() > txMaxSize {
-		return ErrOversizedData
-	}
-	// Check whether the init code size has been exceeded.
-	if p.shanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
-		return fmt.Errorf("%w: code size %v limit %v", core.ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
-	}
-	// Transactions can't be negative. This may never happen using RLP decoded
-	// transactions but may occur if you create a transaction using the RPC.
-	if tx.Value().Sign() < 0 {
-		return core.ErrNegativeValue
-	}
-	// Ensure the transaction doesn't exceed the current block limit gas.
-	if p.currentMaxGas < tx.Gas() {
-		return ErrGasLimit
-	}
-	// Sanity check for extremely large numbers
-	if tx.GasFeeCap().BitLen() > 256 {
-		return core.ErrFeeCapVeryHigh
-	}
-	if tx.GasTipCap().BitLen() > 256 {
-		return core.ErrTipVeryHigh
-	}
-	// Ensure gasFeeCap is greater than or equal to gasTipCap.
-	if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
-		return core.ErrTipAboveFeeCap
-	}
-	// Make sure the transaction is signed properly.
-	_, err := types.Sender(p.signer, tx)
-	if err != nil {
-		return ErrInvalidSender
+
+	if err := ValidateTransaction(tx, p.currentHead.Load(), p.signer, opts); err != nil {
+		return err
 	}
 	return nil
 }

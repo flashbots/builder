@@ -271,6 +271,7 @@ type PayloadAttributes struct {
 	PrevRandao            common.Hash           `json:"prev_randao"`
 	SuggestedFeeRecipient common.Address        `json:"suggested_fee_recipient"`
 	Withdrawals           []*capella.Withdrawal `json:"withdrawals"`
+	ParentBeaconBlockRoot *common.Hash          `json:"parent_beacon_block_root"`
 }
 
 // SubscribeToPayloadAttributesEvents subscribes to payload attributes events to validate fields such as prevrandao and withdrawals
@@ -305,6 +306,7 @@ func (b *BeaconClient) SubscribeToPayloadAttributesEvents(payloadAttrC chan type
 					Random:                payloadAttributesResp.Data.PayloadAttributes.PrevRandao,
 					SuggestedFeeRecipient: payloadAttributesResp.Data.PayloadAttributes.SuggestedFeeRecipient,
 					Withdrawals:           withdrawals,
+					ParentBeaconBlockRoot: payloadAttributesResp.Data.PayloadAttributes.ParentBeaconBlockRoot,
 				}
 				payloadAttrC <- data
 			}

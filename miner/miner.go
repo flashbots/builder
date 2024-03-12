@@ -95,8 +95,6 @@ func AlgoTypeFlagToEnum(algoString string) (AlgoType, error) {
 // Config is the configuration parameters of mining.
 type Config struct {
 	Etherbase                common.Address    `toml:",omitempty"` // Public address for block mining rewards (default = first account)
-	Notify                   []string          `toml:",omitempty"` // HTTP URL list to be notified of new work packages (only useful in ethash).
-	NotifyFull               bool              `toml:",omitempty"` // Notify with pending block headers instead of work packages
 	ExtraData                hexutil.Bytes     `toml:",omitempty"` // Block extra data set by the miner
 	GasFloor                 uint64            // Target gas floor for mined blocks.
 	GasCeil                  uint64            // Target gas ceiling for mined blocks.
@@ -198,16 +196,22 @@ func (miner *Miner) update() {
 					shouldStart = true
 					log.Info("Mining aborted due to sync")
 				}
+				miner.worker.setSyncing(true)
+
 			case downloader.FailedEvent:
 				canStart = true
 				if shouldStart {
 					miner.worker.start()
 				}
+				miner.worker.setSyncing(false)
+
 			case downloader.DoneEvent:
 				canStart = true
 				if shouldStart {
 					miner.worker.start()
 				}
+				miner.worker.setSyncing(false)
+
 				// Stop reacting to downloader events
 				events.Unsubscribe()
 			}
@@ -258,17 +262,24 @@ func (miner *Miner) SetExtra(extra []byte) error {
 	return nil
 }
 
+func (miner *Miner) SetGasTip(tip *big.Int) error {
+	miner.worker.setGasTip(tip)
+	return nil
+}
+
 // SetRecommitInterval sets the interval for sealing work resubmitting.
 func (miner *Miner) SetRecommitInterval(interval time.Duration) {
 	miner.worker.setRecommitInterval(interval)
 }
 
-// Pending returns the currently pending block and associated state.
+// Pending returns the currently pending block and associated state. The returned
+// values can be nil in case the pending block is not initialized
 func (miner *Miner) Pending() (*types.Block, *state.StateDB) {
 	return miner.worker.regularWorker.pending()
 }
 
-// PendingBlock returns the currently pending block.
+// PendingBlock returns the currently pending block. The returned block can be
+// nil in case the pending block is not initialized.
 //
 // Note, to access both the pending block and the pending state
 // simultaneously, please use Pending(), as the pending state can
@@ -278,6 +289,7 @@ func (miner *Miner) PendingBlock() *types.Block {
 }
 
 // PendingBlockAndReceipts returns the currently pending block and corresponding receipts.
+// The returned values can be nil in case the pending block is not initialized.
 func (miner *Miner) PendingBlockAndReceipts() (*types.Block, types.Receipts) {
 	return miner.worker.pendingBlockAndReceipts()
 }
@@ -292,23 +304,6 @@ func (miner *Miner) SetGasCeil(ceil uint64) {
 	miner.worker.setGasCeil(ceil)
 }
 
-// EnablePreseal turns on the preseal mining feature. It's enabled by default.
-// Note this function shouldn't be exposed to API, it's unnecessary for users
-// (miners) to actually know the underlying detail. It's only for outside project
-// which uses this library.
-func (miner *Miner) EnablePreseal() {
-	miner.worker.enablePreseal()
-}
-
-// DisablePreseal turns off the preseal mining feature. It's necessary for some
-// fake consensus engine which can seal blocks instantaneously.
-// Note this function shouldn't be exposed to API, it's unnecessary for users
-// (miners) to actually know the underlying detail. It's only for outside project
-// which uses this library.
-func (miner *Miner) DisablePreseal() {
-	miner.worker.disablePreseal()
-}
-
 // SubscribePendingLogs starts delivering logs from pending transactions
 // to the given channel.
 func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscription {
@@ -316,7 +311,8 @@ func (miner *Miner) SubscribePendingLogs(ch chan<- []*types.Log) event.Subscript
 }
 
 // Accepts the block, time at which orders were taken, bundles which were used to build the block and all bundles that were considered for the block
-type BlockHookFn = func(*types.Block, *big.Int, time.Time, []types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle)
+// TODO (deneb): refactor into block hook args
+type BlockHookFn = func(*types.Block, *big.Int, []*types.BlobTxSidecar, time.Time, []types.SimulatedBundle, []types.SimulatedBundle, []types.UsedSBundle)
 
 // BuildPayload builds the payload according to the provided parameters.
 func (miner *Miner) BuildPayload(args *BuildPayloadArgs) (*Payload, error) {

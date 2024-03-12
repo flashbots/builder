@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
 const (
@@ -30,15 +31,13 @@ const (
 	defaultPriceCutoffPercent = 50
 )
 
-var (
-	defaultAlgorithmConfig = algorithmConfig{
-		DropRevertibleTxOnErr:  false,
-		EnforceProfit:          false,
-		ExpectedProfit:         nil,
-		ProfitThresholdPercent: defaultProfitThresholdPercent,
-		PriceCutoffPercent:     defaultPriceCutoffPercent,
-	}
-)
+var defaultAlgorithmConfig = algorithmConfig{
+	DropRevertibleTxOnErr:  false,
+	EnforceProfit:          false,
+	ExpectedProfit:         nil,
+	ProfitThresholdPercent: defaultProfitThresholdPercent,
+	PriceCutoffPercent:     defaultPriceCutoffPercent,
+}
 
 var emptyCodeHash = common.HexToHash("c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
 
@@ -50,11 +49,11 @@ var (
 
 // lowProfitError is returned when an order is not committed due to low profit or low effective gas price
 type lowProfitError struct {
-	ExpectedProfit *big.Int
-	ActualProfit   *big.Int
+	ExpectedProfit *uint256.Int
+	ActualProfit   *uint256.Int
 
-	ExpectedEffectiveGasPrice *big.Int
-	ActualEffectiveGasPrice   *big.Int
+	ExpectedEffectiveGasPrice *uint256.Int
+	ActualEffectiveGasPrice   *uint256.Int
 }
 
 func (e *lowProfitError) Error() string {
@@ -115,11 +114,12 @@ type (
 	CommitTxFunc func(*types.Transaction, chainData) (*types.Receipt, int, error)
 )
 
-func ValidateGasPriceAndProfit(algoConf algorithmConfig, actualPrice, expectedPrice *big.Int, tolerablePriceDifferencePercent int,
-	actualProfit, expectedProfit *big.Int) error {
+func ValidateGasPriceAndProfit(algoConf algorithmConfig, actualPrice, expectedPrice *uint256.Int, tolerablePriceDifferencePercent int,
+	actualProfit, expectedProfit *uint256.Int,
+) error {
 	// allow tolerablePriceDifferencePercent % divergence
-	expectedPriceMultiple := new(big.Int).Mul(expectedPrice, big.NewInt(100-int64(tolerablePriceDifferencePercent)))
-	actualPriceMultiple := new(big.Int).Mul(actualPrice, common.Big100)
+	expectedPriceMultiple := new(uint256.Int).Mul(expectedPrice, uint256.NewInt(100-uint64(tolerablePriceDifferencePercent)))
+	actualPriceMultiple := new(uint256.Int).Mul(actualPrice, common.U256100)
 
 	var errLowProfit *lowProfitError = nil
 	if expectedPriceMultiple.Cmp(actualPriceMultiple) > 0 {
@@ -133,7 +133,7 @@ func ValidateGasPriceAndProfit(algoConf algorithmConfig, actualPrice, expectedPr
 		// We want to make expected profit smaller to allow for some leeway in cases where the actual profit is
 		// lower due to transaction ordering
 		expectedProfitMultiple := common.PercentOf(expectedProfit, algoConf.ProfitThresholdPercent)
-		actualProfitMultiple := new(big.Int).Mul(actualProfit, common.Big100)
+		actualProfitMultiple := new(uint256.Int).Mul(actualProfit, common.U256100)
 
 		if expectedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
 			if errLowProfit == nil {
@@ -150,8 +150,8 @@ func ValidateGasPriceAndProfit(algoConf algorithmConfig, actualPrice, expectedPr
 	return nil
 }
 
-func checkInterrupt(i *int32) bool {
-	return i != nil && atomic.LoadInt32(i) != commitInterruptNone
+func checkInterrupt(i *atomic.Int32) bool {
+	return i != nil && i.Load() != commitInterruptNone
 }
 
 // Simulate bundle on top of current state without modifying it
@@ -190,7 +190,6 @@ func applyTransactionWithBlacklist(
 	// there will be no difference in the result if precompile is not it the blocklist
 	touchTracer := logger.NewAccessListTracer(nil, common.Address{}, common.Address{}, nil)
 	cfg.Tracer = touchTracer
-	cfg.Debug = true
 
 	hook := func() error {
 		for _, accessTuple := range touchTracer.AccessList() {
@@ -222,7 +221,7 @@ func estimatePayoutTxGas(env *environment, sender, receiver common.Address, prv 
 	}
 	gasLimit := env.gasPool.Gas()
 
-	balance := new(big.Int).SetBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
+	balance := new(uint256.Int).SetBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
 	value := new(big.Int).SetBytes([]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF})
 
 	diff := newEnvironmentDiff(env)
@@ -331,8 +330,9 @@ func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint6
 
 // CheckRetryOrderAndReinsert checks if the order has been retried up to the retryLimit and if not, reinserts the order into the orders heap.
 func CheckRetryOrderAndReinsert(
-	order *types.TxWithMinerFee, orders *types.TransactionsByPriceAndNonce,
-	retryMap map[*types.TxWithMinerFee]int, retryLimit int) bool {
+	order *txWithMinerFee, orders *transactionsByPriceAndNonce,
+	retryMap map[*txWithMinerFee]int, retryLimit int,
+) bool {
 	var isRetryable bool = false
 	if retryCount, exists := retryMap[order]; exists {
 		if retryCount != retryLimit {

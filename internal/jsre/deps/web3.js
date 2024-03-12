@@ -518,7 +518,7 @@ var f = require('./formatters');
 var SolidityType = require('./type');
 
 /**
- * SolidityTypeAddress is a prootype that represents address type
+ * SolidityTypeAddress is a prototype that represents address type
  * It matches:
  * address
  * address[]
@@ -546,7 +546,7 @@ var f = require('./formatters');
 var SolidityType = require('./type');
 
 /**
- * SolidityTypeBool is a prootype that represents bool type
+ * SolidityTypeBool is a prototype that represents bool type
  * It matches:
  * bool
  * bool[]
@@ -1033,7 +1033,7 @@ var formatOutputInt = function (param) {
  *
  * @method formatOutputUInt
  * @param {SolidityParam}
- * @returns {BigNumeber} right-aligned output bytes formatted to uint
+ * @returns {BigNumber} right-aligned output bytes formatted to uint
  */
 var formatOutputUInt = function (param) {
     var value = param.staticPart() || "0";
@@ -1146,7 +1146,7 @@ var f = require('./formatters');
 var SolidityType = require('./type');
 
 /**
- * SolidityTypeInt is a prootype that represents int type
+ * SolidityTypeInt is a prototype that represents int type
  * It matches:
  * int
  * int[]
@@ -1334,7 +1334,7 @@ var f = require('./formatters');
 var SolidityType = require('./type');
 
 /**
- * SolidityTypeReal is a prootype that represents real type
+ * SolidityTypeReal is a prototype that represents real type
  * It matches:
  * real
  * real[]
@@ -1647,7 +1647,7 @@ var f = require('./formatters');
 var SolidityType = require('./type');
 
 /**
- * SolidityTypeUInt is a prootype that represents uint type
+ * SolidityTypeUInt is a prototype that represents uint type
  * It matches:
  * uint
  * uint[]
@@ -1681,7 +1681,7 @@ var f = require('./formatters');
 var SolidityType = require('./type');
 
 /**
- * SolidityTypeUReal is a prootype that represents ureal type
+ * SolidityTypeUReal is a prototype that represents ureal type
  * It matches:
  * ureal
  * ureal[]
@@ -2031,7 +2031,7 @@ var fromAscii = function(str) {
  *
  * @method transformToFullName
  * @param {Object} json-abi
- * @return {String} full fnction/event name
+ * @return {String} full function/event name
  */
 var transformToFullName = function (json) {
     if (json.name.indexOf('(') !== -1) {
@@ -2307,7 +2307,7 @@ var toChecksumAddress = function (address) {
 };
 
 /**
- * Transforms given string to valid 20 bytes-length addres with 0x prefix
+ * Transforms given string to valid 20 bytes-length address with 0x prefix
  *
  * @method toAddress
  * @param {String} address
@@ -2361,7 +2361,7 @@ var isFunction = function (object) {
 };
 
 /**
- * Returns true if object is Objet, otherwise false
+ * Returns true if object is Object, otherwise false
  *
  * @method isObject
  * @param {Object}
@@ -2757,7 +2757,7 @@ var Batch = function (web3) {
  * Should be called to add create new request to batch request
  *
  * @method add
- * @param {Object} jsonrpc requet object
+ * @param {Object} jsonrpc request object
  */
 Batch.prototype.add = function (request) {
     this.requests.push(request);
@@ -3961,6 +3961,8 @@ var outputSyncingFormatter = function(result) {
     result.healedBytecodeBytes = utils.toDecimal(result.healedBytecodeBytes);
     result.healingTrienodes = utils.toDecimal(result.healingTrienodes);
     result.healingBytecode = utils.toDecimal(result.healingBytecode);
+    result.txIndexFinishedBlocks = utils.toDecimal(result.txIndexFinishedBlocks);
+    result.txIndexRemainingBlocks = utils.toDecimal(result.txIndexRemainingBlocks);
 
     return result;
 };
@@ -4557,7 +4559,7 @@ Iban.createIndirect = function (options) {
 };
 
 /**
- * Thos method should be used to check if given string is valid iban object
+ * This method should be used to check if given string is valid iban object
  *
  * @method isValid
  * @param {String} iban string
@@ -6706,7 +6708,7 @@ var exchangeAbi = require('../contracts/SmartExchange.json');
  * @method transfer
  * @param {String} from
  * @param {String} to iban
- * @param {Value} value to be tranfered
+ * @param {Value} value to be transferred
  * @param {Function} callback, callback
  */
 var transfer = function (eth, from, to, value, callback) {
@@ -6736,7 +6738,7 @@ var transfer = function (eth, from, to, value, callback) {
  * @method transferToAddress
  * @param {String} from
  * @param {String} to
- * @param {Value} value to be tranfered
+ * @param {Value} value to be transferred
  * @param {Function} callback, callback
  */
 var transferToAddress = function (eth, from, to, value, callback) {
@@ -7090,7 +7092,7 @@ module.exports = transfer;
 	        /**
 	         * Initializes a newly created cipher.
 	         *
-	         * @param {number} xformMode Either the encryption or decryption transormation mode constant.
+	         * @param {number} xformMode Either the encryption or decryption transformation mode constant.
 	         * @param {WordArray} key The key.
 	         * @param {Object} cfg (Optional) The configuration options to use for this operation.
 	         *
@@ -9444,7 +9446,7 @@ module.exports = transfer;
 	            var M_offset_14 = M[offset + 14];
 	            var M_offset_15 = M[offset + 15];
 
-	            // Working varialbes
+	            // Working variables
 	            var a = H[0];
 	            var b = H[1];
 	            var c = H[2];

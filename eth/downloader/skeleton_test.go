@@ -82,8 +82,8 @@ type skeletonTestPeer struct {
 
 	serve func(origin uint64) []*types.Header // Hook to allow custom responses
 
-	served  uint64 // Number of headers served by this peer
-	dropped uint64 // Flag whether the peer was dropped (stop responding)
+	served  atomic.Uint64 // Number of headers served by this peer
+	dropped atomic.Uint64 // Flag whether the peer was dropped (stop responding)
 }
 
 // newSkeletonTestPeer creates a new mock peer to test the skeleton sync with.
@@ -113,7 +113,7 @@ func (p *skeletonTestPeer) RequestHeadersByNumber(origin uint64, amount int, ski
 	// Since skeleton test peer are in-memory mocks, dropping the does not make
 	// them inaccessible. As such, check a local `dropped` field to see if the
 	// peer has been dropped and should not respond any more.
-	if atomic.LoadUint64(&p.dropped) != 0 {
+	if p.dropped.Load() != 0 {
 		return nil, errors.New("peer already dropped")
 	}
 	// Skeleton sync retrieves batches of headers going backward without gaps.
@@ -161,7 +161,7 @@ func (p *skeletonTestPeer) RequestHeadersByNumber(origin uint64, amount int, ski
 			}
 		}
 	}
-	atomic.AddUint64(&p.served, uint64(len(headers)))
+	p.served.Add(uint64(len(headers)))
 
 	hashes := make([]common.Hash, len(headers))
 	for i, header := range headers {
@@ -173,7 +173,7 @@ func (p *skeletonTestPeer) RequestHeadersByNumber(origin uint64, amount int, ski
 	}
 	res := &eth.Response{
 		Req:  req,
-		Res:  (*eth.BlockHeadersPacket)(&headers),
+		Res:  (*eth.BlockHeadersRequest)(&headers),
 		Meta: hashes,
 		Time: 1,
 		Done: make(chan error),
@@ -182,7 +182,7 @@ func (p *skeletonTestPeer) RequestHeadersByNumber(origin uint64, amount int, ski
 		sink <- res
 		if err := <-res.Done; err != nil {
 			log.Warn("Skeleton test peer response rejected", "err", err)
-			atomic.AddUint64(&p.dropped, 1)
+			p.dropped.Add(1)
 		}
 	}()
 	return req, nil
@@ -434,7 +434,7 @@ func TestSkeletonSyncExtend(t *testing.T) {
 			newstate: []*subchain{
 				{Head: 49, Tail: 49},
 			},
-			err: errReorgDenied,
+			err: errChainReorged,
 		},
 		// Initialize a sync and try to extend it with a number-wise sequential
 		// header, but a hash wise non-linking one.
@@ -444,7 +444,7 @@ func TestSkeletonSyncExtend(t *testing.T) {
 			newstate: []*subchain{
 				{Head: 49, Tail: 49},
 			},
-			err: errReorgDenied,
+			err: errChainForked,
 		},
 		// Initialize a sync and try to extend it with a non-linking future block.
 		{
@@ -453,7 +453,7 @@ func TestSkeletonSyncExtend(t *testing.T) {
 			newstate: []*subchain{
 				{Head: 49, Tail: 49},
 			},
-			err: errReorgDenied,
+			err: errChainGapped,
 		},
 		// Initialize a sync and try to extend it with a past canonical block.
 		{
@@ -462,7 +462,7 @@ func TestSkeletonSyncExtend(t *testing.T) {
 			newstate: []*subchain{
 				{Head: 50, Tail: 50},
 			},
-			err: errReorgDenied,
+			err: errChainReorged,
 		},
 		// Initialize a sync and try to extend it with a past sidechain block.
 		{
@@ -471,7 +471,7 @@ func TestSkeletonSyncExtend(t *testing.T) {
 			newstate: []*subchain{
 				{Head: 50, Tail: 50},
 			},
-			err: errReorgDenied,
+			err: errChainReorged,
 		},
 	}
 	for i, tt := range tests {
@@ -487,7 +487,7 @@ func TestSkeletonSyncExtend(t *testing.T) {
 		skeleton.Sync(tt.head, nil, true)
 
 		<-wait
-		if err := skeleton.Sync(tt.extend, nil, false); err != tt.err {
+		if err := skeleton.Sync(tt.extend, nil, false); !errors.Is(err, tt.err) {
 			t.Errorf("test %d: extension failure mismatch: have %v, want %v", i, err, tt.err)
 		}
 		skeleton.Terminate()
@@ -811,13 +811,13 @@ func TestSkeletonSyncRetrievals(t *testing.T) {
 		// Create a peer set to feed headers through
 		peerset := newPeerSet()
 		for _, peer := range tt.peers {
-			peerset.Register(newPeerConnection(peer.id, eth.ETH66, peer, log.New("id", peer.id)))
+			peerset.Register(newPeerConnection(peer.id, eth.ETH68, peer, log.New("id", peer.id)))
 		}
 		// Create a peer dropper to track malicious peers
 		dropped := make(map[string]int)
 		drop := func(peer string) {
 			if p := peerset.Peer(peer); p != nil {
-				atomic.AddUint64(&p.peer.(*skeletonTestPeer).dropped, 1)
+				p.peer.(*skeletonTestPeer).dropped.Add(1)
 			}
 			peerset.Unregister(peer)
 			dropped[peer]++
@@ -895,14 +895,14 @@ func TestSkeletonSyncRetrievals(t *testing.T) {
 		if !tt.unpredictable {
 			var served uint64
 			for _, peer := range tt.peers {
-				served += atomic.LoadUint64(&peer.served)
+				served += peer.served.Load()
 			}
 			if served != tt.midserve {
 				t.Errorf("test %d, mid state: served headers mismatch: have %d, want %d", i, served, tt.midserve)
 			}
 			var drops uint64
 			for _, peer := range tt.peers {
-				drops += atomic.LoadUint64(&peer.dropped)
+				drops += peer.dropped.Load()
 			}
 			if drops != tt.middrop {
 				t.Errorf("test %d, mid state: dropped peers mismatch: have %d, want %d", i, drops, tt.middrop)
@@ -913,7 +913,7 @@ func TestSkeletonSyncRetrievals(t *testing.T) {
 			skeleton.Sync(tt.newHead, nil, true)
 		}
 		if tt.newPeer != nil {
-			if err := peerset.Register(newPeerConnection(tt.newPeer.id, eth.ETH66, tt.newPeer, log.New("id", tt.newPeer.id))); err != nil {
+			if err := peerset.Register(newPeerConnection(tt.newPeer.id, eth.ETH68, tt.newPeer, log.New("id", tt.newPeer.id))); err != nil {
 				t.Errorf("test %d: failed to register new peer: %v", i, err)
 			}
 		}
@@ -950,20 +950,20 @@ func TestSkeletonSyncRetrievals(t *testing.T) {
 		if !tt.unpredictable {
 			served := uint64(0)
 			for _, peer := range tt.peers {
-				served += atomic.LoadUint64(&peer.served)
+				served += peer.served.Load()
 			}
 			if tt.newPeer != nil {
-				served += atomic.LoadUint64(&tt.newPeer.served)
+				served += tt.newPeer.served.Load()
 			}
 			if served != tt.endserve {
 				t.Errorf("test %d, end state: served headers mismatch: have %d, want %d", i, served, tt.endserve)
 			}
 			drops := uint64(0)
 			for _, peer := range tt.peers {
-				drops += atomic.LoadUint64(&peer.dropped)
+				drops += peer.dropped.Load()
 			}
 			if tt.newPeer != nil {
-				drops += atomic.LoadUint64(&tt.newPeer.dropped)
+				drops += tt.newPeer.dropped.Load()
 			}
 			if drops != tt.enddrop {
 				t.Errorf("test %d, end state: dropped peers mismatch: have %d, want %d", i, drops, tt.middrop)

@@ -3,12 +3,12 @@ package state
 import (
 	"bytes"
 	"fmt"
-	"math/big"
 	"math/rand"
 	"reflect"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/holiman/uint256"
 )
 
 var (
@@ -29,7 +29,7 @@ func init() {
 
 type observableAccountState struct {
 	address  common.Address
-	balance  *big.Int
+	balance  *uint256.Int
 	nonce    uint64
 	code     []byte
 	codeHash common.Hash
@@ -53,7 +53,7 @@ func getObservableAccountState(s *StateDB, address common.Address, storageKeys [
 		codeSize:       s.GetCodeSize(address),
 		state:          make(map[common.Hash]common.Hash),
 		committedState: make(map[common.Hash]common.Hash),
-		selfDestruct:   s.HasSuicided(address),
+		selfDestruct:   s.HasSelfDestructed(address),
 		exist:          s.Exist(address),
 		empty:          s.Empty(address),
 	}
@@ -66,40 +66,42 @@ func getObservableAccountState(s *StateDB, address common.Address, storageKeys [
 	return state
 }
 
-func verifyObservableAccountState(s *StateDB, state *observableAccountState) error {
-	if s.GetBalance(state.address).Cmp(state.balance) != 0 {
-		return fmt.Errorf("balance mismatch %v != %v", s.GetBalance(state.address), state.balance)
+func verifyObservableAccountState(s *StateDB, observed *observableAccountState) error {
+	if s.GetBalance(observed.address).Cmp(observed.balance) != 0 {
+		return fmt.Errorf("balance mismatch %v != %v", s.GetBalance(observed.address), observed.balance)
 	}
-	if s.GetNonce(state.address) != state.nonce {
-		return fmt.Errorf("nonce mismatch %v != %v", s.GetNonce(state.address), state.nonce)
+	if s.GetNonce(observed.address) != observed.nonce {
+		return fmt.Errorf("nonce mismatch %v != %v", s.GetNonce(observed.address), observed.nonce)
 	}
-	if !bytes.Equal(s.GetCode(state.address), state.code) {
-		return fmt.Errorf("code mismatch %v != %v", s.GetCode(state.address), state.code)
+	if !bytes.Equal(s.GetCode(observed.address), observed.code) {
+		return fmt.Errorf("code mismatch %v != %v", s.GetCode(observed.address), observed.code)
 	}
-	if s.GetCodeHash(state.address) != state.codeHash {
-		return fmt.Errorf("code hash mismatch %v != %v", s.GetCodeHash(state.address), state.codeHash)
+	if s.GetCodeHash(observed.address) != observed.codeHash {
+		return fmt.Errorf("code hash mismatch %v != %v", s.GetCodeHash(observed.address), observed.codeHash)
 	}
-	if s.GetCodeSize(state.address) != state.codeSize {
-		return fmt.Errorf("code size mismatch %v != %v", s.GetCodeSize(state.address), state.codeSize)
+	if s.GetCodeSize(observed.address) != observed.codeSize {
+		return fmt.Errorf("code size mismatch %v != %v", s.GetCodeSize(observed.address), observed.codeSize)
 	}
-	for key, value := range state.state {
-		if s.GetState(state.address, key) != value {
-			return fmt.Errorf("state mismatch %v != %v", s.GetState(state.address, key), value)
+	for key, value := range observed.state {
+		found := s.GetState(observed.address, key)
+		if found != value {
+			return fmt.Errorf("state mismatch [key: %s] value %v != %v", key.String(), found, value)
 		}
 	}
-	for key, value := range state.committedState {
-		if s.GetCommittedState(state.address, key) != value {
-			return fmt.Errorf("committed state mismatch %v != %v", s.GetCommittedState(state.address, key), value)
+	for key, value := range observed.committedState {
+		found := s.GetCommittedState(observed.address, key)
+		if found != value {
+			return fmt.Errorf("committed state mismatch %v != %v", found, value)
 		}
 	}
-	if s.HasSuicided(state.address) != state.selfDestruct {
-		return fmt.Errorf("self destruct mismatch %v != %v", s.HasSuicided(state.address), state.selfDestruct)
+	if s.HasSelfDestructed(observed.address) != observed.selfDestruct {
+		return fmt.Errorf("self destruct mismatch %v != %v", s.HasSelfDestructed(observed.address), observed.selfDestruct)
 	}
-	if s.Exist(state.address) != state.exist {
-		return fmt.Errorf("exist mismatch %v != %v", s.Exist(state.address), state.exist)
+	if s.Exist(observed.address) != observed.exist {
+		return fmt.Errorf("exist mismatch %v != %v", s.Exist(observed.address), observed.exist)
 	}
-	if s.Empty(state.address) != state.empty {
-		return fmt.Errorf("empty mismatch %v != %v", s.Empty(state.address), state.empty)
+	if s.Empty(observed.address) != observed.empty {
+		return fmt.Errorf("empty mismatch %v != %v", s.Empty(observed.address), observed.empty)
 	}
 	return nil
 }
@@ -149,7 +151,7 @@ func genRandomAccountState(seed int64) map[common.Address]map[common.Hash]common
 
 func randFillAccount(addr common.Address, s *StateDB) {
 	s.SetNonce(addr, rng.Uint64())
-	s.SetBalance(addr, big.NewInt(rng.Int63()))
+	s.SetBalance(addr, uint256.NewInt(rng.Uint64()))
 	s.SetCode(addr, randomBytes(rng.Intn(100)))
 	randFillAccountState(addr, s)
 }
@@ -180,15 +182,15 @@ func prepareInitialState(s *StateDB) {
 	})
 
 	addAccount(func(addr common.Address, s *StateDB) {
-		s.SetBalance(addr, big.NewInt(rng.Int63()))
+		s.SetBalance(addr, uint256.NewInt(rng.Uint64()))
 	}, nil)
 	addAccount(nil, func(addr common.Address, s *StateDB) {
-		s.SetBalance(addr, big.NewInt(rng.Int63()))
+		s.SetBalance(addr, uint256.NewInt(rng.Uint64()))
 	})
 	addAccount(func(addr common.Address, s *StateDB) {
-		s.SetBalance(addr, big.NewInt(rng.Int63()))
+		s.SetBalance(addr, uint256.NewInt(rng.Uint64()))
 	}, func(addr common.Address, s *StateDB) {
-		s.SetBalance(addr, big.NewInt(rng.Int63()))
+		s.SetBalance(addr, uint256.NewInt(rng.Uint64()))
 	})
 
 	addAccount(func(addr common.Address, s *StateDB) {
@@ -205,38 +207,38 @@ func prepareInitialState(s *StateDB) {
 	})
 	addAccount(func(addr common.Address, s *StateDB) {
 		s.SetCode(addr, randomBytes(rng.Intn(100)))
-		s.Suicide(addr)
+		s.SelfDestruct(addr)
 	}, func(addr common.Address, s *StateDB) {
 		s.SetCode(addr, randomBytes(rng.Intn(100)))
 	})
 
 	addAccount(func(addr common.Address, s *StateDB) {
 		randFillAccount(addr, s)
-		s.Suicide(addr)
+		s.SelfDestruct(addr)
 	}, nil)
 	addAccount(nil, func(addr common.Address, s *StateDB) {
 		randFillAccount(addr, s)
-		s.Suicide(addr)
+		s.SelfDestruct(addr)
 	})
 	addAccount(func(addr common.Address, s *StateDB) {
 		randFillAccount(addr, s)
 	}, func(addr common.Address, s *StateDB) {
-		s.Suicide(addr)
+		s.SelfDestruct(addr)
 	})
 	addAccount(func(addr common.Address, s *StateDB) {
 		randFillAccount(addr, s)
-		s.Suicide(addr)
+		s.SelfDestruct(addr)
 	}, func(addr common.Address, s *StateDB) {
 		randFillAccount(addr, s)
 	})
 	addAccount(func(addr common.Address, s *StateDB) {
 		randFillAccount(addr, s)
-		s.Suicide(addr)
+		s.SelfDestruct(addr)
 	}, func(addr common.Address, s *StateDB) {
 		randFillAccount(addr, s)
 		// calling it twice is possible
-		s.Suicide(addr)
-		s.Suicide(addr)
+		s.SelfDestruct(addr)
+		s.SelfDestruct(addr)
 	})
 
 	addAccount(func(addr common.Address, s *StateDB) {
@@ -263,7 +265,7 @@ func prepareInitialState(s *StateDB) {
 }
 
 func testMultiTxSnapshot(t *testing.T, actions func(s *StateDB)) {
-	s := newStateTest()
+	s := newStateEnv()
 	prepareInitialState(s.state)
 
 	previousRefund := s.state.GetRefund()
@@ -326,7 +328,7 @@ func testMultiTxSnapshot(t *testing.T, actions func(s *StateDB)) {
 
 	root := s.state.IntermediateRoot(true)
 
-	cleanState := newStateTest()
+	cleanState := newStateEnv()
 	prepareInitialState(cleanState.state)
 	expectedRoot := cleanState.state.IntermediateRoot(true)
 
@@ -339,7 +341,7 @@ func TestMultiTxSnapshotAccountChangesSimple(t *testing.T) {
 	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
-			s.SetBalance(addr, big.NewInt(79))
+			s.SetBalance(addr, uint256.NewInt(79))
 			s.SetCode(addr, []byte{0x80})
 		}
 		s.Finalise(true)
@@ -369,7 +371,7 @@ func TestMultiTxSnapshotRefund(t *testing.T) {
 	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
-			s.SetBalance(addr, big.NewInt(79))
+			s.SetBalance(addr, uint256.NewInt(79))
 			s.SetCode(addr, []byte{0x80})
 		}
 		s.Finalise(true)
@@ -380,14 +382,14 @@ func TestMultiTxSnapshotAccountChangesMultiTx(t *testing.T) {
 	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
-			s.SetBalance(addr, big.NewInt(79))
+			s.SetBalance(addr, uint256.NewInt(79))
 			s.SetCode(addr, []byte{0x80})
 		}
 		s.Finalise(true)
 
 		for _, addr := range addrs {
 			s.SetNonce(addr, 79)
-			s.SetBalance(addr, big.NewInt(80))
+			s.SetBalance(addr, uint256.NewInt(80))
 			s.SetCode(addr, []byte{0x81})
 		}
 		s.Finalise(true)
@@ -398,19 +400,19 @@ func TestMultiTxSnapshotAccountChangesSelfDestruct(t *testing.T) {
 	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
-			s.SetBalance(addr, big.NewInt(79))
+			s.SetBalance(addr, uint256.NewInt(79))
 			s.SetCode(addr, []byte{0x80})
 		}
 		s.Finalise(true)
 
 		for _, addr := range addrs {
-			s.Suicide(addr)
+			s.SelfDestruct(addr)
 		}
 		s.Finalise(true)
 
 		for _, addr := range addrs {
 			s.SetNonce(addr, 79)
-			s.SetBalance(addr, big.NewInt(80))
+			s.SetBalance(addr, uint256.NewInt(80))
 			s.SetCode(addr, []byte{0x81})
 		}
 		s.Finalise(true)
@@ -421,21 +423,21 @@ func TestMultiTxSnapshotAccountChangesEmptyAccount(t *testing.T) {
 	testMultiTxSnapshot(t, func(s *StateDB) {
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
-			s.SetBalance(addr, big.NewInt(79))
+			s.SetBalance(addr, uint256.NewInt(79))
 			s.SetCode(addr, []byte{0x80})
 		}
 		s.Finalise(true)
 
 		for _, addr := range addrs {
 			s.SetNonce(addr, 0)
-			s.SetBalance(addr, common.Big0)
+			s.SetBalance(addr, common.U2560)
 			s.SetCode(addr, nil)
 		}
 		s.Finalise(true)
 
 		for _, addr := range addrs {
 			s.SetNonce(addr, 79)
-			s.SetBalance(addr, big.NewInt(80))
+			s.SetBalance(addr, uint256.NewInt(80))
 			s.SetCode(addr, []byte{0x81})
 		}
 		s.Finalise(true)
@@ -520,7 +522,7 @@ func TestStackSelfDestruct(t *testing.T) {
 		}
 		for _, addr := range addrs {
 			s.SetNonce(addr, 78)
-			s.SetBalance(addr, big.NewInt(79))
+			s.SetBalance(addr, uint256.NewInt(79))
 			s.SetCode(addr, []byte{0x80})
 			s.Finalise(true)
 		}
@@ -530,7 +532,7 @@ func TestStackSelfDestruct(t *testing.T) {
 				t.Errorf("NewMultiTxSnapshot failed: %v", err)
 				t.FailNow()
 			}
-			s.Suicide(addr)
+			s.SelfDestruct(addr)
 		}
 		stack := s.multiTxSnapshotStack
 
@@ -545,7 +547,7 @@ func TestStackSelfDestruct(t *testing.T) {
 
 		for _, addr := range addrs {
 			s.SetNonce(addr, 79)
-			s.SetBalance(addr, big.NewInt(80))
+			s.SetBalance(addr, uint256.NewInt(80))
 			s.SetCode(addr, []byte{0x81})
 		}
 		s.Finalise(true)
@@ -632,12 +634,12 @@ func TestStackAgainstSingleSnap(t *testing.T) {
 			}
 
 			var err error
-			if targetRootHash, err = s.Commit(true); err != nil {
+			if targetRootHash, err = s.Commit(0, true); err != nil {
 				t.Errorf("Commit failed: %v", err)
 				t.FailNow()
 			}
 
-			if baselineRootHash, err = baselineStateDB.Commit(true); err != nil {
+			if baselineRootHash, err = baselineStateDB.Commit(0, true); err != nil {
 				t.Errorf("Commit failed: %v", err)
 				t.FailNow()
 			}
@@ -849,8 +851,8 @@ func CompareAndPrintSnapshotMismatches(t *testing.T, target, other *MultiTxSnaps
 	}
 
 	// check account suicide mismatch
-	for account, suicide := range other.accountSuicided {
-		targetSuicide, exists := target.accountSuicided[account]
+	for account, suicide := range other.accountSelfDestruct {
+		targetSuicide, exists := target.accountSelfDestruct[account]
 		if !exists {
 			out.WriteString(fmt.Sprintf("target<>other accountSuicided[missing]: %v\n", account))
 			continue
@@ -861,8 +863,8 @@ func CompareAndPrintSnapshotMismatches(t *testing.T, target, other *MultiTxSnaps
 		}
 	}
 
-	for account, suicide := range target.accountSuicided {
-		otherSuicide, exists := other.accountSuicided[account]
+	for account, suicide := range target.accountSelfDestruct {
+		otherSuicide, exists := other.accountSelfDestruct[account]
 		if !exists {
 			out.WriteString(fmt.Sprintf("other<>target accountSuicided[missing]: %v\n", account))
 			continue

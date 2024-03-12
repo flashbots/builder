@@ -12,16 +12,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/attestantio/go-builder-client/api"
-	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
-	capellaapi "github.com/attestantio/go-builder-client/api/capella"
-	apiv1 "github.com/attestantio/go-builder-client/api/v1"
-	"github.com/attestantio/go-builder-client/spec"
-	apiv1bellatrix "github.com/attestantio/go-eth2-client/api/v1/bellatrix"
-	consensusspec "github.com/attestantio/go-eth2-client/spec"
+	builderApi "github.com/attestantio/go-builder-client/api"
+	builderApiBellatrix "github.com/attestantio/go-builder-client/api/bellatrix"
+	builderApiV1 "github.com/attestantio/go-builder-client/api/v1"
+	builderSpec "github.com/attestantio/go-builder-client/spec"
+	eth2ApiV1Bellatrix "github.com/attestantio/go-eth2-client/api/v1/bellatrix"
+	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/attestantio/go-eth2-client/spec/bellatrix"
 	"github.com/attestantio/go-eth2-client/spec/phase0"
-	bellatrixutil "github.com/attestantio/go-eth2-client/util/bellatrix"
+	eth2UtilBellatrix "github.com/attestantio/go-eth2-client/util/bellatrix"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/flashbots/go-boost-utils/bls"
@@ -30,6 +29,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/holiman/uint256"
 )
+
+// TODO (deneb): remove local relay
 
 type ForkData struct {
 	GenesisForkVersion    string
@@ -110,15 +111,9 @@ func (r *LocalRelay) Stop() {
 	r.beaconClient.Stop()
 }
 
-func (r *LocalRelay) SubmitBlock(msg *bellatrixapi.SubmitBlockRequest, _ ValidatorData) error {
-	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
-	return r.submitBlock(msg)
-}
-
-func (r *LocalRelay) SubmitBlockCapella(msg *capellaapi.SubmitBlockRequest, _ ValidatorData) error {
-	log.Info("submitting block to local relay", "block", msg.ExecutionPayload.BlockHash.String())
-
-	return r.submitBlockCapella(msg)
+func (r *LocalRelay) SubmitBlock(msg *builderSpec.VersionedSubmitBlockRequest, _ ValidatorData) error {
+	log.Info("submitting block to local relay", "block", msg.Bellatrix.ExecutionPayload.BlockHash.String())
+	return r.submitBlock(msg.Bellatrix)
 }
 
 func (r *LocalRelay) Config() RelayConfig {
@@ -126,12 +121,7 @@ func (r *LocalRelay) Config() RelayConfig {
 	return RelayConfig{}
 }
 
-// TODO: local relay support for capella
-func (r *LocalRelay) submitBlockCapella(msg *capellaapi.SubmitBlockRequest) error {
-	return nil
-}
-
-func (r *LocalRelay) submitBlock(msg *bellatrixapi.SubmitBlockRequest) error {
+func (r *LocalRelay) submitBlock(msg *builderApiBellatrix.SubmitBlockRequest) error {
 	header, err := PayloadToPayloadHeader(msg.ExecutionPayload)
 	if err != nil {
 		log.Error("could not convert payload to header", "err", err)
@@ -148,7 +138,7 @@ func (r *LocalRelay) submitBlock(msg *bellatrixapi.SubmitBlockRequest) error {
 }
 
 func (r *LocalRelay) handleRegisterValidator(w http.ResponseWriter, req *http.Request) {
-	payload := []apiv1.SignedValidatorRegistration{}
+	payload := []builderApiV1.SignedValidatorRegistration{}
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 		log.Error("could not decode payload", "err", err)
 		respondError(w, http.StatusBadRequest, "invalid payload")
@@ -278,7 +268,7 @@ func (r *LocalRelay) handleGetHeader(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	bid := bellatrixapi.BuilderBid{
+	bid := builderApiBellatrix.BuilderBid{
 		Header: bestHeader,
 		Value:  profit,
 		Pubkey: r.relayPublicKey,
@@ -289,9 +279,9 @@ func (r *LocalRelay) handleGetHeader(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	response := &spec.VersionedSignedBuilderBid{
-		Version:   consensusspec.DataVersionBellatrix,
-		Bellatrix: &bellatrixapi.SignedBuilderBid{Message: &bid, Signature: signature},
+	response := &builderSpec.VersionedSignedBuilderBid{
+		Version:   spec.DataVersionBellatrix,
+		Bellatrix: &builderApiBellatrix.SignedBuilderBid{Message: &bid, Signature: signature},
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -303,7 +293,7 @@ func (r *LocalRelay) handleGetHeader(w http.ResponseWriter, req *http.Request) {
 }
 
 func (r *LocalRelay) handleGetPayload(w http.ResponseWriter, req *http.Request) {
-	payload := new(apiv1bellatrix.SignedBlindedBeaconBlock)
+	payload := new(eth2ApiV1Bellatrix.SignedBlindedBeaconBlock)
 	if err := json.NewDecoder(req.Body).Decode(&payload); err != nil {
 		log.Error("failed to decode payload", "error", err)
 		respondError(w, http.StatusBadRequest, "invalid payload")
@@ -356,8 +346,8 @@ func (r *LocalRelay) handleGetPayload(w http.ResponseWriter, req *http.Request) 
 		return
 	}
 
-	response := &api.VersionedExecutionPayload{
-		Version:   consensusspec.DataVersionBellatrix,
+	response := &builderApi.VersionedExecutionPayload{
+		Version:   spec.DataVersionBellatrix,
 		Bellatrix: bestPayload,
 	}
 
@@ -442,7 +432,7 @@ func PayloadToPayloadHeader(p *bellatrix.ExecutionPayload) (*bellatrix.Execution
 	var txs []bellatrix.Transaction
 	txs = append(txs, p.Transactions...)
 
-	transactions := bellatrixutil.ExecutionPayloadTransactions{Transactions: txs}
+	transactions := eth2UtilBellatrix.ExecutionPayloadTransactions{Transactions: txs}
 	txroot, err := transactions.HashTreeRoot()
 	if err != nil {
 		return nil, err

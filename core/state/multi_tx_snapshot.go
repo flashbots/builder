@@ -3,8 +3,10 @@ package state
 import (
 	"errors"
 	"fmt"
-	"math/big"
 	"reflect"
+
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/holiman/uint256"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -15,16 +17,16 @@ type MultiTxSnapshot struct {
 
 	numLogsAdded map[common.Hash]int
 
-	prevObjects map[common.Address]*stateObject
+	prevObjects map[common.Address]*resetObjectChange
 
 	accountStorage  map[common.Address]map[common.Hash]*common.Hash
-	accountBalance  map[common.Address]*big.Int
+	accountBalance  map[common.Address]*uint256.Int
 	accountNonce    map[common.Address]uint64
 	accountCode     map[common.Address][]byte
 	accountCodeHash map[common.Address][]byte
 
-	accountSuicided map[common.Address]bool
-	accountDeleted  map[common.Address]bool
+	accountSelfDestruct map[common.Address]bool
+	accountDeleted      map[common.Address]bool
 
 	accountNotPending map[common.Address]struct{}
 	accountNotDirty   map[common.Address]struct{}
@@ -44,18 +46,18 @@ func NewMultiTxSnapshot() *MultiTxSnapshot {
 
 func newMultiTxSnapshot() MultiTxSnapshot {
 	return MultiTxSnapshot{
-		numLogsAdded:      make(map[common.Hash]int),
-		prevObjects:       make(map[common.Address]*stateObject),
-		accountStorage:    make(map[common.Address]map[common.Hash]*common.Hash),
-		accountBalance:    make(map[common.Address]*big.Int),
-		accountNonce:      make(map[common.Address]uint64),
-		accountCode:       make(map[common.Address][]byte),
-		accountCodeHash:   make(map[common.Address][]byte),
-		accountSuicided:   make(map[common.Address]bool),
-		accountDeleted:    make(map[common.Address]bool),
-		accountNotPending: make(map[common.Address]struct{}),
-		accountNotDirty:   make(map[common.Address]struct{}),
-		touchedAccounts:   make(map[common.Address]struct{}),
+		numLogsAdded:        make(map[common.Hash]int),
+		prevObjects:         make(map[common.Address]*resetObjectChange),
+		accountStorage:      make(map[common.Address]map[common.Hash]*common.Hash),
+		accountBalance:      make(map[common.Address]*uint256.Int),
+		accountNonce:        make(map[common.Address]uint64),
+		accountCode:         make(map[common.Address][]byte),
+		accountCodeHash:     make(map[common.Address][]byte),
+		accountSelfDestruct: make(map[common.Address]bool),
+		accountDeleted:      make(map[common.Address]bool),
+		accountNotPending:   make(map[common.Address]struct{}),
+		accountNotDirty:     make(map[common.Address]struct{}),
+		touchedAccounts:     make(map[common.Address]struct{}),
 	}
 }
 
@@ -94,8 +96,8 @@ func (s MultiTxSnapshot) Copy() MultiTxSnapshot {
 		newSnapshot.accountCodeHash[address] = codeHash
 	}
 
-	for address, suicided := range s.accountSuicided {
-		newSnapshot.accountSuicided[address] = suicided
+	for address, selfDestructed := range s.accountSelfDestruct {
+		newSnapshot.accountSelfDestruct[address] = selfDestructed
 	}
 
 	for address, deleted := range s.accountDeleted {
@@ -168,7 +170,7 @@ func (s *MultiTxSnapshot) Equal(other *MultiTxSnapshot) bool {
 		reflect.DeepEqual(s.accountNonce, other.accountNonce) &&
 		reflect.DeepEqual(s.accountCode, other.accountCode) &&
 		reflect.DeepEqual(s.accountCodeHash, other.accountCodeHash) &&
-		reflect.DeepEqual(s.accountSuicided, other.accountSuicided) &&
+		reflect.DeepEqual(s.accountSelfDestruct, other.accountSelfDestruct) &&
 		reflect.DeepEqual(s.accountDeleted, other.accountDeleted) &&
 		reflect.DeepEqual(s.accountNotPending, other.accountNotPending) &&
 		reflect.DeepEqual(s.accountNotDirty, other.accountNotDirty) &&
@@ -191,8 +193,10 @@ func (s *MultiTxSnapshot) updateFromJournal(journal *journal) {
 			s.updateCreateObjectChange(entry)
 		case resetObjectChange:
 			s.updateResetObjectChange(entry)
-		case suicideChange:
-			s.updateSuicideChange(entry)
+		case storageChange:
+			s.updatePendingStorage(*entry.account, entry.key, entry.prevalue, true)
+		case selfDestructChange:
+			s.updateSelfDestructChange(entry)
 		}
 	}
 }
@@ -242,8 +246,17 @@ func (s *MultiTxSnapshot) updateCodeChange(change codeChange) {
 func (s *MultiTxSnapshot) updateResetObjectChange(change resetObjectChange) {
 	s.touchedAccounts[change.prev.address] = struct{}{}
 	address := change.prev.address
-	if _, ok := s.prevObjects[address]; !ok {
-		s.prevObjects[address] = change.prev
+	if _, exists := s.prevObjects[address]; !exists {
+		s.prevObjects[address] = &resetObjectChange{
+			account:                change.account,
+			prev:                   change.prev,
+			prevdestruct:           change.prevdestruct,
+			prevAccount:            change.prevAccount,
+			prevStorage:            change.prevStorage,
+			prevAccountOriginExist: change.prevAccountOriginExist,
+			prevAccountOrigin:      change.prevAccountOrigin,
+			prevStorageOrigin:      change.prevStorageOrigin,
+		}
 	}
 }
 
@@ -255,14 +268,14 @@ func (s *MultiTxSnapshot) updateCreateObjectChange(change createObjectChange) {
 	}
 }
 
-// updateSuicideChange updates the snapshot with the suicide change.
-func (s *MultiTxSnapshot) updateSuicideChange(change suicideChange) {
+// updateSelfDestructChange updates the snapshot with the suicide change.
+func (s *MultiTxSnapshot) updateSelfDestructChange(change selfDestructChange) {
 	s.touchedAccounts[*change.account] = struct{}{}
 	if s.objectChanged(*change.account) {
 		return
 	}
-	if _, ok := s.accountSuicided[*change.account]; !ok {
-		s.accountSuicided[*change.account] = change.prev
+	if _, ok := s.accountSelfDestruct[*change.account]; !ok {
+		s.accountSelfDestruct[*change.account] = change.prev
 	}
 	if _, ok := s.accountBalance[*change.account]; !ok {
 		s.accountBalance[*change.account] = change.prevbalance
@@ -396,13 +409,13 @@ func (s *MultiTxSnapshot) Merge(other *MultiTxSnapshot) error {
 	}
 
 	// add previous suicide for addresses not in current snapshot
-	for address, suicided := range other.accountSuicided {
+	for address, suicided := range other.accountSelfDestruct {
 		if s.objectChanged(address) {
 			continue
 		}
 
-		if _, exist := s.accountSuicided[address]; !exist {
-			s.accountSuicided[address] = suicided
+		if _, exist := s.accountSelfDestruct[address]; !exist {
+			s.accountSelfDestruct[address] = suicided
 		} else {
 			return errors.New("failed to merge snapshots - duplicate found for account suicide")
 		}
@@ -451,12 +464,35 @@ func (s *MultiTxSnapshot) revertState(st *StateDB) {
 		st.logSize -= uint(numLogs)
 	}
 
+	keccaker := crypto.NewKeccakState()
 	// restore the objects
 	for address, object := range s.prevObjects {
 		if object == nil {
 			delete(st.stateObjects, address)
+			delete(st.stateObjectsDestruct, address)
+
+			addrHash := crypto.HashData(keccaker, address[:])
+			delete(st.accounts, addrHash)
+			delete(st.storages, addrHash)
+			delete(st.accountsOrigin, address)
+			delete(st.storagesOrigin, address)
 		} else {
-			st.stateObjects[address] = object
+			st.stateObjects[address] = object.prev
+			if object.prevAccount != nil {
+				st.accounts[object.prev.addrHash] = object.prevAccount
+			}
+
+			if object.prevStorage != nil {
+				st.storages[object.prev.addrHash] = object.prevStorage
+			}
+
+			if object.prevAccountOriginExist {
+				st.accountsOrigin[object.prev.address] = object.prevAccountOrigin
+			}
+
+			if object.prevStorageOrigin != nil {
+				st.storagesOrigin[object.prev.address] = object.prevStorageOrigin
+			}
 		}
 	}
 
@@ -490,9 +526,9 @@ func (s *MultiTxSnapshot) revertState(st *StateDB) {
 	for address, code := range s.accountCode {
 		st.stateObjects[address].setCode(common.BytesToHash(s.accountCodeHash[address]), code)
 	}
-	// restore suicided
-	for address, suicided := range s.accountSuicided {
-		st.stateObjects[address].suicided = suicided
+	// restore selfdestructed
+	for address, suicided := range s.accountSelfDestruct {
+		st.stateObjects[address].selfDestructed = suicided
 	}
 	// restore deleted
 	for address, deleted := range s.accountDeleted {

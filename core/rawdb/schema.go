@@ -22,6 +22,7 @@ import (
 	"encoding/binary"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/metrics"
 )
 
@@ -41,6 +42,9 @@ var (
 
 	// headFinalizedBlockKey tracks the latest known finalized block hash.
 	headFinalizedBlockKey = []byte("LastFinalized")
+
+	// persistentStateIDKey tracks the id of latest stored state(for path-based only).
+	persistentStateIDKey = []byte("LastStateID")
 
 	// lastPivotKey tracks the last pivot block used by fast sync (to reenable on sethead).
 	lastPivotKey = []byte("LastPivot")
@@ -69,10 +73,15 @@ var (
 	// skeletonSyncStatusKey tracks the skeleton sync status across restarts.
 	skeletonSyncStatusKey = []byte("SkeletonSyncStatus")
 
+	// trieJournalKey tracks the in-memory trie node layers across restarts.
+	trieJournalKey = []byte("TrieJournal")
+
 	// txIndexTailKey tracks the oldest block whose transactions have been indexed.
 	txIndexTailKey = []byte("TransactionIndexTail")
 
 	// fastTxLookupLimitKey tracks the transaction lookup limit during fast sync.
+	// This flag is deprecated, it's kept to avoid reporting errors when inspect
+	// database.
 	fastTxLookupLimitKey = []byte("FastTransactionLookupLimit")
 
 	// badBlockKey tracks the list of bad blocks seen by local
@@ -83,6 +92,9 @@ var (
 
 	// transitionStatusKey tracks the eth2 transition status.
 	transitionStatusKey = []byte("eth2-transition")
+
+	// snapSyncStatusFlagKey flags that status of snap sync.
+	snapSyncStatusFlagKey = []byte("SnapSyncStatus")
 
 	// Data item prefixes (use single byte to avoid mixing data types, avoid `i`, used for indexes).
 	headerPrefix       = []byte("h") // headerPrefix + num (uint64 big endian) + hash -> header
@@ -100,9 +112,10 @@ var (
 	CodePrefix            = []byte("c") // CodePrefix + code hash -> account code
 	skeletonHeaderPrefix  = []byte("S") // skeletonHeaderPrefix + num (uint64 big endian) -> header
 
-	// Path-based trie node scheme.
+	// Path-based storage scheme of merkle patricia trie.
 	trieNodeAccountPrefix = []byte("A") // trieNodeAccountPrefix + hexPath -> trie node
 	trieNodeStoragePrefix = []byte("O") // trieNodeStoragePrefix + accountHash + hexPath -> trie node
+	stateIDPrefix         = []byte("L") // stateIDPrefix + state root -> state id
 
 	PreimagePrefix = []byte("secure-key-")       // PreimagePrefix + hash -> preimage
 	configPrefix   = []byte("ethereum-config-")  // config prefix for the db
@@ -120,6 +133,10 @@ var (
 	BloomTrieIndexPrefix = []byte("bltIndex-")
 
 	CliqueSnapshotPrefix = []byte("clique-")
+
+	BestUpdateKey         = []byte("update-")    // bigEndian64(syncPeriod) -> RLP(types.LightClientUpdate)  (nextCommittee only referenced by root hash)
+	FixedCommitteeRootKey = []byte("fixedRoot-") // bigEndian64(syncPeriod) -> committee root hash
+	SyncCommitteeKey      = []byte("committee-") // bigEndian64(syncPeriod) -> serialized committee
 
 	preimageCounter    = metrics.NewRegisteredCounter("db/preimage/total", nil)
 	preimageHitCounter = metrics.NewRegisteredCounter("db/preimage/hits", nil)
@@ -187,7 +204,11 @@ func accountSnapshotKey(hash common.Hash) []byte {
 
 // storageSnapshotKey = SnapshotStoragePrefix + account hash + storage hash
 func storageSnapshotKey(accountHash, storageHash common.Hash) []byte {
-	return append(append(SnapshotStoragePrefix, accountHash.Bytes()...), storageHash.Bytes()...)
+	buf := make([]byte, len(SnapshotStoragePrefix)+common.HashLength+common.HashLength)
+	n := copy(buf, SnapshotStoragePrefix)
+	n += copy(buf[n:], accountHash.Bytes())
+	copy(buf[n:], storageHash.Bytes())
+	return buf
 }
 
 // storageSnapshotsKey = SnapshotStoragePrefix + account hash + storage hash
@@ -239,6 +260,11 @@ func genesisStateSpecKey(hash common.Hash) []byte {
 	return append(genesisPrefix, hash.Bytes()...)
 }
 
+// stateIDKey = stateIDPrefix + root (32 bytes)
+func stateIDKey(root common.Hash) []byte {
+	return append(stateIDPrefix, root.Bytes()...)
+}
+
 // accountTrieNodeKey = trieNodeAccountPrefix + nodePath.
 func accountTrieNodeKey(path []byte) []byte {
 	return append(trieNodeAccountPrefix, path...)
@@ -246,5 +272,70 @@ func accountTrieNodeKey(path []byte) []byte {
 
 // storageTrieNodeKey = trieNodeStoragePrefix + accountHash + nodePath.
 func storageTrieNodeKey(accountHash common.Hash, path []byte) []byte {
-	return append(append(trieNodeStoragePrefix, accountHash.Bytes()...), path...)
+	buf := make([]byte, len(trieNodeStoragePrefix)+common.HashLength+len(path))
+	n := copy(buf, trieNodeStoragePrefix)
+	n += copy(buf[n:], accountHash.Bytes())
+	copy(buf[n:], path)
+	return buf
+}
+
+// IsLegacyTrieNode reports whether a provided database entry is a legacy trie
+// node. The characteristics of legacy trie node are:
+// - the key length is 32 bytes
+// - the key is the hash of val
+func IsLegacyTrieNode(key []byte, val []byte) bool {
+	if len(key) != common.HashLength {
+		return false
+	}
+	return bytes.Equal(key, crypto.Keccak256(val))
+}
+
+// ResolveAccountTrieNodeKey reports whether a provided database entry is an
+// account trie node in path-based state scheme, and returns the resolved
+// node path if so.
+func ResolveAccountTrieNodeKey(key []byte) (bool, []byte) {
+	if !bytes.HasPrefix(key, trieNodeAccountPrefix) {
+		return false, nil
+	}
+	// The remaining key should only consist a hex node path
+	// whose length is in the range 0 to 64 (64 is excluded
+	// since leaves are always wrapped with shortNode).
+	if len(key) >= len(trieNodeAccountPrefix)+common.HashLength*2 {
+		return false, nil
+	}
+	return true, key[len(trieNodeAccountPrefix):]
+}
+
+// IsAccountTrieNode reports whether a provided database entry is an account
+// trie node in path-based state scheme.
+func IsAccountTrieNode(key []byte) bool {
+	ok, _ := ResolveAccountTrieNodeKey(key)
+	return ok
+}
+
+// ResolveStorageTrieNode reports whether a provided database entry is a storage
+// trie node in path-based state scheme, and returns the resolved account hash
+// and node path if so.
+func ResolveStorageTrieNode(key []byte) (bool, common.Hash, []byte) {
+	if !bytes.HasPrefix(key, trieNodeStoragePrefix) {
+		return false, common.Hash{}, nil
+	}
+	// The remaining key consists of 2 parts:
+	// - 32 bytes account hash
+	// - hex node path whose length is in the range 0 to 64
+	if len(key) < len(trieNodeStoragePrefix)+common.HashLength {
+		return false, common.Hash{}, nil
+	}
+	if len(key) >= len(trieNodeStoragePrefix)+common.HashLength+common.HashLength*2 {
+		return false, common.Hash{}, nil
+	}
+	accountHash := common.BytesToHash(key[len(trieNodeStoragePrefix) : len(trieNodeStoragePrefix)+common.HashLength])
+	return true, accountHash, key[len(trieNodeStoragePrefix)+common.HashLength:]
+}
+
+// IsStorageTrieNode reports whether a provided database entry is a storage
+// trie node in path-based state scheme.
+func IsStorageTrieNode(key []byte) bool {
+	ok, _, _ := ResolveStorageTrieNode(key)
+	return ok
 }

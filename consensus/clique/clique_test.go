@@ -30,7 +30,7 @@ import (
 )
 
 // This test case is a repro of an annoying bug that took us forever to catch.
-// In Clique PoA networks (Rinkeby, Görli, etc), consecutive blocks might have
+// In Clique PoA networks (Görli, etc), consecutive blocks might have
 // the same state root (no block subsidy, empty block). If a node crashes, the
 // chain ends up losing the recent state and needs to regenerate it from blocks
 // already in the database. The bug was that processing the block *prior* to an
@@ -47,7 +47,7 @@ func TestReimportMirroredState(t *testing.T) {
 	genspec := &core.Genesis{
 		Config:    params.AllCliqueProtocolChanges,
 		ExtraData: make([]byte, extraVanity+common.AddressLength+extraSeal),
-		Alloc: map[common.Address]core.GenesisAccount{
+		Alloc: map[common.Address]types.Account{
 			addr: {Balance: big.NewInt(10000000000000000)},
 		},
 		BaseFee: big.NewInt(params.InitialBaseFee),

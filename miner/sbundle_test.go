@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/internal/ethapi"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -59,7 +60,7 @@ func genUserTx(nonce uint64, shouldFail bool) *types.Transaction {
 	}
 }
 
-func genBackrunTx(nonce uint64) (*types.Transaction, *big.Int) {
+func genBackrunTx(nonce uint64) (*types.Transaction, *uint256.Int) {
 	data := &types.DynamicFeeTx{
 		ChainID:   big.NewInt(1),
 		Nonce:     nonce,
@@ -70,13 +71,13 @@ func genBackrunTx(nonce uint64) (*types.Transaction, *big.Int) {
 		Value:     big.NewInt(params.Ether / 10),
 	}
 	tx := types.MustSignNewTx(searcherPrivKey, types.LatestSigner(params.TestChainConfig), data)
-	backrunFeeValue := new(big.Int).Mul(tx.GasTipCap(), big.NewInt(int64(30342)))
-	backrunValue := new(big.Int).Add(tx.Value(), backrunFeeValue)
+	backrunFeeValue := new(uint256.Int).Mul(uint256.MustFromBig(tx.GasTipCap()), uint256.NewInt(uint64(30342)))
+	backrunValue := new(uint256.Int).Add(uint256.MustFromBig(tx.Value()), backrunFeeValue)
 	return tx, backrunValue
 }
 
 type TestCaseExtractedRefunds struct {
-	Value       *hexutil.Big           `json:"value"`
+	Value       *hexutil.U256          `json:"value"`
 	Percent     int                    `json:"percent"`
 	RefundSplit map[common.Address]int `json:"refundSplit,omitempty"`
 }
@@ -89,17 +90,17 @@ type SBundleTestCase struct {
 }
 
 type SBundleTestSuite struct {
-	GenesisAlloc core.GenesisAlloc `json:"genesisAlloc"`
-	Header       *types.Header     `json:"header"`
-	Tests        []SBundleTestCase `json:"tests"`
+	GenesisAlloc types.GenesisAlloc `json:"genesisAlloc"`
+	Header       *types.Header      `json:"header"`
+	Tests        []SBundleTestCase  `json:"tests"`
 }
 
 func generateTests() {
-	testSuite.GenesisAlloc = make(core.GenesisAlloc)
-	testSuite.GenesisAlloc[userAddress] = core.GenesisAccount{Balance: big.NewInt(params.Ether)}
-	testSuite.GenesisAlloc[searcherAddress] = core.GenesisAccount{Balance: big.NewInt(params.Ether)}
-	testSuite.GenesisAlloc[contractAddress] = core.GenesisAccount{Balance: new(big.Int), Code: contractCode}
-	testSuite.GenesisAlloc[builderAddress] = core.GenesisAccount{Balance: new(big.Int)}
+	testSuite.GenesisAlloc = make(types.GenesisAlloc)
+	testSuite.GenesisAlloc[userAddress] = types.Account{Balance: big.NewInt(params.Ether)}
+	testSuite.GenesisAlloc[searcherAddress] = types.Account{Balance: big.NewInt(params.Ether)}
+	testSuite.GenesisAlloc[contractAddress] = types.Account{Balance: new(big.Int), Code: contractCode}
+	testSuite.GenesisAlloc[builderAddress] = types.Account{Balance: new(big.Int)}
 
 	testSuite.Header = &types.Header{
 		Number:   big.NewInt(1),
@@ -123,7 +124,7 @@ func generateTests() {
 		if err != nil {
 			panic(err)
 		}
-		err = os.WriteFile(os.Getenv("DUMP_SBUNDLE_TEST_PATH"), jsonBytes, 0644)
+		err = os.WriteFile(os.Getenv("DUMP_SBUNDLE_TEST_PATH"), jsonBytes, 0o644)
 		if err != nil {
 			panic(err)
 		}
@@ -257,7 +258,7 @@ func pushBackrunOfTx() {
 	}
 	expectedRefunds := []TestCaseExtractedRefunds{
 		{
-			Value:   (*hexutil.Big)(backrunValue),
+			Value:   (*hexutil.U256)(backrunValue),
 			Percent: 90,
 			RefundSplit: map[common.Address]int{
 				userAddress: 100,
@@ -305,7 +306,7 @@ func pushBackrunOfBundle() {
 	}
 	expectedRefunds := []TestCaseExtractedRefunds{
 		{
-			Value:   (*hexutil.Big)(backrunValue),
+			Value:   (*hexutil.U256)(backrunValue),
 			Percent: 90,
 			RefundSplit: map[common.Address]int{
 				userAddress: 100,
@@ -365,7 +366,7 @@ func pushBackrunOfBundleWithRefundConfig() {
 	}
 	expectedRefunds := []TestCaseExtractedRefunds{
 		{
-			Value:   (*hexutil.Big)(backrunValue),
+			Value:   (*hexutil.U256)(backrunValue),
 			Percent: 90,
 			RefundSplit: map[common.Address]int{
 				userAddress:     50,
@@ -427,14 +428,14 @@ func pushDoubleBackrunOfBundleWithRefundConfig() {
 
 	expectedRefunds := []TestCaseExtractedRefunds{
 		{
-			Value:   (*hexutil.Big)(backrun1Value),
+			Value:   (*hexutil.U256)(backrun1Value),
 			Percent: 90,
 			RefundSplit: map[common.Address]int{
 				userAddress: 100,
 			},
 		},
 		{
-			Value:   (*hexutil.Big)(backrun2Value),
+			Value:   (*hexutil.U256)(backrun2Value),
 			Percent: 80,
 			RefundSplit: map[common.Address]int{
 				searcherAddress: 100,
@@ -456,16 +457,16 @@ func TestSBundles(t *testing.T) {
 				env             = newEnvironment(chData, statedb, testSuite.Header.Coinbase, testSuite.Header.GasLimit, testSuite.Header.BaseFee)
 				envDiff         = newEnvironmentDiff(env)
 
-				expectedKickbackValues    = make([]*big.Int, 0, len(tt.ExtractedRefunds))
+				expectedKickbackValues    = make([]*uint256.Int, 0, len(tt.ExtractedRefunds))
 				expectedKickbackReceivers = make([]common.Address, 0, len(tt.ExtractedRefunds))
 			)
 			for _, refund := range tt.ExtractedRefunds {
-				refundBeforSplit := common.PercentOf(refund.Value.ToInt(), refund.Percent)
+				refundBeforeSplit := common.PercentOf((*uint256.Int)(refund.Value), refund.Percent)
 
-				fees := new(big.Int).Mul(testSuite.Header.BaseFee, core.SbundlePayoutMaxCost)
-				fees.Mul(fees, big.NewInt(int64(len(refund.RefundSplit))))
+				fees := new(uint256.Int).Mul(uint256.MustFromBig(testSuite.Header.BaseFee), core.SbundlePayoutMaxCost)
+				fees.Mul(fees, uint256.NewInt(uint64(len(refund.RefundSplit))))
 				for recipient, split := range refund.RefundSplit {
-					value := new(big.Int).Sub(refundBeforSplit, fees)
+					value := new(uint256.Int).Sub(refundBeforeSplit, fees)
 					value = common.PercentOf(value, split)
 					expectedKickbackValues = append(expectedKickbackValues, value)
 					expectedKickbackReceivers = append(expectedKickbackReceivers, recipient)
@@ -477,8 +478,8 @@ func TestSBundles(t *testing.T) {
 			sim := types.SimSBundle{
 				Bundle: &bundle,
 				// with such small values this bundle will never be rejected based on insufficient profit
-				MevGasPrice: big.NewInt(1),
-				Profit:      big.NewInt(1),
+				MevGasPrice: uint256.NewInt(1),
+				Profit:      uint256.NewInt(1),
 			}
 			err = envDiff.commitSBundle(&sim, chData, nil, builderPrivKey, defaultAlgorithmConfig)
 			if tt.ShouldFail {
@@ -502,7 +503,7 @@ func TestSBundles(t *testing.T) {
 			for _, tx := range kickbackTxs {
 				to := tx.To()
 				require.NotNil(t, to)
-				value := tx.Value()
+				value := uint256.MustFromBig(tx.Value())
 				for i := range expectedKickbackReceivers {
 					if expectedKickbackReceivers[i] == *to && expectedKickbackValues[i].Cmp(value) == 0 {
 						expectedKickbackFound[i]++

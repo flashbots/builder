@@ -3,14 +3,16 @@ package miner
 import (
 	"crypto/ecdsa"
 	"errors"
-	"math/big"
 	"sort"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/holiman/uint256"
 )
 
 // / To use it:
@@ -22,14 +24,14 @@ type greedyBucketsMultiSnapBuilder struct {
 	inputEnvironment *environment
 	chainData        chainData
 	builderKey       *ecdsa.PrivateKey
-	interrupt        *int32
-	gasUsedMap       map[*types.TxWithMinerFee]uint64
+	interrupt        *atomic.Int32
+	gasUsedMap       map[*txWithMinerFee]uint64
 	algoConf         algorithmConfig
 }
 
 func newGreedyBucketsMultiSnapBuilder(
 	chain *core.BlockChain, chainConfig *params.ChainConfig, algoConf *algorithmConfig,
-	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32,
+	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *atomic.Int32,
 ) *greedyBucketsMultiSnapBuilder {
 	if algoConf == nil {
 		panic("algoConf cannot be nil")
@@ -40,15 +42,15 @@ func newGreedyBucketsMultiSnapBuilder(
 		chainData:        chainData{chainConfig: chainConfig, chain: chain, blacklist: blacklist},
 		builderKey:       key,
 		interrupt:        interrupt,
-		gasUsedMap:       make(map[*types.TxWithMinerFee]uint64),
+		gasUsedMap:       make(map[*txWithMinerFee]uint64),
 		algoConf:         *algoConf,
 	}
 }
 
 func (b *greedyBucketsMultiSnapBuilder) commit(changes *envChanges,
-	transactions []*types.TxWithMinerFee,
-	orders *types.TransactionsByPriceAndNonce,
-	gasUsedMap map[*types.TxWithMinerFee]uint64, retryMap map[*types.TxWithMinerFee]int, retryLimit int,
+	transactions []*txWithMinerFee,
+	orders *transactionsByPriceAndNonce,
+	gasUsedMap map[*txWithMinerFee]uint64, retryMap map[*txWithMinerFee]int, retryLimit int,
 ) ([]types.SimulatedBundle, []types.UsedSBundle) {
 	var (
 		algoConf = b.algoConf
@@ -65,7 +67,13 @@ func (b *greedyBucketsMultiSnapBuilder) commit(changes *envChanges,
 
 		orderFailed := false
 
-		if tx := order.Tx(); tx != nil {
+		if lazyTx := order.Tx(); lazyTx != nil {
+			tx := lazyTx.Resolve()
+			if tx == nil {
+				log.Trace("Ignoring evicted transaction", "hash", lazyTx.Hash)
+				orders.Pop()
+				continue
+			}
 			receipt, skip, err := changes.commitTx(tx, b.chainData)
 			orderFailed = err != nil
 			if err != nil {
@@ -167,7 +175,8 @@ func (b *greedyBucketsMultiSnapBuilder) commit(changes *envChanges,
 }
 
 func (b *greedyBucketsMultiSnapBuilder) mergeOrdersAndApplyToEnv(
-	orders *types.TransactionsByPriceAndNonce) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
+	orders *transactionsByPriceAndNonce,
+) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
 	if orders.Peek() == nil {
 		return b.inputEnvironment, nil, nil
 	}
@@ -181,14 +190,14 @@ func (b *greedyBucketsMultiSnapBuilder) mergeOrdersAndApplyToEnv(
 	const retryLimit = 1
 
 	var (
-		baseFee            = changes.env.header.BaseFee
-		retryMap           = make(map[*types.TxWithMinerFee]int)
+		baseFee            = uint256.MustFromBig(changes.env.header.BaseFee)
+		retryMap           = make(map[*txWithMinerFee]int)
 		usedBundles        []types.SimulatedBundle
 		usedSbundles       []types.UsedSBundle
-		transactions       []*types.TxWithMinerFee
+		transactions       []*txWithMinerFee
 		priceCutoffPercent = b.algoConf.PriceCutoffPercent
 
-		SortInPlaceByProfit = func(baseFee *big.Int, transactions []*types.TxWithMinerFee, gasUsedMap map[*types.TxWithMinerFee]uint64) {
+		SortInPlaceByProfit = func(baseFee *uint256.Int, transactions []*txWithMinerFee, gasUsedMap map[*txWithMinerFee]uint64) {
 			sort.SliceStable(transactions, func(i, j int) bool {
 				return transactions[i].Profit(baseFee, gasUsedMap[transactions[i]]).Cmp(transactions[j].Profit(baseFee, gasUsedMap[transactions[j]])) > 0
 			})
@@ -235,7 +244,7 @@ func (b *greedyBucketsMultiSnapBuilder) mergeOrdersAndApplyToEnv(
 	return changes.env, usedBundles, usedSbundles
 }
 
-func (b *greedyBucketsMultiSnapBuilder) buildBlock(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
-	orders := types.NewTransactionsByPriceAndNonce(b.inputEnvironment.signer, transactions, simBundles, simSBundles, b.inputEnvironment.header.BaseFee)
+func (b *greedyBucketsMultiSnapBuilder) buildBlock(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address][]*txpool.LazyTransaction) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
+	orders := newTransactionsByPriceAndNonce(b.inputEnvironment.signer, transactions, simBundles, simSBundles, b.inputEnvironment.header.BaseFee)
 	return b.mergeOrdersAndApplyToEnv(orders)
 }

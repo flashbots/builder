@@ -7,9 +7,11 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/ethereum/go-ethereum/consensus/misc/eip4844"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	"github.com/ethereum/go-ethereum/consensus/misc"
+	"github.com/ethereum/go-ethereum/consensus/misc/eip1559"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -180,9 +182,9 @@ type SimMevBundleResponse struct {
 	Success         bool                     `json:"success"`
 	Error           string                   `json:"error,omitempty"`
 	StateBlock      hexutil.Uint64           `json:"stateBlock"`
-	MevGasPrice     hexutil.Big              `json:"mevGasPrice"`
-	Profit          hexutil.Big              `json:"profit"`
-	RefundableValue hexutil.Big              `json:"refundableValue"`
+	MevGasPrice     hexutil.U256             `json:"mevGasPrice"`
+	Profit          hexutil.U256             `json:"profit"`
+	RefundableValue hexutil.U256             `json:"refundableValue"`
 	GasUsed         hexutil.Uint64           `json:"gasUsed"`
 	BodyLogs        []core.SimBundleBodyLogs `json:"logs,omitempty"`
 }
@@ -235,7 +237,7 @@ func (api *MevAPI) SimBundle(ctx context.Context, args SendMevBundleArgs, aux Si
 		Time:       parentHeader.Time + 12,
 		Difficulty: new(big.Int).Set(parentHeader.Difficulty),
 		Coinbase:   parentHeader.Coinbase,
-		BaseFee:    misc.CalcBaseFee(api.b.ChainConfig(), parentHeader),
+		BaseFee:    eip1559.CalcBaseFee(api.b.ChainConfig(), parentHeader),
 	}
 
 	if aux.BlockNumber != nil {
@@ -254,6 +256,14 @@ func (api *MevAPI) SimBundle(ctx context.Context, args SendMevBundleArgs, aux Si
 		header.BaseFee = aux.BaseFee.ToInt()
 	}
 
+	if api.b.ChainConfig().IsCancun(header.Number, header.Time) {
+		var excessBlobGas uint64
+		if parentHeader.ExcessBlobGas != nil && parentHeader.BlobGasUsed != nil {
+			excessBlobGas = eip4844.CalcExcessBlobGas(*parentHeader.ExcessBlobGas, *parentHeader.BlobGasUsed)
+		}
+		header.ExcessBlobGas = &excessBlobGas
+	}
+
 	gp := new(core.GasPool).AddGas(header.GasLimit)
 
 	result := &SimMevBundleResponse{}
@@ -267,9 +277,9 @@ func (api *MevAPI) SimBundle(ctx context.Context, args SendMevBundleArgs, aux Si
 		result.BodyLogs = bundleRes.BodyLogs
 	}
 	result.StateBlock = hexutil.Uint64(parentHeader.Number.Uint64())
-	result.MevGasPrice = hexutil.Big(*bundleRes.MevGasPrice)
-	result.Profit = hexutil.Big(*bundleRes.TotalProfit)
-	result.RefundableValue = hexutil.Big(*bundleRes.RefundableValue)
+	result.MevGasPrice = hexutil.U256(*bundleRes.MevGasPrice)
+	result.Profit = hexutil.U256(*bundleRes.TotalProfit)
+	result.RefundableValue = hexutil.U256(*bundleRes.RefundableValue)
 	result.GasUsed = hexutil.Uint64(bundleRes.GasUsed)
 
 	return result, nil

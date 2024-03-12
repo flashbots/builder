@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
@@ -21,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
 
@@ -259,22 +259,33 @@ func (sc stateComparisonTestContexts) Init(t *testing.T, gasLimit uint64) stateC
 		tc := stateComparisonTestContext{}
 		tc.statedb, tc.chainData, tc.signers = genTestSetup(gasLimit)
 		tc.env = newEnvironment(tc.chainData, tc.statedb, tc.signers.addresses[0], gasLimit, big.NewInt(1))
-		var err error
+		var (
+			err error
+			sdb *state.StateDB
+		)
 		switch i {
 		case Baseline:
 			tc.Name = "baseline"
 			tc.envDiff = newEnvironmentDiff(tc.env)
+			sdb = tc.envDiff.state
 		case SingleSnapshot:
 			tc.Name = "single-snapshot"
 			tc.changes, err = newEnvChanges(tc.env)
 			_ = tc.changes.env.state.MultiTxSnapshotCommit()
+			sdb = tc.changes.env.state
 		case MultiSnapshot:
 			tc.Name = "multi-snapshot"
 			tc.changes, err = newEnvChanges(tc.env)
 			_ = tc.changes.env.state.MultiTxSnapshotCommit()
+			sdb = tc.changes.env.state
 		}
 
 		require.NoError(t, err, "failed to initialize test contexts: %v", err)
+
+		for _, addr := range tc.signers.addresses {
+			b := sdb.GetBalance(addr)
+			require.Greaterf(t, b.Uint64(), uint64(0), "balance is not greater than zero for test context %s", tc.Name)
+		}
 		sc[i] = tc
 	}
 	return sc
@@ -312,7 +323,7 @@ func (sc stateComparisonTestContexts) ValidateRootHashes(t *testing.T, expected 
 	}
 }
 
-func (sc stateComparisonTestContexts) GenerateTransactions(t *testing.T, txCount int, failEveryN int) {
+func (sc stateComparisonTestContexts) GenerateTransactions(t *testing.T, txCount, failEveryN int) {
 	for tcIndex, tc := range sc {
 		signers := tc.signers
 		tc.transactions = sc.generateTransactions(txCount, failEveryN, signers)
@@ -323,7 +334,7 @@ func (sc stateComparisonTestContexts) GenerateTransactions(t *testing.T, txCount
 	}
 }
 
-func (sc stateComparisonTestContexts) generateTransactions(txCount int, failEveryN int, signers signerList) []*types.Transaction {
+func (sc stateComparisonTestContexts) generateTransactions(txCount, failEveryN int, signers signerList) []*types.Transaction {
 	transactions := make([]*types.Transaction, 0, txCount)
 	for i := 0; i < txCount; i++ {
 		var data []byte
@@ -360,7 +371,7 @@ func (sc stateComparisonTestContexts) ValidateTestCases(t *testing.T, reference 
 	var (
 		expectedGasPool      *core.GasPool        = expected.envDiff.baseEnvironment.gasPool
 		expectedHeader       *types.Header        = expected.envDiff.baseEnvironment.header
-		expectedProfit       *big.Int             = expected.envDiff.baseEnvironment.profit
+		expectedProfit       *uint256.Int         = expected.envDiff.baseEnvironment.profit
 		expectedTxCount      int                  = expected.envDiff.baseEnvironment.tcount
 		expectedTransactions []*types.Transaction = expected.envDiff.baseEnvironment.txs
 		expectedReceipts     types.Receipts       = expected.envDiff.baseEnvironment.receipts
@@ -373,7 +384,7 @@ func (sc stateComparisonTestContexts) ValidateTestCases(t *testing.T, reference 
 		var (
 			actualGasPool      *core.GasPool        = tc.env.gasPool
 			actualHeader       *types.Header        = tc.env.header
-			actualProfit       *big.Int             = tc.env.profit
+			actualProfit       *uint256.Int         = tc.env.profit
 			actualTxCount      int                  = tc.env.tcount
 			actualTransactions []*types.Transaction = tc.env.txs
 			actualReceipts     types.Receipts       = tc.env.receipts
@@ -432,7 +443,7 @@ func (sc stateComparisonTestContexts) ValidateTestCases(t *testing.T, reference 
 }
 
 func TestStateComparisons(t *testing.T) {
-	var testContexts = make(stateComparisonTestContexts, 3)
+	testContexts := make(stateComparisonTestContexts, 3)
 
 	// test commit tx
 	t.Run("state-compare-commit-tx", func(t *testing.T) {
@@ -600,7 +611,7 @@ func TestStateComparisons(t *testing.T) {
 func TestBundles(t *testing.T) {
 	const maxGasLimit = 1_000_000_000_000
 
-	var testContexts = make(stateComparisonTestContexts, 3)
+	testContexts := make(stateComparisonTestContexts, 3)
 	testContexts.Init(t, maxGasLimit)
 
 	// Set up FuzzTest ABI and bytecode
@@ -615,7 +626,7 @@ func TestBundles(t *testing.T) {
 	deployData, err := abi.Pack("")
 	require.NoError(t, err)
 
-	simulations := make([]*backends.SimulatedBackend, 3)
+	simulations := make([]*SimulatedBackend, 3)
 	controlFuzzTestContracts := make(map[int][]*Statefuzztest, 3)
 	variantFuzzTestAddresses := make(map[int][]common.Address, 3)
 
@@ -623,7 +634,7 @@ func TestBundles(t *testing.T) {
 		disk := tc.env.state.Copy().Database().DiskDB()
 		db := rawdb.NewDatabase(disk)
 
-		backend := backends.NewSimulatedBackendChain(db, tc.chainData.chain)
+		backend := NewSimulatedBackendChain(db, tc.chainData.chain)
 		simulations[tcIdx] = backend
 
 		s := tc.signers
@@ -640,7 +651,8 @@ func TestBundles(t *testing.T) {
 				Data:     append(bytecodeBytes, deployData...),
 			}
 
-			signTx := types.MustSignNewTx(pk, types.LatestSigner(s.config), deployTx)
+			signer := types.LatestSigner(s.config)
+			signedDeployTx := types.MustSignNewTx(pk, signer, deployTx)
 
 			auth, err := bind.NewKeyedTransactorWithChainID(pk, tc.chainData.chainConfig.ChainID)
 			require.NoError(t, err)
@@ -652,40 +664,70 @@ func TestBundles(t *testing.T) {
 
 			controlFuzzTestContracts[tcIdx][i] = fuzz
 
+			actualFrom, senderErr := types.Sender(signer, signedDeployTx)
+			require.NoError(t, senderErr)
+			expectedFrom := s.addresses[i]
+			require.True(t, bytes.Equal(actualFrom.Bytes(), expectedFrom.Bytes()))
+
 			var receipt *types.Receipt
 			switch tcIdx {
 			case Baseline:
-				receipt, _, err = tc.envDiff.commitTx(signTx, tc.chainData)
+				balance := tc.envDiff.state.GetBalance(actualFrom)
+				require.Greater(t, balance.Uint64(), uint64(0))
+
+				receipt, _, err = tc.envDiff.commitTx(signedDeployTx, tc.chainData)
 				require.NoError(t, err)
 				tc.envDiff.applyToBaseEnv()
 
-				_, err = tc.envDiff.baseEnvironment.state.Commit(true)
+				var newRoot common.Hash
+				newRoot, err = tc.envDiff.baseEnvironment.state.Commit(0, true)
+
+				newState, stateErr := state.New(newRoot, tc.envDiff.baseEnvironment.state.Database(), nil)
+				require.NoError(t, stateErr)
+				require.NotNil(t, newState)
+				tc.envDiff.state = newState
 			case SingleSnapshot:
+				balance := tc.changes.env.state.GetBalance(actualFrom)
+				require.Greater(t, balance.Uint64(), uint64(0))
+
 				err = tc.changes.env.state.NewMultiTxSnapshot()
 				require.NoError(t, err)
 
-				receipt, _, err = tc.changes.commitTx(signTx, tc.chainData)
+				receipt, _, err = tc.changes.commitTx(signedDeployTx, tc.chainData)
 				require.NoError(t, err)
 
 				err = tc.changes.apply()
 				require.NoError(t, err)
 
-				_, err = tc.changes.env.state.Commit(true)
+				var newRoot common.Hash
+				newRoot, err = tc.changes.env.state.Commit(0, true)
+				newState, stateErr := state.New(newRoot, tc.changes.env.state.Database(), nil)
+				require.NoError(t, stateErr)
+				require.NotNil(t, newState)
+				tc.changes.env.state = newState
 
 			case MultiSnapshot:
+				balance := tc.changes.env.state.GetBalance(actualFrom)
+				require.Greater(t, balance.Uint64(), uint64(0))
+
 				err = tc.changes.env.state.NewMultiTxSnapshot()
 				require.NoError(t, err)
 
-				receipt, _, err = tc.changes.commitTx(signTx, tc.chainData)
+				receipt, _, err = tc.changes.commitTx(signedDeployTx, tc.chainData)
 				require.NoError(t, err)
 
 				err = tc.changes.apply()
 				require.NoError(t, err)
 
-				_, err = tc.changes.env.state.Commit(true)
+				var newRoot common.Hash
+				newRoot, err = tc.changes.env.state.Commit(0, true)
+				newState, stateErr := state.New(newRoot, tc.changes.env.state.Database(), nil)
+				require.NoError(t, stateErr)
+				require.NotNil(t, newState)
+				tc.changes.env.state = newState
 			}
 
-			require.NoError(t, err)
+			require.NoError(t, err, "failed to commit transaction for %s", tc.Name)
 			require.Equal(t, types.ReceiptStatusSuccessful, receipt.Status)
 			variantFuzzTestAddresses[tcIdx][i] = receipt.ContractAddress
 
@@ -698,8 +740,8 @@ func TestBundles(t *testing.T) {
 
 	// initialize fuzz test contract for each account with random objects through createObject function
 	const createObjectCount = 100
-	var randCreateObjectKeys = [createObjectCount][32]byte{}
-	var randCreateObjectValues = [createObjectCount][32]byte{}
+	randCreateObjectKeys := [createObjectCount][32]byte{}
+	randCreateObjectValues := [createObjectCount][32]byte{}
 	for i := 0; i < createObjectCount; i++ {
 		_, err := rand.Read(randCreateObjectKeys[i][:])
 		require.NoError(t, err)
@@ -736,8 +778,7 @@ func TestBundles(t *testing.T) {
 					actualTx := types.MustSignNewTx(pk, types.LatestSigner(signers.config), tx)
 					actualTransactions[txIdx] = actualTx
 
-					expectedTx, err :=
-						controlFuzzTestContracts[tcIdx][signerIdx].CreateObject(auth, createObjKey, createObjValue[:])
+					expectedTx, err := controlFuzzTestContracts[tcIdx][signerIdx].CreateObject(auth, createObjKey, createObjValue[:])
 					require.NoError(t, err)
 
 					expectedTransactions[txIdx] = expectedTx
@@ -880,7 +921,7 @@ func TestBundles(t *testing.T) {
 	// The reason is that the pre-bundle signer list will be used to simulate the bundles.
 	// Using the actual signer list will cause nonce mismatch errors, since we increment nonce
 	// as we craft the bundles of transactions.
-	var preBundleSigners = signerList{
+	preBundleSigners := signerList{
 		config:    testContexts[0].signers.config,
 		addresses: make([]common.Address, len(testContexts[0].signers.addresses)),
 		signers:   make([]*ecdsa.PrivateKey, len(testContexts[0].signers.signers)),

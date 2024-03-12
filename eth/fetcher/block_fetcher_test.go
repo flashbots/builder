@@ -33,6 +33,7 @@ import (
 	"github.com/ethereum/go-ethereum/eth/protocols/eth"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/triedb"
 )
 
 var (
@@ -41,11 +42,11 @@ var (
 	testAddress = crypto.PubkeyToAddress(testKey.PublicKey)
 	gspec       = &core.Genesis{
 		Config:  params.TestChainConfig,
-		Alloc:   core.GenesisAlloc{testAddress: {Balance: big.NewInt(1000000000000000)}},
+		Alloc:   types.GenesisAlloc{testAddress: {Balance: big.NewInt(1000000000000000)}},
 		BaseFee: big.NewInt(params.InitialBaseFee),
 	}
-	genesis      = gspec.MustCommit(testdb)
-	unknownBlock = types.NewBlock(&types.Header{GasLimit: params.GenesisGasLimit, BaseFee: big.NewInt(params.InitialBaseFee)}, nil, nil, nil, trie.NewStackTrie(nil))
+	genesis      = gspec.MustCommit(testdb, triedb.NewDatabase(testdb, triedb.HashDefaults))
+	unknownBlock = types.NewBlock(&types.Header{Root: types.EmptyRootHash, GasLimit: params.GenesisGasLimit, BaseFee: big.NewInt(params.InitialBaseFee)}, nil, nil, nil, trie.NewStackTrie(nil))
 )
 
 // makeChain creates a chain of n blocks starting at and including parent.
@@ -58,7 +59,7 @@ func makeChain(n int, seed byte, parent *types.Block) ([]common.Hash, map[common
 
 		// If the block number is multiple of 3, send a bonus transaction to the miner
 		if parent == genesis && i%3 == 0 {
-			signer := types.MakeSigner(params.TestChainConfig, block.Number())
+			signer := types.MakeSigner(params.TestChainConfig, block.Number(), block.Timestamp())
 			tx, err := types.SignTx(types.NewTransaction(block.TxNonce(testAddress), common.Address{seed}, big.NewInt(1000), params.TxGas, block.BaseFee(), nil), signer, testKey)
 			if err != nil {
 				panic(err)
@@ -213,7 +214,7 @@ func (f *fetcherTester) makeHeaderFetcher(peer string, blocks map[common.Hash]*t
 		}
 		res := &eth.Response{
 			Req:  req,
-			Res:  (*eth.BlockHeadersPacket)(&headers),
+			Res:  (*eth.BlockHeadersRequest)(&headers),
 			Time: drift,
 			Done: make(chan error, 1), // Ignore the returned status
 		}
@@ -255,7 +256,7 @@ func (f *fetcherTester) makeBodyFetcher(peer string, blocks map[common.Hash]*typ
 		}
 		res := &eth.Response{
 			Req:  req,
-			Res:  (*eth.BlockBodiesPacket)(&bodies),
+			Res:  (*eth.BlockBodiesResponse)(&bodies),
 			Time: drift,
 			Done: make(chan error, 1), // Ignore the returned status
 		}
@@ -413,13 +414,13 @@ func testConcurrentAnnouncements(t *testing.T, light bool) {
 	secondHeaderFetcher := tester.makeHeaderFetcher("second", blocks, -gatherSlack)
 	secondBodyFetcher := tester.makeBodyFetcher("second", blocks, 0)
 
-	counter := uint32(0)
+	var counter atomic.Uint32
 	firstHeaderWrapper := func(hash common.Hash, sink chan *eth.Response) (*eth.Request, error) {
-		atomic.AddUint32(&counter, 1)
+		counter.Add(1)
 		return firstHeaderFetcher(hash, sink)
 	}
 	secondHeaderWrapper := func(hash common.Hash, sink chan *eth.Response) (*eth.Request, error) {
-		atomic.AddUint32(&counter, 1)
+		counter.Add(1)
 		return secondHeaderFetcher(hash, sink)
 	}
 	// Iteratively announce blocks until all are imported
@@ -446,8 +447,8 @@ func testConcurrentAnnouncements(t *testing.T, light bool) {
 	verifyImportDone(t, imported)
 
 	// Make sure no blocks were retrieved twice
-	if int(counter) != targetBlocks {
-		t.Fatalf("retrieval count mismatch: have %v, want %v", counter, targetBlocks)
+	if c := int(counter.Load()); c != targetBlocks {
+		t.Fatalf("retrieval count mismatch: have %v, want %v", c, targetBlocks)
 	}
 	verifyChainHeight(t, tester, uint64(len(hashes)-1))
 }
@@ -513,9 +514,9 @@ func testPendingDeduplication(t *testing.T, light bool) {
 	bodyFetcher := tester.makeBodyFetcher("repeater", blocks, 0)
 
 	delay := 50 * time.Millisecond
-	counter := uint32(0)
+	var counter atomic.Uint32
 	headerWrapper := func(hash common.Hash, sink chan *eth.Response) (*eth.Request, error) {
-		atomic.AddUint32(&counter, 1)
+		counter.Add(1)
 
 		// Simulate a long running fetch
 		resink := make(chan *eth.Response)
@@ -545,8 +546,8 @@ func testPendingDeduplication(t *testing.T, light bool) {
 	time.Sleep(delay)
 
 	// Check that all blocks were imported and none fetched twice
-	if int(counter) != 1 {
-		t.Fatalf("retrieval count mismatch: have %v, want %v", counter, 1)
+	if c := counter.Load(); c != 1 {
+		t.Fatalf("retrieval count mismatch: have %v, want %v", c, 1)
 	}
 	verifyChainHeight(t, tester, 1)
 }
@@ -632,9 +633,9 @@ func TestImportDeduplication(t *testing.T) {
 	headerFetcher := tester.makeHeaderFetcher("valid", blocks, -gatherSlack)
 	bodyFetcher := tester.makeBodyFetcher("valid", blocks, 0)
 
-	counter := uint32(0)
+	var counter atomic.Uint32
 	tester.fetcher.insertChain = func(blocks types.Blocks) (int, error) {
-		atomic.AddUint32(&counter, uint32(len(blocks)))
+		counter.Add(uint32(len(blocks)))
 		return tester.insertChain(blocks)
 	}
 	// Instrument the fetching and imported events
@@ -655,8 +656,8 @@ func TestImportDeduplication(t *testing.T) {
 	tester.fetcher.Enqueue("valid", blocks[hashes[1]])
 	verifyImportCount(t, imported, 2)
 
-	if counter != 2 {
-		t.Fatalf("import invocation count mismatch: have %v, want %v", counter, 2)
+	if c := counter.Load(); c != 2 {
+		t.Fatalf("import invocation count mismatch: have %v, want %v", c, 2)
 	}
 }
 
@@ -853,13 +854,13 @@ func TestHashMemoryExhaustionAttack(t *testing.T) {
 	// Create a tester with instrumented import hooks
 	tester := newTester(false)
 
-	imported, announces := make(chan interface{}), int32(0)
+	imported, announces := make(chan interface{}), atomic.Int32{}
 	tester.fetcher.importedHook = func(header *types.Header, block *types.Block) { imported <- block }
 	tester.fetcher.announceChangeHook = func(hash common.Hash, added bool) {
 		if added {
-			atomic.AddInt32(&announces, 1)
+			announces.Add(1)
 		} else {
-			atomic.AddInt32(&announces, -1)
+			announces.Add(-1)
 		}
 	}
 	// Create a valid chain and an infinite junk chain
@@ -879,7 +880,7 @@ func TestHashMemoryExhaustionAttack(t *testing.T) {
 		}
 		tester.fetcher.Notify("attacker", attack[i], 1 /* don't distance drop */, time.Now(), attackerHeaderFetcher, attackerBodyFetcher)
 	}
-	if count := atomic.LoadInt32(&announces); count != hashLimit+maxQueueDist {
+	if count := announces.Load(); count != hashLimit+maxQueueDist {
 		t.Fatalf("queued announce count mismatch: have %d, want %d", count, hashLimit+maxQueueDist)
 	}
 	// Wait for fetches to complete
@@ -900,13 +901,13 @@ func TestBlockMemoryExhaustionAttack(t *testing.T) {
 	// Create a tester with instrumented import hooks
 	tester := newTester(false)
 
-	imported, enqueued := make(chan interface{}), int32(0)
+	imported, enqueued := make(chan interface{}), atomic.Int32{}
 	tester.fetcher.importedHook = func(header *types.Header, block *types.Block) { imported <- block }
 	tester.fetcher.queueChangeHook = func(hash common.Hash, added bool) {
 		if added {
-			atomic.AddInt32(&enqueued, 1)
+			enqueued.Add(1)
 		} else {
-			atomic.AddInt32(&enqueued, -1)
+			enqueued.Add(-1)
 		}
 	}
 	// Create a valid chain and a batch of dangling (but in range) blocks
@@ -924,7 +925,7 @@ func TestBlockMemoryExhaustionAttack(t *testing.T) {
 		tester.fetcher.Enqueue("attacker", block)
 	}
 	time.Sleep(200 * time.Millisecond)
-	if queued := atomic.LoadInt32(&enqueued); queued != blockLimit {
+	if queued := enqueued.Load(); queued != blockLimit {
 		t.Fatalf("queued block count mismatch: have %d, want %d", queued, blockLimit)
 	}
 	// Queue up a batch of valid blocks, and check that a new peer is allowed to do so
@@ -932,7 +933,7 @@ func TestBlockMemoryExhaustionAttack(t *testing.T) {
 		tester.fetcher.Enqueue("valid", blocks[hashes[len(hashes)-3-i]])
 	}
 	time.Sleep(100 * time.Millisecond)
-	if queued := atomic.LoadInt32(&enqueued); queued != blockLimit+maxQueueDist-1 {
+	if queued := enqueued.Load(); queued != blockLimit+maxQueueDist-1 {
 		t.Fatalf("queued block count mismatch: have %d, want %d", queued, blockLimit+maxQueueDist-1)
 	}
 	// Insert the missing piece (and sanity check the import)

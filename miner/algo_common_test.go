@@ -5,11 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync/atomic"
 	"testing"
 
-	"github.com/stretchr/testify/require"
-
-	mapset "github.com/deckarep/golang-set/v2"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
@@ -20,6 +18,9 @@ import (
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/triedb"
+	"github.com/holiman/uint256"
+	"github.com/stretchr/testify/require"
 )
 
 const GasLimit uint64 = 30000000
@@ -40,7 +41,7 @@ type signerList struct {
 	nonces    []uint64
 }
 
-func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, interrupt *int32) (types.SimulatedBundle, error) {
+func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, interrupt *atomic.Int32) (types.SimulatedBundle, error) {
 	// NOTE(wazzymandias): We are referencing the environment StateDB here - notice that it is not a copy.
 	// For test scenarios where bundles depend on previous bundle transactions to succeed, it is
 	// necessary to reference the same StateDB in order to avoid nonce too high errors.
@@ -50,8 +51,8 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 	gasPool := new(core.GasPool).AddGas(env.header.GasLimit)
 
 	var totalGasUsed uint64
-	gasFees := big.NewInt(0)
-	ethSentToCoinbase := big.NewInt(0)
+	gasFees := uint256.NewInt(0)
+	ethSentToCoinbase := uint256.NewInt(0)
 
 	for i, tx := range bundle.Txs {
 		if checkInterrupt(interrupt) {
@@ -105,14 +106,14 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 		//	}
 		//}
 
-		gasUsed := new(big.Int).SetUint64(receipt.GasUsed)
+		gasUsed := new(uint256.Int).SetUint64(receipt.GasUsed)
 		gasPrice, err := tx.EffectiveGasTip(env.header.BaseFee)
 		if err != nil {
 			return types.SimulatedBundle{}, err
 		}
-		gasFeesTx := gasUsed.Mul(gasUsed, gasPrice)
+		gasFeesTx := gasUsed.Mul(gasUsed, uint256.MustFromBig(gasPrice))
 		coinbaseBalanceAfter := stateDB.GetBalance(env.coinbase)
-		coinbaseDelta := big.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
+		coinbaseDelta := uint256.NewInt(0).Sub(coinbaseBalanceAfter, coinbaseBalanceBefore)
 		coinbaseDelta.Sub(coinbaseDelta, gasFeesTx)
 		ethSentToCoinbase.Add(ethSentToCoinbase, coinbaseDelta)
 
@@ -124,10 +125,10 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 		gasFees.Add(gasFees, gasFeesTx)
 	}
 
-	totalEth := new(big.Int).Add(ethSentToCoinbase, gasFees)
+	totalEth := new(uint256.Int).Add(ethSentToCoinbase, gasFees)
 
 	return types.SimulatedBundle{
-		MevGasPrice:       new(big.Int).Div(totalEth, new(big.Int).SetUint64(totalGasUsed)),
+		MevGasPrice:       new(uint256.Int).Div(totalEth, new(uint256.Int).SetUint64(totalGasUsed)),
 		TotalEth:          totalEth,
 		EthSentToCoinbase: ethSentToCoinbase,
 		TotalGasUsed:      totalGasUsed,
@@ -135,7 +136,7 @@ func simulateBundle(env *environment, bundle types.MevBundle, chData chainData, 
 	}, nil
 }
 
-func (sig signerList) signTx(i int, gas uint64, gasTipCap *big.Int, gasFeeCap *big.Int, to common.Address, value *big.Int, data []byte) *types.Transaction {
+func (sig signerList) signTx(i int, gas uint64, gasTipCap, gasFeeCap *big.Int, to common.Address, value *big.Int, data []byte) *types.Transaction {
 	txData := &types.DynamicFeeTx{
 		ChainID:   sig.config.ChainID,
 		Nonce:     sig.nonces[i],
@@ -170,17 +171,17 @@ func genSignerList(len int, config *params.ChainConfig) signerList {
 	return res
 }
 
-func genGenesisAlloc(sign signerList, contractAddr []common.Address, contractCode [][]byte) core.GenesisAlloc {
-	genesisAlloc := make(core.GenesisAlloc)
+func genGenesisAlloc(sign signerList, contractAddr []common.Address, contractCode [][]byte) types.GenesisAlloc {
+	genesisAlloc := make(types.GenesisAlloc)
 	for i := 0; i < len(sign.signers); i++ {
-		genesisAlloc[sign.addresses[i]] = core.GenesisAccount{
+		genesisAlloc[sign.addresses[i]] = types.Account{
 			Balance: big.NewInt(1000000000000000000), // 1 ether
 			Nonce:   sign.nonces[i],
 		}
 	}
 
 	for i, address := range contractAddr {
-		genesisAlloc[address] = core.GenesisAccount{
+		genesisAlloc[address] = types.Account{
 			Balance: new(big.Int),
 			Code:    contractCode[i],
 		}
@@ -198,7 +199,7 @@ func genTestSetup(gasLimit uint64) (*state.StateDB, chainData, signerList) {
 	return stateDB, chainData, signerList
 }
 
-func genTestSetupWithAlloc(config *params.ChainConfig, alloc core.GenesisAlloc, gasLimit uint64) (*state.StateDB, chainData) {
+func genTestSetupWithAlloc(config *params.ChainConfig, alloc types.GenesisAlloc, gasLimit uint64) (*state.StateDB, chainData) {
 	db := rawdb.NewMemoryDatabase()
 
 	gspec := &core.Genesis{
@@ -206,7 +207,7 @@ func genTestSetupWithAlloc(config *params.ChainConfig, alloc core.GenesisAlloc, 
 		Alloc:    alloc,
 		GasLimit: gasLimit,
 	}
-	_ = gspec.MustCommit(db)
+	_ = gspec.MustCommit(db, triedb.NewDatabase(db, triedb.HashDefaults))
 
 	chain, _ := core.NewBlockChain(db, &core.CacheConfig{TrieDirtyDisabled: true}, gspec, nil, ethash.NewFaker(), vm.Config{}, nil, nil)
 
@@ -219,12 +220,10 @@ func newEnvironment(data chainData, state *state.StateDB, coinbase common.Addres
 	currentBlock := data.chain.CurrentBlock()
 	// Note the passed coinbase may be different with header.Coinbase.
 	return &environment{
-		signer:    types.MakeSigner(data.chainConfig, currentBlock.Number),
-		state:     state,
-		gasPool:   new(core.GasPool).AddGas(gasLimit),
-		coinbase:  coinbase,
-		ancestors: mapset.NewSet[common.Hash](),
-		family:    mapset.NewSet[common.Hash](),
+		signer:   types.MakeSigner(data.chainConfig, currentBlock.Number, currentBlock.Time),
+		state:    state,
+		gasPool:  new(core.GasPool).AddGas(gasLimit),
+		coinbase: coinbase,
 		header: &types.Header{
 			Coinbase:   coinbase,
 			ParentHash: currentBlock.Hash(),
@@ -234,8 +233,7 @@ func newEnvironment(data chainData, state *state.StateDB, coinbase common.Addres
 			BaseFee:    baseFee,
 			Difficulty: big.NewInt(0),
 		},
-		uncles: make(map[common.Hash]*types.Header),
-		profit: new(big.Int),
+		profit: new(uint256.Int),
 	}
 }
 
@@ -412,7 +410,7 @@ func TestErrorBundleCommit(t *testing.T) {
 
 	gasPoolBefore := *envDiff.gasPool
 	gasUsedBefore := envDiff.header.GasUsed
-	newProfitBefore := new(big.Int).Set(envDiff.newProfit)
+	newProfitBefore := new(uint256.Int).Set(envDiff.newProfit)
 	balanceBefore := envDiff.state.GetBalance(signers.addresses[2])
 
 	err = envDiff.commitBundle(&simBundle, chData, nil, defaultAlgorithmConfig)
@@ -569,9 +567,9 @@ func TestPayoutTxUtils(t *testing.T) {
 	require.NoError(t, err)
 
 	expectedPayment := new(big.Int).Sub(availableFunds, big.NewInt(21000))
-	balanceBefore := env.state.GetBalance(signers.addresses[2])
+	balanceBefore := env.state.GetBalance(signers.addresses[2]).ToBig()
 	rec, err := insertPayoutTx(env, signers.addresses[1], signers.addresses[2], gas, isEOA, availableFunds, signers.signers[1], chData)
-	balanceAfter := env.state.GetBalance(signers.addresses[2])
+	balanceAfter := env.state.GetBalance(signers.addresses[2]).ToBig()
 	require.NoError(t, err)
 	require.NotNil(t, rec)
 	require.Equal(t, types.ReceiptStatusSuccessful, rec.Status)
@@ -586,9 +584,9 @@ func TestPayoutTxUtils(t *testing.T) {
 	require.NoError(t, err)
 
 	expectedPayment = new(big.Int).Sub(availableFunds, big.NewInt(22025))
-	balanceBefore = env.state.GetBalance(logContractAddress)
+	balanceBefore = env.state.GetBalance(logContractAddress).ToBig()
 	rec, err = insertPayoutTx(env, signers.addresses[1], logContractAddress, gas, isEOA, availableFunds, signers.signers[1], chData)
-	balanceAfter = env.state.GetBalance(logContractAddress)
+	balanceAfter = env.state.GetBalance(logContractAddress).ToBig()
 	require.NoError(t, err)
 	require.NotNil(t, rec)
 	require.Equal(t, types.ReceiptStatusSuccessful, rec.Status)
@@ -598,9 +596,9 @@ func TestPayoutTxUtils(t *testing.T) {
 
 	// Try requesting less gas for contract tx. We request 21k gas, but we must pay 22025
 	expectedPayment = new(big.Int).Sub(availableFunds, big.NewInt(22025))
-	balanceBefore = env.state.GetBalance(logContractAddress)
+	balanceBefore = env.state.GetBalance(logContractAddress).ToBig()
 	rec, err = insertPayoutTx(env, signers.addresses[1], logContractAddress, 21000, isEOA, availableFunds, signers.signers[1], chData)
-	balanceAfter = env.state.GetBalance(logContractAddress)
+	balanceAfter = env.state.GetBalance(logContractAddress).ToBig()
 	require.NoError(t, err)
 	require.NotNil(t, rec)
 	require.Equal(t, types.ReceiptStatusSuccessful, rec.Status)

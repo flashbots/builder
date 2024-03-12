@@ -30,4 +30,11 @@ var (
 
 	stateCopyMeter     = metrics.NewRegisteredMeter("state/copy", nil)
 	stateSnapshotMeter = metrics.NewRegisteredMeter("state/snapshot", nil)
+
+	slotDeletionMaxCount = metrics.NewRegisteredGauge("state/delete/storage/max/slot", nil)
+	slotDeletionMaxSize  = metrics.NewRegisteredGauge("state/delete/storage/max/size", nil)
+	slotDeletionTimer    = metrics.NewRegisteredResettingTimer("state/delete/storage/timer", nil)
+	slotDeletionCount    = metrics.NewRegisteredMeter("state/delete/storage/slot", nil)
+	slotDeletionSize     = metrics.NewRegisteredMeter("state/delete/storage/size", nil)
+	slotDeletionSkip     = metrics.NewRegisteredGauge("state/delete/storage/skip", nil)
 )

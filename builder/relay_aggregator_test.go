@@ -5,8 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/attestantio/go-builder-client/api/bellatrix"
-	"github.com/attestantio/go-builder-client/api/capella"
+	builderApiBellatrix "github.com/attestantio/go-builder-client/api/bellatrix"
+	builderSpec "github.com/attestantio/go-builder-client/spec"
+	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/stretchr/testify/require"
 )
 
@@ -21,11 +22,9 @@ type testRelay struct {
 	gvsVd   ValidatorData
 	gvsErr  error
 
-	requestedSlot         uint64
-	submittedMsg          *bellatrix.SubmitBlockRequest
-	submittedMsgCh        chan *bellatrix.SubmitBlockRequest
-	submittedMsgCapella   *capella.SubmitBlockRequest
-	submittedMsgChCapella chan *capella.SubmitBlockRequest
+	requestedSlot  uint64
+	submittedMsg   *builderSpec.VersionedSubmitBlockRequest
+	submittedMsgCh chan *builderSpec.VersionedSubmitBlockRequest
 }
 
 type testRelayAggBackend struct {
@@ -46,7 +45,7 @@ func newTestRelayAggBackend(numRelay int) *testRelayAggBackend {
 	return &testRelayAggBackend{testRelays, ragg}
 }
 
-func (r *testRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, registration ValidatorData) error {
+func (r *testRelay) SubmitBlock(msg *builderSpec.VersionedSubmitBlockRequest, registration ValidatorData) error {
 	if r.submittedMsgCh != nil {
 		select {
 		case r.submittedMsgCh <- msg:
@@ -54,17 +53,6 @@ func (r *testRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, registration 
 		}
 	}
 	r.submittedMsg = msg
-	return r.sbError
-}
-
-func (r *testRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, registration ValidatorData) error {
-	if r.submittedMsgCh != nil {
-		select {
-		case r.submittedMsgChCapella <- msg:
-		default:
-		}
-	}
-	r.submittedMsgCapella = msg
 	return r.sbError
 }
 
@@ -145,8 +133,9 @@ func TestRemoteRelayAggregator(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// if submitting for unseen VD should error out
-		msg := &bellatrix.SubmitBlockRequest{}
-		err = backend.ragg.SubmitBlock(msg, ValidatorData{GasLimit: 40})
+		msg := &builderApiBellatrix.SubmitBlockRequest{}
+		request := &builderSpec.VersionedSubmitBlockRequest{Version: spec.DataVersionBellatrix, Bellatrix: msg}
+		err = backend.ragg.SubmitBlock(request, ValidatorData{GasLimit: 40})
 		require.Error(t, err)
 	})
 
@@ -166,17 +155,18 @@ func TestRemoteRelayAggregator(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// if submitting for unseen VD should error out
-		msg := &bellatrix.SubmitBlockRequest{}
-		err = backend.ragg.SubmitBlock(msg, ValidatorData{GasLimit: 40})
+		msg := &builderApiBellatrix.SubmitBlockRequest{}
+		request := &builderSpec.VersionedSubmitBlockRequest{Version: spec.DataVersionBellatrix, Bellatrix: msg}
+		err = backend.ragg.SubmitBlock(request, ValidatorData{GasLimit: 40})
 		require.Error(t, err)
 
 		// should submit to the single pirmary if its the only one matching
-		backend.relays[0].submittedMsgCh = make(chan *bellatrix.SubmitBlockRequest, 1)
-		err = backend.ragg.SubmitBlock(msg, ValidatorData{GasLimit: 10})
+		backend.relays[0].submittedMsgCh = make(chan *builderSpec.VersionedSubmitBlockRequest, 1)
+		err = backend.ragg.SubmitBlock(request, ValidatorData{GasLimit: 10})
 		require.NoError(t, err)
 		select {
 		case rsMsg := <-backend.relays[0].submittedMsgCh:
-			require.Equal(t, msg, rsMsg)
+			require.Equal(t, request, rsMsg)
 		case <-time.After(time.Second):
 			t.Fail()
 		}
@@ -212,25 +202,26 @@ func TestRemoteRelayAggregator(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// should submit to multiple matching relays
-		backend.relays[0].submittedMsgCh = make(chan *bellatrix.SubmitBlockRequest, 1)
-		backend.relays[2].submittedMsgCh = make(chan *bellatrix.SubmitBlockRequest, 1)
-		msg := &bellatrix.SubmitBlockRequest{}
-		err = backend.ragg.SubmitBlock(msg, ValidatorData{GasLimit: 10})
+		backend.relays[0].submittedMsgCh = make(chan *builderSpec.VersionedSubmitBlockRequest, 1)
+		backend.relays[2].submittedMsgCh = make(chan *builderSpec.VersionedSubmitBlockRequest, 1)
+		msg := &builderApiBellatrix.SubmitBlockRequest{}
+		request := &builderSpec.VersionedSubmitBlockRequest{Version: spec.DataVersionBellatrix, Bellatrix: msg}
+		err = backend.ragg.SubmitBlock(request, ValidatorData{GasLimit: 10})
 		require.Error(t, err)
 
-		err = backend.ragg.SubmitBlock(msg, ValidatorData{GasLimit: 30})
+		err = backend.ragg.SubmitBlock(request, ValidatorData{GasLimit: 30})
 		require.NoError(t, err)
 
 		select {
 		case rsMsg := <-backend.relays[0].submittedMsgCh:
-			require.Equal(t, msg, rsMsg)
+			require.Equal(t, request, rsMsg)
 		case <-time.After(time.Second):
 			t.Fail()
 		}
 
 		select {
 		case rsMsg := <-backend.relays[2].submittedMsgCh:
-			require.Equal(t, msg, rsMsg)
+			require.Equal(t, request, rsMsg)
 		case <-time.After(time.Second):
 			t.Fail()
 		}

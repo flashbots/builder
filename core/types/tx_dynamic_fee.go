@@ -17,11 +17,14 @@
 package types
 
 import (
+	"bytes"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/rlp"
 )
 
+// DynamicFeeTx represents an EIP-1559 transaction.
 type DynamicFeeTx struct {
 	ChainID    *big.Int
 	Nonce      uint64
@@ -111,4 +114,12 @@ func (tx *DynamicFeeTx) rawSignatureValues() (v, r, s *big.Int) {
 
 func (tx *DynamicFeeTx) setSignatureValues(chainID, v, r, s *big.Int) {
 	tx.ChainID, tx.V, tx.R, tx.S = chainID, v, r, s
+}
+
+func (tx *DynamicFeeTx) encode(b *bytes.Buffer) error {
+	return rlp.Encode(b, tx)
+}
+
+func (tx *DynamicFeeTx) decode(input []byte) error {
+	return rlp.DecodeBytes(input, tx)
 }

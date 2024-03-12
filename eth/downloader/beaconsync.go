@@ -19,7 +19,6 @@ package downloader
 import (
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -51,7 +50,8 @@ func newBeaconBackfiller(dl *Downloader, success func()) backfiller {
 }
 
 // suspend cancels any background downloader threads and returns the last header
-// that has been successfully backfilled.
+// that has been successfully backfilled (potentially in a previous run), or the
+// genesis.
 func (b *beaconBackfiller) suspend() *types.Header {
 	// If no filling is running, don't waste cycles
 	b.lock.Lock()
@@ -371,7 +371,7 @@ func (d *Downloader) fetchBeaconHeaders(from uint64) error {
 			continue
 		}
 		// If the pivot block is committed, signal header sync termination
-		if atomic.LoadInt32(&d.committed) == 1 {
+		if d.committed.Load() {
 			select {
 			case d.headerProcCh <- nil:
 				return nil

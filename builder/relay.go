@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/attestantio/go-builder-client/api/bellatrix"
-	"github.com/attestantio/go-builder-client/api/capella"
+	builderSpec "github.com/attestantio/go-builder-client/spec"
+	"github.com/attestantio/go-eth2-client/spec"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/flashbots/go-boost-utils/utils"
 )
@@ -134,60 +134,50 @@ func (r *RemoteRelay) Start() error {
 
 func (r *RemoteRelay) Stop() {}
 
-func (r *RemoteRelay) SubmitBlock(msg *bellatrix.SubmitBlockRequest, _ ValidatorData) error {
+func (r *RemoteRelay) SubmitBlock(msg *builderSpec.VersionedSubmitBlockRequest, _ ValidatorData) error {
 	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
 	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"
 	if r.cancellationsEnabled {
 		endpoint = endpoint + "?cancellations=1"
 	}
-	code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg, nil)
+
+	var code int
+	var err error
+	if r.config.SszEnabled {
+		var bodyBytes []byte
+		switch msg.Version {
+		case spec.DataVersionBellatrix:
+			bodyBytes, err = msg.Bellatrix.MarshalSSZ()
+		case spec.DataVersionCapella:
+			bodyBytes, err = msg.Capella.MarshalSSZ()
+		case spec.DataVersionDeneb:
+			bodyBytes, err = msg.Deneb.MarshalSSZ()
+		default:
+			return fmt.Errorf("unknown data version %d", msg.Version)
+		}
+		if err != nil {
+			return fmt.Errorf("error marshaling ssz: %w", err)
+		}
+		log.Debug("submitting block to remote relay", "endpoint", r.config.Endpoint)
+		code, err = SendSSZRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, bodyBytes, r.config.GzipEnabled)
+	} else {
+		switch msg.Version {
+		case spec.DataVersionBellatrix:
+			code, err = SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg.Bellatrix, nil)
+		case spec.DataVersionCapella:
+			code, err = SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg.Capella, nil)
+		case spec.DataVersionDeneb:
+			code, err = SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg.Deneb, nil)
+		default:
+			return fmt.Errorf("unknown data version %d", msg.Version)
+		}
+	}
+
 	if err != nil {
 		return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
 	}
 	if code > 299 {
 		return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
-	}
-
-	if r.localRelay != nil {
-		r.localRelay.submitBlock(msg)
-	}
-
-	return nil
-}
-
-func (r *RemoteRelay) SubmitBlockCapella(msg *capella.SubmitBlockRequest, _ ValidatorData) error {
-	log.Info("submitting block to remote relay", "endpoint", r.config.Endpoint)
-
-	endpoint := r.config.Endpoint + "/relay/v1/builder/blocks"
-	if r.cancellationsEnabled {
-		endpoint = endpoint + "?cancellations=1"
-	}
-
-	if r.config.SszEnabled {
-		bodyBytes, err := msg.MarshalSSZ()
-		if err != nil {
-			return fmt.Errorf("error marshaling ssz: %w", err)
-		}
-		log.Debug("submitting block to remote relay", "endpoint", r.config.Endpoint)
-		code, err := SendSSZRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, bodyBytes, r.config.GzipEnabled)
-		if err != nil {
-			return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
-		}
-		if code > 299 {
-			return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
-		}
-	} else {
-		code, err := SendHTTPRequest(context.TODO(), *http.DefaultClient, http.MethodPost, endpoint, msg, nil)
-		if err != nil {
-			return fmt.Errorf("error sending http request to relay %s. err: %w", r.config.Endpoint, err)
-		}
-		if code > 299 {
-			return fmt.Errorf("non-ok response code %d from relay %s", code, r.config.Endpoint)
-		}
-	}
-
-	if r.localRelay != nil {
-		r.localRelay.submitBlockCapella(msg)
 	}
 
 	return nil

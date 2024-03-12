@@ -11,12 +11,10 @@ import (
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind/backends"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	ethmath "github.com/ethereum/go-ethereum/common/math"
 	"github.com/ethereum/go-ethereum/consensus/ethash"
-	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -70,7 +68,7 @@ type TestParticipants struct {
 	users     []TestParticipant
 }
 
-func NewTestParticipants(nSearchers int, nUsers int) TestParticipants {
+func NewTestParticipants(nSearchers, nUsers int) TestParticipants {
 	opa := TestParticipants{}
 
 	for i := 0; i < nSearchers; i++ {
@@ -84,13 +82,13 @@ func NewTestParticipants(nSearchers int, nUsers int) TestParticipants {
 	return opa
 }
 
-func (o *TestParticipants) AppendToGenesisAlloc(genesis core.GenesisAlloc) core.GenesisAlloc {
+func (o *TestParticipants) AppendToGenesisAlloc(genesis types.GenesisAlloc) types.GenesisAlloc {
 	for _, searcher := range o.searchers {
-		genesis[searcher.address] = core.GenesisAccount{Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}
+		genesis[searcher.address] = types.Account{Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}
 	}
 
 	for _, user := range o.users {
-		genesis[user.address] = core.GenesisAccount{Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}
+		genesis[user.address] = types.Account{Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}
 	}
 
 	return genesis
@@ -143,21 +141,15 @@ func TestSimulatorState(t *testing.T) {
 
 			deployerAddress := crypto.PubkeyToAddress(deployerKey.PublicKey)
 			deployerTestAddress := common.HexToAddress("0x70997970C51812dc3A010C7d01b50e0d17dc79C8")
-			alloc := core.GenesisAlloc{deployerAddress: {Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}, deployerTestAddress: {Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}}
+			alloc := types.GenesisAlloc{deployerAddress: {Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}, deployerTestAddress: {Balance: new(big.Int).Mul(big.NewInt(10000), bigEther)}}
 
 			testParticipants := NewTestParticipants(5, 5)
 			alloc = testParticipants.AppendToGenesisAlloc(alloc)
 
-			var genesis = core.Genesis{
-				Config:   &chainConfig,
-				Alloc:    alloc,
-				GasLimit: 30000000,
-			}
-
-			w, b := newTestWorkerGenesis(t, &chainConfig, engine, db, genesis, 0)
+			w, b := newTestWorker(t, &chainConfig, engine, db, alloc, 0)
 			w.setEtherbase(crypto.PubkeyToAddress(testConfig.BuilderTxSigningKey.PublicKey))
 
-			simBackend := backends.NewSimulatedBackendChain(db, b.chain)
+			simBackend := NewSimulatedBackendChain(db, b.chain)
 
 			univ2FactoryA := NewTContract(t, simBackend, "testdata/univ2factory.abi", univ2FactoryA_Address)
 			univ2FactoryB := NewTContract(t, simBackend, "testdata/univ2factory.abi", univ2FactoryB_Address)
@@ -208,20 +200,30 @@ func TestSimulatorState(t *testing.T) {
 			}
 
 			buildBlock := func(txs []*types.Transaction, requireTx int) *types.Block {
-				errs := b.txPool.AddLocals(txs)
+				errs := b.txPool.Add(txs, true, true, false)
 				for _, err := range errs {
 					require.NoError(t, err)
 				}
 
-				block, _, err := w.getSealingBlock(b.chain.CurrentBlock().Hash(), b.chain.CurrentHeader().Time+12, testAddress1, 0, common.Hash{}, nil, false, nil)
-				require.NoError(t, err)
-				require.NotNil(t, block)
+				r := w.getSealingBlock(&generateParams{
+					parentHash:  b.chain.CurrentBlock().Hash(),
+					timestamp:   b.chain.CurrentHeader().Time + 12,
+					coinbase:    testAddress1,
+					gasLimit:    0,
+					random:      common.Hash{},
+					withdrawals: nil,
+					beaconRoot:  nil,
+					noTxs:       false,
+					onBlock:     nil,
+				})
+				require.NoError(t, r.err)
+				require.NotNil(t, r.block)
 				if requireTx != -1 {
-					require.Equal(t, requireTx, len(block.Transactions()))
+					require.Equal(t, requireTx, len(r.block.Transactions()))
 				}
-				_, err = b.chain.InsertChain([]*types.Block{block})
+				_, err = b.chain.InsertChain([]*types.Block{r.block})
 				require.NoError(t, err)
-				return block
+				return r.block
 			}
 
 			buildBlock(deploymentTxs, len(deploymentTxs)+1)
@@ -275,12 +277,12 @@ func TestSimulatorState(t *testing.T) {
 
 type tConctract struct {
 	t          *testing.T
-	simBackend *backends.SimulatedBackend
+	simBackend *SimulatedBackend
 	abi        *abi.ABI
 	address    common.Address
 }
 
-func NewTContract(t *testing.T, simBackend *backends.SimulatedBackend, abiFile string, address common.Address) tConctract {
+func NewTContract(t *testing.T, simBackend *SimulatedBackend, abiFile string, address common.Address) tConctract {
 	return tConctract{
 		t:          t,
 		simBackend: simBackend,

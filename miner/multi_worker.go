@@ -2,6 +2,7 @@ package miner
 
 import (
 	"errors"
+	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -15,6 +16,12 @@ import (
 type multiWorker struct {
 	workers       []*worker
 	regularWorker *worker
+}
+
+func (w *multiWorker) setSyncing(syncing bool) {
+	for _, worker := range w.workers {
+		worker.syncing.Store(syncing)
+	}
 }
 
 func (w *multiWorker) stop() {
@@ -74,15 +81,9 @@ func (w *multiWorker) setEtherbase(addr common.Address) {
 	}
 }
 
-func (w *multiWorker) enablePreseal() {
+func (w *multiWorker) setGasTip(tip *big.Int) {
 	for _, worker := range w.workers {
-		worker.enablePreseal()
-	}
-}
-
-func (w *multiWorker) disablePreseal() {
-	for _, worker := range w.workers {
-		worker.disablePreseal()
+		worker.setGasTip(tip)
 	}
 }
 
@@ -90,23 +91,33 @@ func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	// Build the initial version with no transaction included. It should be fast
 	// enough to run. The empty payload can at least make sure there is something
 	// to deliver for not missing slot.
-	var empty *types.Block
+	var empty *newPayloadResult
+	emptyParams := &generateParams{
+		timestamp:   args.Timestamp,
+		forceTime:   true,
+		parentHash:  args.Parent,
+		coinbase:    args.FeeRecipient,
+		random:      args.Random,
+		gasLimit:    args.GasLimit,
+		withdrawals: args.Withdrawals,
+		beaconRoot:  args.BeaconRoot,
+		noTxs:       true,
+	}
 	for _, worker := range w.workers {
-		var err error
-		empty, _, err = worker.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, true, nil)
-		if err != nil {
+		empty = worker.getSealingBlock(emptyParams)
+		if empty.err != nil {
 			log.Error("could not start async block construction", "isFlashbotsWorker", worker.flashbots.isFlashbots, "#bundles", worker.flashbots.maxMergedBundles)
 			continue
 		}
 		break
 	}
 
-	if empty == nil {
+	if empty == nil || empty.block == nil {
 		return nil, errors.New("no worker could build an empty block")
 	}
 
 	// Construct a payload object for return.
-	payload := newPayload(empty, args.Id())
+	payload := newPayload(empty.block, args.Id())
 
 	if len(w.workers) == 0 {
 		return payload, nil
@@ -116,17 +127,29 @@ func (w *multiWorker) buildPayload(args *BuildPayloadArgs) (*Payload, error) {
 	workerPayloads := []*Payload{}
 
 	for _, w := range w.workers {
-		workerPayload := newPayload(empty, args.Id())
+		workerPayload := newPayload(empty.block, args.Id())
 		workerPayloads = append(workerPayloads, workerPayload)
+		fullParams := &generateParams{
+			timestamp:   args.Timestamp,
+			forceTime:   true,
+			parentHash:  args.Parent,
+			coinbase:    args.FeeRecipient,
+			random:      args.Random,
+			withdrawals: args.Withdrawals,
+			beaconRoot:  args.BeaconRoot,
+			gasLimit:    args.GasLimit,
+			noTxs:       false,
+			onBlock:     args.BlockHook,
+		}
 
 		go func(w *worker) {
 			// Update routine done elsewhere!
 			start := time.Now()
-			block, fees, err := w.getSealingBlock(args.Parent, args.Timestamp, args.FeeRecipient, args.GasLimit, args.Random, args.Withdrawals, false, args.BlockHook)
-			if err == nil {
-				workerPayload.update(block, fees, time.Since(start))
+			r := w.getSealingBlock(fullParams)
+			if r.err == nil {
+				workerPayload.update(r, time.Since(start))
 			} else {
-				log.Error("Error while sealing block", "err", err)
+				log.Error("Error while sealing block", "err", r.err)
 				workerPayload.Cancel()
 			}
 		}(w)
@@ -166,6 +189,7 @@ func newMultiWorkerGreedy(config *Config, chainConfig *params.ChainConfig, engin
 	}
 }
 
+// mev-geth deprecated
 func newMultiWorkerMevGeth(config *Config, chainConfig *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, isLocalBlock func(header *types.Header) bool, init bool) *multiWorker {
 	queue := make(chan *task)
 

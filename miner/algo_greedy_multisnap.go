@@ -2,9 +2,11 @@ package miner
 
 import (
 	"crypto/ecdsa"
+	"sync/atomic"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/txpool"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
@@ -19,13 +21,13 @@ type greedyMultiSnapBuilder struct {
 	inputEnvironment *environment
 	chainData        chainData
 	builderKey       *ecdsa.PrivateKey
-	interrupt        *int32
+	interrupt        *atomic.Int32
 	algoConf         algorithmConfig
 }
 
 func newGreedyMultiSnapBuilder(
 	chain *core.BlockChain, chainConfig *params.ChainConfig, algoConf *algorithmConfig,
-	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *int32,
+	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *atomic.Int32,
 ) *greedyMultiSnapBuilder {
 	if algoConf == nil {
 		algoConf = &defaultAlgorithmConfig
@@ -39,8 +41,8 @@ func newGreedyMultiSnapBuilder(
 	}
 }
 
-func (b *greedyMultiSnapBuilder) buildBlock(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address]types.Transactions) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
-	orders := types.NewTransactionsByPriceAndNonce(b.inputEnvironment.signer, transactions, simBundles, simSBundles, b.inputEnvironment.header.BaseFee)
+func (b *greedyMultiSnapBuilder) buildBlock(simBundles []types.SimulatedBundle, simSBundles []*types.SimSBundle, transactions map[common.Address][]*txpool.LazyTransaction) (*environment, []types.SimulatedBundle, []types.UsedSBundle) {
+	orders := newTransactionsByPriceAndNonce(b.inputEnvironment.signer, transactions, simBundles, simSBundles, b.inputEnvironment.header.BaseFee)
 
 	var (
 		usedBundles  []types.SimulatedBundle
@@ -66,7 +68,12 @@ func (b *greedyMultiSnapBuilder) buildBlock(simBundles []types.SimulatedBundle, 
 		}
 
 		if tx := order.Tx(); tx != nil {
-			receipt, skip, err := changes.commitTx(tx, b.chainData)
+			if tx.Resolve() == nil {
+				log.Trace("Ignoring evicted transaction", "hash", tx.Hash)
+				orders.Pop()
+				continue
+			}
+			receipt, skip, err := changes.commitTx(tx.Tx, b.chainData)
 			switch skip {
 			case shiftTx:
 				orders.Shift()
@@ -76,10 +83,10 @@ func (b *greedyMultiSnapBuilder) buildBlock(simBundles []types.SimulatedBundle, 
 			orderFailed = err != nil
 
 			if err != nil {
-				log.Trace("could not apply tx", "hash", tx.Hash(), "err", err)
+				log.Trace("could not apply tx", "hash", tx.Hash, "err", err)
 			} else {
 				// we don't check for error here because if EGP returns error, it would have been caught and returned by commitTx
-				effGapPrice, _ := tx.EffectiveGasTip(changes.env.header.BaseFee)
+				effGapPrice, _ := tx.Tx.EffectiveGasTip(changes.env.header.BaseFee)
 				log.Trace("Included tx", "EGP", effGapPrice.String(), "gasUsed", receipt.GasUsed)
 			}
 		} else if bundle := order.Bundle(); bundle != nil {
