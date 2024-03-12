@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"github.com/consensys/gnark-crypto/field/pool"
 	"math/big"
 	"sync/atomic"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
+	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
 )
 
@@ -286,46 +288,111 @@ func commitPayoutTx(parameters PayoutTransactionParams) (*types.Receipt, error) 
 	return receipt, err
 }
 
-func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint64, isEOA bool, availableFunds *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
-	if isEOA {
-		diff := newEnvironmentDiff(env)
-		rec, err := applyPayoutTx(diff, sender, receiver, gas, availableFunds, prv, chData)
-		if err != nil {
-			return nil, err
+func insertPayoutTx(env *environment, sender, receiver common.Address, gas uint64,
+	isEOA bool, availableFunds *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
+	var (
+		amount  = pool.BigInt.Get()
+		burned  = pool.BigInt.Get()
+		gasUsed = pool.BigInt.Get()
+	)
+	defer func() {
+		pool.BigInt.Put(amount)
+		pool.BigInt.Put(burned)
+		pool.BigInt.Put(gasUsed)
+	}()
+
+	var insertPayoutTxFunc = func(changes *envChanges, sender, receiver common.Address,
+		gas uint64, amountWithFees *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
+
+		amount = amount.Sub(amountWithFees, burned.Mul(env.header.BaseFee, gasUsed.SetUint64(gas)))
+		if amount.Sign() < 0 {
+			return nil, errors.New("not enough funds available")
 		}
-		diff.applyToBaseEnv()
+
+		rec, err := changes.commitPayoutTx(amount, sender, receiver, gas, prv, chData)
+		if err != nil {
+			return nil, errors.Join(fmt.Errorf("failed to commit payment tx: %w", err), changes.discard())
+		} else if rec.Status != types.ReceiptStatusSuccessful {
+			return nil, errors.Join(fmt.Errorf("payment tx failed"), changes.discard())
+		}
+
 		return rec, nil
 	}
 
-	var err error
-	for i := 0; i < 6; i++ {
-		diff := newEnvironmentDiff(env)
-		var rec *types.Receipt
-		rec, err = applyPayoutTx(diff, sender, receiver, gas, availableFunds, prv, chData)
+	if isEOA {
+		changes, err := newEnvChanges(env)
 		if err != nil {
+			return nil, err
+		}
+
+		rec, err := insertPayoutTxFunc(changes, sender, receiver, gas, availableFunds, prv, chData)
+		if err != nil {
+			return nil, err
+		}
+
+		return rec, changes.apply()
+	}
+
+	var (
+		err     error
+		changes *envChanges
+	)
+	initialHeader := types.CopyHeader(env.header)
+	for i := 0; i < 6; i++ {
+		diffHeader := types.CopyHeader(initialHeader)
+		env.header = diffHeader
+		changes, err = newEnvChanges(env)
+		if err != nil {
+			break
+		}
+
+		var rec *types.Receipt
+		rec, err = insertPayoutTxFunc(changes, sender, receiver, gas, availableFunds, prv, chData)
+		if err != nil {
+			log.Error("Failed to insert payout tx", "err", err, "attempt", i)
 			gas += 1000
 			continue
 		}
 
 		if gas == rec.GasUsed {
-			diff.applyToBaseEnv()
-			return rec, nil
+			return rec, changes.apply()
 		}
 
-		exactEnvDiff := newEnvironmentDiff(env)
-		exactRec, err := applyPayoutTx(exactEnvDiff, sender, receiver, rec.GasUsed, availableFunds, prv, chData)
-		if err != nil {
-			diff.applyToBaseEnv()
-			return rec, nil
+		if err := changes.discard(); err != nil {
+			log.Error("Failed to discard changes on insert payout tx", "err", err, "attempt", i)
+			return nil, err
 		}
-		exactEnvDiff.applyToBaseEnv()
-		return exactRec, nil
+
+		var exactEnvChanges *envChanges
+		exactHeader := types.CopyHeader(initialHeader)
+		env.header = exactHeader
+		exactEnvChanges, err = newEnvChanges(env)
+		if err != nil {
+			return nil, err
+		}
+
+		var exactRec *types.Receipt
+		exactRec, err = insertPayoutTxFunc(exactEnvChanges, sender, receiver, rec.GasUsed, availableFunds, prv, chData)
+		if err != nil {
+			log.Error("Failed to insert payout tx for exact receipt", "err", err, "attempt", i)
+			env.header = types.CopyHeader(initialHeader)
+			if changes, err = newEnvChanges(env); err != nil {
+				panic(err)
+			}
+			if rec, err = insertPayoutTxFunc(changes, sender, receiver, gas, availableFunds, prv, chData); err != nil {
+				panic(err)
+			}
+			return rec, changes.apply()
+		}
+
+		return exactRec, exactEnvChanges.apply()
 	}
 
 	if err == nil {
 		return nil, errors.New("could not estimate gas")
 	}
 
+	log.Error("Failed to insert payout tx", "err", err)
 	return nil, err
 }
 

@@ -4,12 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/core"
 	"math/big"
 	_ "os"
 	"sync"
 	"time"
-
-	"github.com/ethereum/go-ethereum/core"
 
 	bellatrixapi "github.com/attestantio/go-builder-client/api/bellatrix"
 	capellaapi "github.com/attestantio/go-builder-client/api/capella"
@@ -29,6 +28,8 @@ import (
 	"github.com/flashbots/go-boost-utils/utils"
 	"github.com/holiman/uint256"
 	"golang.org/x/time/rate"
+
+	"github.com/cenkalti/backoff/v4"
 )
 
 const (
@@ -64,6 +65,7 @@ type IBuilder interface {
 
 type Builder struct {
 	ds                          flashbotsextra.IDatabaseService
+	blockConsumer               flashbotsextra.BlockConsumer
 	relay                       IRelay
 	eth                         IEthereumService
 	dryRun                      bool
@@ -91,6 +93,7 @@ type Builder struct {
 type BuilderArgs struct {
 	sk                            *bls.SecretKey
 	ds                            flashbotsextra.IDatabaseService
+	blockConsumer                 flashbotsextra.BlockConsumer
 	relay                         IRelay
 	builderSigningDomain          phase0.Domain
 	builderBlockResubmitInterval  time.Duration
@@ -130,6 +133,7 @@ func NewBuilder(args BuilderArgs) (*Builder, error) {
 	slotCtx, slotCtxCancel := context.WithCancel(context.Background())
 	return &Builder{
 		ds:                            args.ds,
+		blockConsumer:                 args.blockConsumer,
 		relay:                         args.relay,
 		eth:                           args.eth,
 		dryRun:                        args.dryRun,
@@ -267,7 +271,7 @@ func (b *Builder) submitBellatrixBlock(block *types.Block, blockValue *big.Int, 
 			log.Error("could not validate bellatrix block", "err", err)
 		}
 	} else {
-		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
+		go b.processBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
 		err = b.relay.SubmitBlock(&blockSubmitReq, vd)
 		if err != nil {
 			log.Error("could not submit bellatrix block", "err", err, "#commitedBundles", len(commitedBundles))
@@ -326,7 +330,7 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 			log.Error("could not validate block for capella", "err", err)
 		}
 	} else {
-		go b.ds.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
+		go b.processBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, &blockBidMsg)
 		err = b.relay.SubmitBlockCapella(&blockSubmitReq, vd)
 		if err != nil {
 			log.Error("could not submit capella block", "err", err, "#commitedBundles", len(commitedBundles))
@@ -338,6 +342,19 @@ func (b *Builder) submitCapellaBlock(block *types.Block, blockValue *big.Int, or
 	return nil
 }
 
+func (b *Builder) processBuiltBlock(block *types.Block, blockValue *big.Int, ordersClosedAt time.Time, sealedAt time.Time, commitedBundles []types.SimulatedBundle, allBundles []types.SimulatedBundle, usedSbundles []types.UsedSBundle, bidTrace *apiv1.BidTrace) {
+	back := backoff.NewExponentialBackOff()
+	back.MaxInterval = 3 * time.Second
+	back.MaxElapsedTime = 12 * time.Second
+	err := backoff.Retry(func() error {
+		return b.blockConsumer.ConsumeBuiltBlock(block, blockValue, ordersClosedAt, sealedAt, commitedBundles, allBundles, usedSbundles, bidTrace)
+	}, back)
+	if err != nil {
+		log.Error("could not consume built block", "err", err)
+	} else {
+		log.Info("successfully relayed block data to consumer")
+	}
+}
 func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) error {
 	if attrs == nil {
 		return nil
@@ -348,14 +365,6 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 		return fmt.Errorf("could not get validator while submitting block for slot %d - %w", attrs.Slot, err)
 	}
 
-	parentBlock := b.eth.GetBlockByHash(attrs.HeadHash)
-	if parentBlock == nil {
-		return fmt.Errorf("parent block hash not found in block tree given head block hash %s", attrs.HeadHash)
-	}
-
-	attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
-	attrs.GasLimit = core.CalcGasLimit(parentBlock.GasLimit(), vd.GasLimit)
-
 	proposerPubkey, err := utils.HexToPubkey(string(vd.Pubkey))
 	if err != nil {
 		return fmt.Errorf("could not parse pubkey (%s) - %w", vd.Pubkey, err)
@@ -364,6 +373,14 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 	if !b.eth.Synced() {
 		return errors.New("backend not Synced")
 	}
+
+	parentBlock := b.eth.GetBlockByHash(attrs.HeadHash)
+	if parentBlock == nil {
+		return fmt.Errorf("parent block hash not found in block tree given head block hash %s", attrs.HeadHash)
+	}
+
+	attrs.SuggestedFeeRecipient = [20]byte(vd.FeeRecipient)
+	attrs.GasLimit = core.CalcGasLimit(parentBlock.GasLimit(), vd.GasLimit)
 
 	b.slotMu.Lock()
 	defer b.slotMu.Unlock()
@@ -377,7 +394,11 @@ func (b *Builder) OnPayloadAttribute(attrs *types.BuilderPayloadAttributes) erro
 		b.slotCtxCancel()
 	}
 
-	slotCtx, slotCtxCancel := context.WithTimeout(context.Background(), 12*time.Second)
+	slotTime := time.Unix(int64(attrs.Timestamp), 0).UTC()
+	ctxDuration := slotTime.Sub(time.Now()) + (800 * time.Millisecond)
+
+	//slotCtx, slotCtxCancel := context.WithTimeout(context.Background(), 12*time.Second)
+	slotCtx, slotCtxCancel := context.WithTimeout(context.Background(), ctxDuration)
 	b.slotAttrs = *attrs
 	b.slotCtx = slotCtx
 	b.slotCtxCancel = slotCtxCancel

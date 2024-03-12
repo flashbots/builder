@@ -62,7 +62,7 @@ func (n *memoryNode) obj() node {
 	if node, ok := n.node.(rawNode); ok {
 		return mustDecodeNode(n.hash[:], node)
 	}
-	return expandNode(n.hash[:], n.node)
+	return expandNode(hashNode(n.hash), n.node)
 }
 
 // isDeleted returns the indicator if the node is marked as deleted.

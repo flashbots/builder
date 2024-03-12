@@ -84,7 +84,7 @@ func New(id *ID, db NodeReader) (*Trie, error) {
 		tracer: newTracer(),
 	}
 	if id.Root != (common.Hash{}) && id.Root != types.EmptyRootHash {
-		rootnode, err := trie.resolveAndTrack(id.Root[:], nil)
+		rootnode, err := trie.resolveAndTrack(hashNode(id.Root), nil)
 		if err != nil {
 			return nil, err
 		}
@@ -194,10 +194,10 @@ func (t *Trie) tryGetNode(origNode node, path []byte, pos int) (item []byte, new
 		} else {
 			hash, _ = origNode.cache()
 		}
-		if hash == nil {
+		if hash == nilHashNode {
 			return nil, origNode, 0, errors.New("non-consensus node")
 		}
-		blob, err := t.reader.nodeBlob(path, common.BytesToHash(hash))
+		blob, err := t.reader.nodeBlob(path, common.BytesToHash(hash[:]))
 		return blob, origNode, 1, err
 	}
 	// Path still needs to be traversed, descend into children
@@ -536,12 +536,12 @@ func (t *Trie) resolve(n node, prefix []byte) (node, error) {
 // node's original value. The rlp-encoded blob is preferred to be loaded from
 // database because it's easy to decode node while complex to encode node to blob.
 func (t *Trie) resolveAndTrack(n hashNode, prefix []byte) (node, error) {
-	blob, err := t.reader.nodeBlob(prefix, common.BytesToHash(n))
+	blob, err := t.reader.nodeBlob(prefix, common.BytesToHash(n[:]))
 	if err != nil {
 		return nil, err
 	}
 	t.tracer.onRead(prefix, blob)
-	return mustDecodeNode(n, blob), nil
+	return mustDecodeNode(n[:], blob), nil
 }
 
 // Hash returns the root hash of the trie. It does not write to the
@@ -549,7 +549,8 @@ func (t *Trie) resolveAndTrack(n hashNode, prefix []byte) (node, error) {
 func (t *Trie) Hash() common.Hash {
 	hash, cached := t.hashRoot()
 	t.root = cached
-	return common.BytesToHash(hash.(hashNode))
+	hashNodeValue := hash.(hashNode)
+	return common.BytesToHash(hashNodeValue[:])
 }
 
 // Commit collects all dirty nodes in the trie and replaces them with the
@@ -589,7 +590,9 @@ func (t *Trie) Commit(collectLeaf bool) (common.Hash, *NodeSet) {
 // hashRoot calculates the root hash of the given trie
 func (t *Trie) hashRoot() (node, node) {
 	if t.root == nil {
-		return hashNode(types.EmptyRootHash.Bytes()), nil
+		var hashNodeValue hashNode
+		copy(hashNodeValue[:], types.EmptyRootHash.Bytes())
+		return hashNodeValue, nil
 	}
 	// If the number of changes is below 100, we let one thread handle it
 	h := newHasher(t.unhashed >= 100)

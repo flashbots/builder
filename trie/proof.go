@@ -65,7 +65,7 @@ func (t *Trie) Prove(key []byte, fromLevel uint, proofDb ethdb.KeyValueWriter) e
 			// all loaded nodes won't be linked to trie at all and track nodes
 			// may lead to out-of-memory issue.
 			var err error
-			tn, err = t.reader.node(prefix, common.BytesToHash(n))
+			tn, err = t.reader.node(prefix, common.BytesToHash(n[:]))
 			if err != nil {
 				log.Error("Unhandled trie error in Trie.Prove", "err", err)
 				return err
@@ -91,7 +91,7 @@ func (t *Trie) Prove(key []byte, fromLevel uint, proofDb ethdb.KeyValueWriter) e
 			if !ok {
 				hash = hasher.hashData(enc)
 			}
-			proofDb.Put(hash, enc)
+			proofDb.Put(hash[:], enc)
 		}
 	}
 	return nil
@@ -130,7 +130,7 @@ func VerifyProof(rootHash common.Hash, key []byte, proofDb ethdb.KeyValueReader)
 			return nil, nil
 		case hashNode:
 			key = keyrest
-			copy(wantHash[:], cld)
+			copy(wantHash[:], cld[:])
 		case valueNode:
 			return cld, nil
 		}
@@ -190,7 +190,7 @@ func proofToPath(rootHash common.Hash, root node, key []byte, proofDb ethdb.KeyV
 			key, parent = keyrest, child // Already resolved
 			continue
 		case hashNode:
-			child, err = resolveNode(common.BytesToHash(cld))
+			child, err = resolveNode(common.BytesToHash(cld[:]))
 			if err != nil {
 				return nil, nil, err
 			}

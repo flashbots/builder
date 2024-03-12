@@ -168,7 +168,7 @@ func (n *cachedNode) obj(hash common.Hash) node {
 		// copy and safe to use unsafe decoder.
 		return mustDecodeNodeUnsafe(hash[:], node)
 	}
-	return expandNode(hash[:], n.node)
+	return expandNode(hashNode(hash), n.node)
 }
 
 // forChilds invokes the callback for all the tracked children of this node,
@@ -194,7 +194,7 @@ func forGatherChildren(n node, onChild func(hash common.Hash)) {
 			forGatherChildren(n[i], onChild)
 		}
 	case hashNode:
-		onChild(common.BytesToHash(n))
+		onChild(common.BytesToHash(n[:]))
 	case valueNode, nil, rawNode:
 	default:
 		panic(fmt.Sprintf("unknown node type: %T", n))
@@ -235,7 +235,7 @@ func expandNode(hash hashNode, n node) node {
 		// Short nodes need key and child expansion
 		return &shortNode{
 			Key: compactToHex(n.Key),
-			Val: expandNode(nil, n.Val),
+			Val: expandNode(nilHashNode, n.Val),
 			flags: nodeFlag{
 				hash: hash,
 			},
@@ -250,7 +250,7 @@ func expandNode(hash hashNode, n node) node {
 		}
 		for i := 0; i < len(node.Children); i++ {
 			if n[i] != nil {
-				node.Children[i] = expandNode(nil, n[i])
+				node.Children[i] = expandNode(nilHashNode, n[i])
 			}
 		}
 		return node

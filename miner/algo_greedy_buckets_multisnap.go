@@ -91,26 +91,29 @@ func (b *greedyBucketsMultiSnapBuilder) commit(changes *envChanges,
 		} else if bundle := order.Bundle(); bundle != nil {
 			err := changes.commitBundle(bundle, b.chainData, algoConf)
 			orderFailed = err != nil
-			if err != nil {
-				log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
-
-				var e *lowProfitError
-				if errors.As(err, &e) {
-					if e.ActualEffectiveGasPrice != nil {
-						order.SetPrice(e.ActualEffectiveGasPrice)
-					}
-
-					if e.ActualProfit != nil {
-						order.SetProfit(e.ActualProfit)
-					}
-					// if the bundle was not included due to low profit, we can retry the bundle
-					CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
-				}
-			} else {
-				log.Trace("Included bundle", "bundleEGP", bundle.MevGasPrice.String(),
-					"gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.EthSentToCoinbase))
+			if !orderFailed {
 				usedBundles = append(usedBundles, *bundle)
 			}
+			//if err != nil {
+			//	log.Trace("Could not apply bundle", "bundle", bundle.OriginalBundle.Hash, "err", err)
+			//
+			//	var e *lowProfitError
+			//	if errors.As(err, &e) {
+			//		if e.ActualEffectiveGasPrice != nil {
+			//			order.SetPrice(e.ActualEffectiveGasPrice)
+			//		}
+			//
+			//		if e.ActualProfit != nil {
+			//			order.SetProfit(e.ActualProfit)
+			//		}
+			//		// if the bundle was not included due to low profit, we can retry the bundle
+			//		CheckRetryOrderAndReinsert(order, orders, retryMap, retryLimit)
+			//	}
+			//} else {
+			//	log.Trace("Included bundle", "bundleEGP", bundle.MevGasPrice.String(),
+			//		"gasUsed", bundle.TotalGasUsed, "ethToCoinbase", ethIntToFloat(bundle.EthSentToCoinbase))
+			//	usedBundles = append(usedBundles, *bundle)
+			//}
 		} else if sbundle := order.SBundle(); sbundle != nil {
 			err := changes.CommitSBundle(sbundle, b.chainData, b.builderKey, algoConf)
 			orderFailed = err != nil
