@@ -2,11 +2,11 @@
 
 # Flashbots Builder Compliance List Example
 
-Compliance list code is found in the `deneb-compliance-lists-example` branch.
+Compliance list code is found in the `compliance-lists-example` branch.
 
-The PR comparing the differences between the original Flashbots `deneb` branch is here:
+The PR comparing the differences between the original Flashbots `main` branch is here:
 <br>
-https://github.com/bloXroute-Labs/builder-compliance-lists/pull/1
+https://github.com/bloXroute-Labs/builder-compliance-lists/pull/3
 
 ## Overview
 
