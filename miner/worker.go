@@ -1259,11 +1259,11 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 	// Note genParams.coinbase can be different with header.Coinbase
 	// since clique algorithm can modify the coinbase field in header.
 	env, err := w.makeEnv(parent, header, genParams.coinbase)
-	env.complianceList = genParams.complianceList
 	if err != nil {
 		log.Error("Failed to create sealing context", "err", err)
 		return nil, err
 	}
+	env.complianceList = genParams.complianceList
 	if header.ParentBeaconRoot != nil {
 		context := core.NewEVMBlockContext(header, w.chain, nil)
 		vmenv := vm.NewEVM(context, vm.TxContext{}, env.state, w.chainConfig, vm.Config{})
