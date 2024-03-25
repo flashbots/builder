@@ -203,6 +203,7 @@ func GetComplianceListSize(complianceListName string) int {
 	return len(getComplianceList(complianceListName))
 }
 
+// CheckCompliance checks if the given addresses are in the compliance list and returns true if they do not exist in the list
 func CheckCompliance(complianceListName string, addresses []common.Address) bool {
 	SanctionListLock.RLock()
 	defer SanctionListLock.RUnlock()
