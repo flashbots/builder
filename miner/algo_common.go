@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/eth/tracers/logger"
+	"github.com/ethereum/go-ethereum/ofac"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
@@ -85,7 +86,7 @@ type algorithmConfig struct {
 type chainData struct {
 	chainConfig *params.ChainConfig
 	chain       *core.BlockChain
-	blacklist   map[common.Address]struct{}
+	blacklist   string
 }
 
 // PayoutTransactionParams holds parameters for committing a payout transaction, used in commitPayoutTx
@@ -159,10 +160,10 @@ func checkInterrupt(i *atomic.Int32) bool {
 func applyTransactionWithBlacklist(
 	signer types.Signer, config *params.ChainConfig, bc core.ChainContext, author *common.Address, gp *core.GasPool,
 	statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64,
-	cfg vm.Config, blacklist map[common.Address]struct{},
+	cfg vm.Config, blacklist string,
 ) (*types.Receipt, *state.StateDB, error) {
 	// short circuit if blacklist is empty
-	if len(blacklist) == 0 {
+	if ofac.GetComplianceListSize(blacklist) == 0 {
 		snap := statedb.Snapshot()
 		receipt, err := core.ApplyTransaction(config, bc, author, gp, statedb, header, tx, usedGas, cfg, nil)
 		if err != nil {
@@ -176,12 +177,12 @@ func applyTransactionWithBlacklist(
 		return nil, statedb, err
 	}
 
-	if _, in := blacklist[sender]; in {
+	if !ofac.CheckCompliance(blacklist, []common.Address{sender}) {
 		return nil, statedb, errors.New("blacklist violation, tx.sender")
 	}
 
 	if to := tx.To(); to != nil {
-		if _, in := blacklist[*to]; in {
+		if !ofac.CheckCompliance(blacklist, []common.Address{*to}) {
 			return nil, statedb, errors.New("blacklist violation, tx.to")
 		}
 	}
@@ -192,10 +193,12 @@ func applyTransactionWithBlacklist(
 	cfg.Tracer = touchTracer
 
 	hook := func() error {
+		var addresses []common.Address
 		for _, accessTuple := range touchTracer.AccessList() {
-			if _, in := blacklist[accessTuple.Address]; in {
-				return errors.New("blacklist violation, tx trace")
-			}
+			addresses = append(addresses, accessTuple.Address)
+		}
+		if !ofac.CheckCompliance(blacklist, addresses) {
+			return errors.New("blacklist violation, tx trace")
 		}
 		return nil
 	}
