@@ -213,5 +213,13 @@ func CheckCompliance(complianceListName string, addresses []common.Address) bool
 			return false
 		}
 	}
+
+	// always check default compliance list
+	for _, address := range addresses {
+		if _, in := DefaultComplianceList[address]; in {
+			return false
+		}
+	}
+
 	return true
 }
