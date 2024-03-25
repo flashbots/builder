@@ -2228,7 +2228,6 @@ func signalToErr(signal int32) error {
 	}
 }
 
-// TODO: possible delete this completely
 func (w *worker) shouldUseComplianceList(env *environment) bool {
 	return env.complianceList != "" || len(ofac.DefaultComplianceList) != 0 || len(w.blockList) != 0
 }
