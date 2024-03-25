@@ -197,12 +197,6 @@ func getComplianceList(complianceListName string) map[common.Address]struct{} {
 	return ComplianceLists[OFAC]
 }
 
-func GetComplianceListSize(complianceListName string) int {
-	SanctionListLock.RLock()
-	defer SanctionListLock.RUnlock()
-	return len(getComplianceList(complianceListName))
-}
-
 // CheckCompliance checks if the given addresses are in the compliance list and returns true if they do not exist in the list
 func CheckCompliance(complianceListName string, addresses []common.Address) bool {
 	SanctionListLock.RLock()

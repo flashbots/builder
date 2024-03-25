@@ -162,16 +162,6 @@ func applyTransactionWithBlacklist(
 	statedb *state.StateDB, header *types.Header, tx *types.Transaction, usedGas *uint64,
 	cfg vm.Config, blacklist string,
 ) (*types.Receipt, *state.StateDB, error) {
-	// short circuit if blacklist is empty
-	if ofac.GetComplianceListSize(blacklist) == 0 {
-		snap := statedb.Snapshot()
-		receipt, err := core.ApplyTransaction(config, bc, author, gp, statedb, header, tx, usedGas, cfg, nil)
-		if err != nil {
-			statedb.RevertToSnapshot(snap)
-		}
-		return receipt, statedb, err
-	}
-
 	sender, err := types.Sender(signer, tx)
 	if err != nil {
 		return nil, statedb, err
