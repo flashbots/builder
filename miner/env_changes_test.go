@@ -4,8 +4,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/ofac"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
 )
@@ -322,10 +322,12 @@ func TestBlacklistSnaps(t *testing.T) {
 		t.Fatal("can't create env changes", err)
 	}
 
-	blacklist := map[common.Address]struct{}{
-		signers.addresses[3]: {},
-	}
-	chData.blacklist = blacklist
+	ofac.UpdateComplianceLists(map[string]ofac.ComplianceList{
+		"blacklist": {
+			signers.addresses[3]: {},
+		},
+	})
+	chData.blacklist = "blacklist"
 
 	gasPoolBefore := *changes.gasPool
 	gasUsedBefore := changes.usedGas

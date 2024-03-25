@@ -17,6 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/ofac"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/holiman/uint256"
@@ -213,7 +214,7 @@ func genTestSetupWithAlloc(config *params.ChainConfig, alloc types.GenesisAlloc,
 
 	stateDB, _ := state.New(chain.CurrentHeader().Root, state.NewDatabase(db), nil)
 
-	return stateDB, chainData{config, chain, nil}
+	return stateDB, chainData{config, chain, ""}
 }
 
 func newEnvironment(data chainData, state *state.StateDB, coinbase common.Address, gasLimit uint64, baseFee *big.Int) *environment {
@@ -451,10 +452,13 @@ func TestBlacklist(t *testing.T) {
 
 	beforeRoot := statedb.IntermediateRoot(true)
 
-	blacklist := map[common.Address]struct{}{
-		signers.addresses[3]: {},
+	blacklist := map[string]ofac.ComplianceList{
+		"blacklist": {
+			signers.addresses[3]: {},
+		},
 	}
-	chData.blacklist = blacklist
+	ofac.UpdateComplianceLists(blacklist)
+	chData.blacklist = "blacklist"
 
 	gasPoolBefore := *envDiff.gasPool
 	gasUsedBefore := envDiff.header.GasUsed

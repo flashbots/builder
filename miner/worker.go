@@ -905,11 +905,8 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction) (*typ
 		tracer = logger.NewAccountTouchTracer()
 		config.Tracer = tracer
 		hook = func() error {
-			complianceList := w.selectComplianceList(env)
-			for _, address := range tracer.TouchedAddresses() {
-				if _, in := complianceList[address]; in {
-					return errBlocklistViolation
-				}
+			if !ofac.CheckCompliance(env.complianceList, tracer.TouchedAddresses()) {
+				return errBlocklistViolation
 			}
 			return nil
 		}
@@ -1423,7 +1420,7 @@ func (w *worker) fillTransactionsAlgoWorker(interrupt *atomic.Int32, env *enviro
 		blockBundles   []types.SimulatedBundle
 		usedSbundle    []types.UsedSBundle
 		start          = time.Now()
-		complianceList = w.selectComplianceList(env)
+		complianceList = env.complianceList
 	)
 	switch w.flashbots.algoType {
 	case ALGO_GREEDY_BUCKETS:
@@ -1962,11 +1959,8 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, sb
 				return
 			}
 			if w.shouldUseComplianceList(env) {
-				complianceList := w.selectComplianceList(env)
-				for _, address := range tracer.TouchedAddresses() {
-					if _, in := complianceList[address]; in {
-						return
-					}
+				if !ofac.CheckCompliance(env.complianceList, tracer.TouchedAddresses()) {
+					return
 				}
 			}
 
@@ -2077,11 +2071,8 @@ func (w *worker) computeBundleGas(
 			return simulatedBundle{}, errors.New("failed tx")
 		}
 		if w.shouldUseComplianceList(env) {
-			complianceList := w.selectComplianceList(env)
-			for _, address := range tracer.TouchedAddresses() {
-				if _, in := complianceList[address]; in {
-					return simulatedBundle{}, errBlocklistViolation
-				}
+			if !ofac.CheckCompliance(env.complianceList, tracer.TouchedAddresses()) {
+				return simulatedBundle{}, errBlocklistViolation
 			}
 		}
 
@@ -2181,7 +2172,7 @@ func (w *worker) proposerTxPrepare(env *environment, validatorCoinbase *common.A
 	w.mu.Unlock()
 	builderBalance := env.state.GetBalance(sender).ToBig()
 
-	chainData := chainData{w.chainConfig, w.chain, w.blockList}
+	chainData := chainData{w.chainConfig, w.chain, env.complianceList}
 	gas, isEOA, err := estimatePayoutTxGas(env, sender, *validatorCoinbase, w.config.BuilderTxSigningKey, chainData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to estimate proposer payout gas: %w", err)
@@ -2214,7 +2205,7 @@ func (w *worker) proposerTxCommit(env *environment, validatorCoinbase *common.Ad
 	}
 
 	env.gasPool.AddGas(reserve.reservedGas)
-	chainData := chainData{w.chainConfig, w.chain, w.blockList}
+	chainData := chainData{w.chainConfig, w.chain, env.complianceList}
 	_, err := insertPayoutTx(env, sender, *validatorCoinbase, reserve.reservedGas, reserve.isEOA, availableFunds, w.config.BuilderTxSigningKey, chainData)
 	if err != nil {
 		return err
@@ -2239,21 +2230,4 @@ func signalToErr(signal int32) error {
 
 func (w *worker) shouldUseComplianceList(env *environment) bool {
 	return env.complianceList != "" || len(ofac.DefaultComplianceList) != 0 || len(w.blockList) != 0
-}
-
-func (w *worker) selectComplianceList(env *environment) map[common.Address]struct{} {
-	if env.complianceList != "" {
-		list, found := ofac.ComplianceLists[env.complianceList]
-		if !found {
-			log.Warn("compliance list not found, using OFAC list as a backup", "list", env.complianceList)
-			return ofac.ComplianceLists[ofac.OFAC]
-		}
-		return list
-	}
-
-	if len(ofac.DefaultComplianceList) > 0 {
-		return ofac.DefaultComplianceList
-	}
-
-	return w.blockList
 }

@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/event"
+	"github.com/ethereum/go-ethereum/ofac"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 	"github.com/stretchr/testify/require"
@@ -691,5 +692,76 @@ func testBundles(t *testing.T) {
 		require.NoError(t, err)
 		balancePost := state.GetBalance(testUserAddress)
 		t.Log("Balances", balancePre, balancePost)
+	}
+}
+
+func TestGreedyAlgosComplianceList(t *testing.T) {
+	algos := []AlgoType{ALGO_GREEDY, ALGO_GREEDY_BUCKETS, ALGO_GREEDY_MULTISNAP, ALGO_GREEDY_BUCKETS_MULTISNAP}
+	expectations := make(map[string]int)
+	expectations["empty"] = 3
+	expectations["blacklistSender"] = 2
+	expectations["blacklistTo"] = 1
+
+	for complianceListName, txCount := range expectations {
+		for _, algo := range algos {
+			//sender, to should be checked in the compliance list
+			statedb, chData, signers := genTestSetup(GasLimit)
+
+			tx1 := signers.signTx(1, 21000, big.NewInt(1), big.NewInt(1), signers.addresses[3], big.NewInt(0), []byte{})
+			tx2 := signers.signTx(2, 21000, big.NewInt(1), big.NewInt(1), signers.addresses[4], big.NewInt(0), []byte{})
+			tx3 := signers.signTx(3, 21000, big.NewInt(1), big.NewInt(1), signers.addresses[5], big.NewInt(0), []byte{})
+			txs := make(map[common.Address][]*txpool.LazyTransaction)
+			txs[signers.addresses[1]] = []*txpool.LazyTransaction{{
+				Hash:      tx1.Hash(),
+				Tx:        tx1,
+				Time:      tx1.Time(),
+				GasFeeCap: uint256.MustFromBig(tx1.GasFeeCap()),
+				GasTipCap: uint256.MustFromBig(tx1.GasTipCap()),
+				GasPrice:  uint256.MustFromBig(tx1.GasPrice()),
+			}}
+			txs[signers.addresses[2]] = []*txpool.LazyTransaction{{
+				Hash:      tx2.Hash(),
+				Tx:        tx2,
+				Time:      tx2.Time(),
+				GasFeeCap: uint256.MustFromBig(tx2.GasFeeCap()),
+				GasTipCap: uint256.MustFromBig(tx2.GasTipCap()),
+				GasPrice:  uint256.MustFromBig(tx2.GasPrice()),
+			}}
+			txs[signers.addresses[3]] = []*txpool.LazyTransaction{{
+				Hash:      tx3.Hash(),
+				Tx:        tx3,
+				Time:      tx3.Time(),
+				GasFeeCap: uint256.MustFromBig(tx3.GasFeeCap()),
+				GasTipCap: uint256.MustFromBig(tx3.GasTipCap()),
+				GasPrice:  uint256.MustFromBig(tx3.GasPrice()),
+			}}
+
+			ofac.UpdateComplianceLists(map[string]ofac.ComplianceList{
+				"empty":           {},
+				"blacklistSender": {signers.addresses[1]: {}},
+				"blacklistTo":     {*tx2.To(): {}, *tx3.To(): {}},
+			})
+
+			env := newEnvironment(chData, statedb, signers.addresses[0], 100000, big.NewInt(1))
+
+			var result *environment
+			switch algo {
+			case ALGO_GREEDY:
+				builder := newGreedyBuilder(chData.chain, chData.chainConfig, &defaultAlgorithmConfig, complianceListName, env, nil, nil)
+				result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
+			case ALGO_GREEDY_MULTISNAP:
+				builder := newGreedyMultiSnapBuilder(chData.chain, chData.chainConfig, &defaultAlgorithmConfig, complianceListName, env, nil, nil)
+				result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
+			case ALGO_GREEDY_BUCKETS:
+				builder := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, &defaultAlgorithmConfig, complianceListName, env, nil, nil)
+				result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
+			case ALGO_GREEDY_BUCKETS_MULTISNAP:
+				builder := newGreedyBucketsMultiSnapBuilder(chData.chain, chData.chainConfig, &defaultAlgorithmConfig, complianceListName, env, nil, nil)
+				result, _, _ = builder.buildBlock([]types.SimulatedBundle{}, nil, txs)
+			}
+			if result.tcount != txCount {
+				t.Fatalf("Incorrect tx count [found: %d] expected %d, algoType : %v, compliance list %v", result.tcount, txCount, algo, complianceListName)
+			}
+		}
 	}
 }

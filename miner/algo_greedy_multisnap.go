@@ -27,7 +27,7 @@ type greedyMultiSnapBuilder struct {
 
 func newGreedyMultiSnapBuilder(
 	chain *core.BlockChain, chainConfig *params.ChainConfig, algoConf *algorithmConfig,
-	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *atomic.Int32,
+	blacklist string, env *environment, key *ecdsa.PrivateKey, interrupt *atomic.Int32,
 ) *greedyMultiSnapBuilder {
 	if algoConf == nil {
 		algoConf = &defaultAlgorithmConfig

@@ -31,7 +31,7 @@ type greedyBucketsBuilder struct {
 
 func newGreedyBucketsBuilder(
 	chain *core.BlockChain, chainConfig *params.ChainConfig, algoConf *algorithmConfig,
-	blacklist map[common.Address]struct{}, env *environment, key *ecdsa.PrivateKey, interrupt *atomic.Int32,
+	blacklist string, env *environment, key *ecdsa.PrivateKey, interrupt *atomic.Int32,
 ) *greedyBucketsBuilder {
 	if algoConf == nil {
 		panic("algoConf cannot be nil")

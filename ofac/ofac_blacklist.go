@@ -185,3 +185,33 @@ func UpdateComplianceLists(newMap map[string]ComplianceList) {
 		log.Info("compliance list updated", "list", name, "addressCount", len(complianceList))
 	}
 }
+
+func getComplianceList(complianceListName string) map[common.Address]struct{} {
+	if complianceListName != "" {
+		_, found := ComplianceLists[complianceListName]
+		if found {
+			return ComplianceLists[complianceListName]
+		}
+		log.Warn("compliance list not found, using OFAC list as a backup", "list", ComplianceLists[OFAC])
+	}
+	return ComplianceLists[OFAC]
+}
+
+func GetComplianceListSize(complianceListName string) int {
+	SanctionListLock.RLock()
+	defer SanctionListLock.RUnlock()
+	return len(getComplianceList(complianceListName))
+}
+
+// CheckCompliance checks if the given addresses are in the compliance list and returns true if they do not exist in the list
+func CheckCompliance(complianceListName string, addresses []common.Address) bool {
+	SanctionListLock.RLock()
+	defer SanctionListLock.RUnlock()
+	complianceList := getComplianceList(complianceListName)
+	for _, address := range addresses {
+		if _, in := complianceList[address]; in {
+			return false
+		}
+	}
+	return true
+}
