@@ -306,16 +306,16 @@ func runAlgoTest(
 	// build block
 	switch algo {
 	case ALGO_GREEDY:
-		builder := newGreedyBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
+		builder := newGreedyBuilder(chData.chain, chData.chainConfig, &algoConf, "", env, nil, nil)
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	case ALGO_GREEDY_MULTISNAP:
-		builder := newGreedyMultiSnapBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
+		builder := newGreedyMultiSnapBuilder(chData.chain, chData.chainConfig, &algoConf, "", env, nil, nil)
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	case ALGO_GREEDY_BUCKETS:
-		builder := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
+		builder := newGreedyBucketsBuilder(chData.chain, chData.chainConfig, &algoConf, "", env, nil, nil)
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	case ALGO_GREEDY_BUCKETS_MULTISNAP:
-		builder := newGreedyBucketsMultiSnapBuilder(chData.chain, chData.chainConfig, &algoConf, nil, env, nil, nil)
+		builder := newGreedyBucketsMultiSnapBuilder(chData.chain, chData.chainConfig, &algoConf, "", env, nil, nil)
 		resultEnv, _, _ = builder.buildBlock(bundles, nil, txPool)
 	}
 	return resultEnv.profit, nil
