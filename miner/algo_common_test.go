@@ -153,6 +153,19 @@ func (sig signerList) signTx(i int, gas uint64, gasTipCap, gasFeeCap *big.Int, t
 	return types.MustSignNewTx(sig.signers[i], types.LatestSigner(sig.config), txData)
 }
 
+func (sig signerList) signCreate(i int, gas uint64, gasTipCap, gasFeeCap *big.Int, value *big.Int, data []byte) *types.Transaction {
+	txData := &types.DynamicFeeTx{
+		ChainID:   sig.config.ChainID,
+		Nonce:     sig.nonces[i],
+		GasTipCap: gasTipCap,
+		GasFeeCap: gasFeeCap,
+		Gas:       gas,
+		Value:     value,
+		Data:      data,
+	}
+	return types.MustSignNewTx(sig.signers[i], types.LatestSigner(sig.config), txData)
+}
+
 func genSignerList(len int, config *params.ChainConfig) signerList {
 	res := signerList{
 		config:    config,
