@@ -898,18 +898,15 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction) (*typ
 		return nil, err
 	}
 
-	var tracer *logger.AccountTouchTracer
 	var hook func() error
 	config := *w.chain.GetVMConfig()
-	if w.shouldUseComplianceList(env) {
-		tracer = logger.NewAccountTouchTracer()
-		config.Tracer = tracer
-		hook = func() error {
-			if !ofac.CheckCompliance(env.complianceList, tracer.TouchedAddresses()) {
-				return errBlocklistViolation
-			}
-			return nil
+	tracer := logger.NewAccountTouchTracer()
+	config.Tracer = tracer
+	hook = func() error {
+		if !ofac.CheckCompliance(env.complianceList, tracer.TouchedAddresses()) {
+			return errBlocklistViolation
 		}
+		return nil
 	}
 
 	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, &gasPool, env.state, env.header, tx, &envGasUsed, config, hook)
@@ -1942,11 +1939,9 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, sb
 
 			tmpGasUsed := uint64(0)
 			config := *w.chain.GetVMConfig()
-			var tracer *logger.AccountTouchTracer
-			if w.shouldUseComplianceList(env) {
-				tracer = logger.NewAccountTouchTracer()
-				config.Tracer = tracer
-			}
+			tracer := logger.NewAccountTouchTracer()
+			config.Tracer = tracer
+
 			simRes, err := core.SimBundle(w.chainConfig, w.chain, &env.coinbase, gp, state, env.header, sbundle, 0, &tmpGasUsed, config, false)
 			if metrics.EnabledBuilder {
 				simulationMeter.Mark(1)
@@ -1958,10 +1953,9 @@ func (w *worker) simulateBundles(env *environment, bundles []types.MevBundle, sb
 				}
 				return
 			}
-			if w.shouldUseComplianceList(env) {
-				if !ofac.CheckCompliance(env.complianceList, tracer.TouchedAddresses()) {
-					return
-				}
+
+			if !ofac.CheckCompliance(env.complianceList, tracer.TouchedAddresses()) {
+				return
 			}
 
 			result := &types.SimSBundle{
@@ -2058,11 +2052,9 @@ func (w *worker) computeBundleGas(
 		coinbaseBalanceBefore := state.GetBalance(env.coinbase)
 
 		config := *w.chain.GetVMConfig()
-		var tracer *logger.AccountTouchTracer
-		if w.shouldUseComplianceList(env) {
-			tracer = logger.NewAccountTouchTracer()
-			config.Tracer = tracer
-		}
+		tracer := logger.NewAccountTouchTracer()
+		config.Tracer = tracer
+
 		receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, gasPool, state, env.header, tx, &tempGasUsed, config, nil)
 		if err != nil {
 			return simulatedBundle{}, err
@@ -2070,10 +2062,9 @@ func (w *worker) computeBundleGas(
 		if receipt.Status == types.ReceiptStatusFailed && !containsHash(bundle.RevertingTxHashes, receipt.TxHash) {
 			return simulatedBundle{}, errors.New("failed tx")
 		}
-		if w.shouldUseComplianceList(env) {
-			if !ofac.CheckCompliance(env.complianceList, tracer.TouchedAddresses()) {
-				return simulatedBundle{}, errBlocklistViolation
-			}
+
+		if !ofac.CheckCompliance(env.complianceList, tracer.TouchedAddresses()) {
+			return simulatedBundle{}, errBlocklistViolation
 		}
 
 		totalGasUsed += receipt.GasUsed
@@ -2226,8 +2217,4 @@ func signalToErr(signal int32) error {
 	default:
 		panic(fmt.Errorf("undefined signal %d", signal))
 	}
-}
-
-func (w *worker) shouldUseComplianceList(env *environment) bool {
-	return env.complianceList != "" || len(ofac.DefaultComplianceList) != 0 || len(w.blockList) != 0
 }
