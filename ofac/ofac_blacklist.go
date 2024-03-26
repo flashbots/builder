@@ -202,16 +202,22 @@ func CheckCompliance(complianceListName string, addresses []common.Address) bool
 	SanctionListLock.RLock()
 	defer SanctionListLock.RUnlock()
 	complianceList := getComplianceList(complianceListName)
-	for _, address := range addresses {
-		if _, in := complianceList[address]; in {
-			return false
+
+	// check requested compliance list if it has any addresses
+	if len(complianceList) > 0 {
+		for _, address := range addresses {
+			if _, in := complianceList[address]; in {
+				return false
+			}
 		}
 	}
 
-	// always check default compliance list
-	for _, address := range addresses {
-		if _, in := DefaultComplianceList[address]; in {
-			return false
+	// check default compliance list if it has any addresses
+	if len(DefaultComplianceList) > 0 {
+		for _, address := range addresses {
+			if _, in := DefaultComplianceList[address]; in {
+				return false
+			}
 		}
 	}
 
