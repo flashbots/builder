@@ -187,6 +187,8 @@ type SimMevBundleResponse struct {
 	RefundableValue hexutil.U256             `json:"refundableValue"`
 	GasUsed         hexutil.Uint64           `json:"gasUsed"`
 	BodyLogs        []core.SimBundleBodyLogs `json:"logs,omitempty"`
+	ExecError       string                   `json:"execError,omitempty"`
+	Revert          hexutil.Bytes            `json:"revert,omitempty"`
 }
 
 type SimMevBundleAuxArgs struct {
@@ -276,6 +278,8 @@ func (api *MevAPI) SimBundle(ctx context.Context, args SendMevBundleArgs, aux Si
 		result.Success = true
 		result.BodyLogs = bundleRes.BodyLogs
 	}
+	result.ExecError = bundleRes.ExecError
+	result.Revert = bundleRes.Revert
 	result.StateBlock = hexutil.Uint64(parentHeader.Number.Uint64())
 	result.MevGasPrice = hexutil.U256(*bundleRes.MevGasPrice)
 	result.Profit = hexutil.U256(*bundleRes.TotalProfit)
