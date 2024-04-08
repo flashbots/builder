@@ -20,7 +20,7 @@ func (api *BlockValidationApi) getRouter() http.Handler {
 	r := mux.NewRouter()
 
 	r.HandleFunc("/", api.handleRoot).Methods(http.MethodGet)
-	r.HandleFunc("/validate/v3/block_submission", api.handleBuilderSubmission).Methods(http.MethodPost)
+	r.HandleFunc("/validate/block_submission", api.handleBuilderSubmission).Methods(http.MethodPost)
 	return r
 }
 

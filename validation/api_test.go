@@ -241,14 +241,14 @@ func TestBlockValidation(t *testing.T) {
 
 	payloadBytes, err := blockRequest.MarshalSSZ()
 	require.NoError(t, err)
-	rr := backend.request(t, http.MethodPost, "/validate/v3/block_submission", payloadBytes)
+	rr := backend.request(t, http.MethodPost, "/validate/block_submission", payloadBytes)
 	require.Equal(t, `{"code":400,"message":"inaccurate payment 125851807635000, expected 125851807635001"}`+"\n", rr.Body.String())
 	require.Equal(t, http.StatusBadRequest, rr.Code)
 
 	blockRequest.Message.Value = uint256.NewInt(125851807635000)
 	payloadBytes, err = blockRequest.MarshalSSZ()
 	require.NoError(t, err)
-	rr = backend.request(t, http.MethodPost, "/validate/v3/block_submission", payloadBytes)
+	rr = backend.request(t, http.MethodPost, "/validate/block_submission", payloadBytes)
 	require.Equal(t, http.StatusOK, rr.Code)
 }
 

@@ -4,8 +4,8 @@
 package validation
 
 import (
-	builderApiV1 "github.com/attestantio/go-builder-client/api/v1"
 	builderApiDeneb "github.com/attestantio/go-builder-client/api/deneb"
+	builderApiV1 "github.com/attestantio/go-builder-client/api/v1"
 	"github.com/attestantio/go-eth2-client/spec/deneb"
 	ssz "github.com/ferranbt/fastssz"
 )
