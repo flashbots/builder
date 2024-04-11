@@ -28,6 +28,8 @@ type SimBundleResult struct {
 	GasUsed         uint64
 	MevGasPrice     *uint256.Int
 	BodyLogs        []SimBundleBodyLogs
+	Revert          []byte
+	ExecError       string
 }
 
 type SimBundleBodyLogs struct {
@@ -80,10 +82,12 @@ func SimBundle(config *params.ChainConfig, bc *BlockChain, author *common.Addres
 		if el.Tx != nil {
 			statedb.SetTxContext(el.Tx.Hash(), txIdx)
 			txIdx++
-			receipt, err := ApplyTransaction(config, bc, author, gp, statedb, header, el.Tx, usedGas, cfg, nil)
+			receipt, result, err := ApplyTransactionWithResult(config, bc, author, gp, statedb, header, el.Tx, usedGas, cfg)
 			if err != nil {
 				return res, err
 			}
+			res.Revert = result.Revert()
+			res.ExecError = result.Err.Error()
 			if receipt.Status != types.ReceiptStatusSuccessful && !el.CanRevert {
 				return res, ErrTxFailed
 			}
@@ -95,6 +99,13 @@ func SimBundle(config *params.ChainConfig, bc *BlockChain, author *common.Addres
 			innerRes, err := SimBundle(config, bc, author, gp, statedb, header, el.Bundle, txIdx, usedGas, cfg, logs)
 			if err != nil {
 				return res, err
+			}
+			// basically return first exec error if exists, helpful for single-tx sbundles
+			if len(res.Revert) == 0 {
+				res.Revert = innerRes.Revert
+			}
+			if len(res.ExecError) == 0 {
+				res.ExecError = innerRes.ExecError
 			}
 			res.GasUsed += innerRes.GasUsed
 			if logs {
