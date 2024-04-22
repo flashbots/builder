@@ -87,7 +87,9 @@ func SimBundle(config *params.ChainConfig, bc *BlockChain, author *common.Addres
 				return res, err
 			}
 			res.Revert = result.Revert()
-			res.ExecError = result.Err.Error()
+			if result.Err != nil {
+				res.ExecError = result.Err.Error()
+			}
 			if receipt.Status != types.ReceiptStatusSuccessful && !el.CanRevert {
 				return res, ErrTxFailed
 			}
