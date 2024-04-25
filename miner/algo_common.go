@@ -4,6 +4,9 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/constant"
+	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/utils"
 	"math/big"
 	"sync/atomic"
 
@@ -233,8 +236,43 @@ func estimatePayoutTxGas(env *environment, sender, receiver common.Address, prv 
 	return receipt.GasUsed, false, nil
 }
 
+func getBidInLatestBlock() (*big.Int, error) {
+	// get bid
+	getBidRes, err := utils.GetMaxBidData(rpc.LatestBlockNumber)
+	if err != nil {
+		return nil, err
+	}
+	if getBidRes == nil {
+		return nil, errors.New("GetMaxBidData return nil response")
+	}
+
+	bid, ok := new(big.Int).SetString(getBidRes.MaxBid, 64)
+	if !ok {
+		// parse bigint failed
+		return nil, errors.New(fmt.Sprintf("parse max_bid with value %v failed", getBidRes.MaxBid))
+	}
+
+	return bid, nil
+}
+
 func applyPayoutTx(envDiff *environmentDiff, sender, receiver common.Address, gas uint64, amountWithFees *big.Int, prv *ecdsa.PrivateKey, chData chainData) (*types.Receipt, error) {
 	amount := new(big.Int).Sub(amountWithFees, new(big.Int).Mul(envDiff.header.BaseFee, big.NewInt(int64(gas))))
+
+	bid, err := getBidInLatestBlock()
+	if err != nil {
+		return nil, err
+	}
+
+	// Cmp return -1 if bid < amount
+	if bid.Cmp(amount) < 0 {
+		oneHundred := new(big.Int).SetInt64(constant.ONE_HUNDRED)
+		bidRate := new(big.Int).SetInt64(int64(chData.chainConfig.MaxBidRate * constant.ONE_HUNDRED)) // multiply by 100 to rounding the floating point part
+		newBid := new(big.Int).Div(new(big.Int).Mul(bid, bidRate), oneHundred)
+		// if newBid < amount
+		if newBid.Cmp(amount) < 0 {
+			newBid = amount
+		}
+	}
 
 	if amount.Sign() < 0 {
 		return nil, errors.New("not enough funds available")
