@@ -84,13 +84,21 @@ Providers can set up an API endpoint that the bloXroute relays will intermittent
 2) Exposed over a rest API
 
 ```
-curl https://bloxroute.regulated.blxrbdn.com/blxr/free_compliance_list
+curl https://<YOUR_URL>/<ENDPOINTNAME>
+```
+for example:
+```
+curl https://newprovidersite.com/free_list
 ```
 
 3) Simple auth if necessary (bearer token or api key only)
 
 ```
-curl https://bloxroute.regulated.blxrbdn.com/blxr/pro_compliance_list?access_token=123
+curl https://<YOUR_URL>/<ENDPOINTNAME>?access_token=123
+```
+for example:
+```
+curl https://newprovidersite.io/pro_compliance_list?access_token=123
 ```
 
 ---
