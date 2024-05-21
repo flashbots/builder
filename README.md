@@ -10,6 +10,8 @@ https://github.com/bloXroute-Labs/builder-compliance-lists/pull/3
 
 ## Overview
 
+Instructions for list providers are in the **Compliance List Providers** section below.
+
 The compliance list feature allows the application to enforce restrictions on transactions based on regulatory requirements. This feature can be enabled or disabled for different relays and is configurable through the relay url startup argument.
 
 A Compliance List is a collection of addresses that the block builder will not include in the block.
