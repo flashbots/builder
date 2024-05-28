@@ -290,7 +290,7 @@ func (b *EthAPIBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscri
 
 func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction, private bool) error {
 	if private {
-		return b.eth.txPool.Add([]*types.Transaction{signedTx}, true, false, true)[0]
+		return b.eth.txPool.Add([]*types.Transaction{signedTx}, false, false, true)[0]
 	} else {
 		return b.eth.txPool.Add([]*types.Transaction{signedTx}, true, false, false)[0]
 	}
