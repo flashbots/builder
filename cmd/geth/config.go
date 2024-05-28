@@ -45,6 +45,7 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/validation"
 	"github.com/naoina/toml"
 	"github.com/urfave/cli/v2"
 )
@@ -93,11 +94,12 @@ type ethstatsConfig struct {
 }
 
 type gethConfig struct {
-	Eth      ethconfig.Config
-	Node     node.Config
-	Ethstats ethstatsConfig
-	Metrics  metrics.Config
-	Builder  builder.Config
+	Eth        ethconfig.Config
+	Node       node.Config
+	Ethstats   ethstatsConfig
+	Metrics    metrics.Config
+	Builder    builder.Config
+	Validation validation.Config
 }
 
 func loadConfig(file string, cfg *gethConfig) error {
@@ -131,10 +133,11 @@ func defaultNodeConfig() node.Config {
 func loadBaseConfig(ctx *cli.Context) gethConfig {
 	// Load defaults.
 	cfg := gethConfig{
-		Eth:     ethconfig.Defaults,
-		Node:    defaultNodeConfig(),
-		Metrics: metrics.DefaultConfig,
-		Builder: builder.DefaultConfig,
+		Eth:        ethconfig.Defaults,
+		Node:       defaultNodeConfig(),
+		Metrics:    metrics.DefaultConfig,
+		Builder:    builder.DefaultConfig,
+		Validation: validation.DefaultConfig,
 	}
 
 	// Load config file.
@@ -169,6 +172,9 @@ func makeConfigNode(ctx *cli.Context) (*node.Node, gethConfig) {
 
 	// Apply builder flags
 	utils.SetBuilderConfig(ctx, &cfg.Builder)
+
+	// Apply validation flags
+	utils.SetValidationConfig(ctx, &cfg.Validation)
 
 	return stack, cfg
 }
@@ -216,6 +222,10 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 
 	if err := blockvalidationapi.Register(stack, eth, bvConfig); err != nil {
 		utils.Fatalf("Failed to register the Block Validation API: %v", err)
+	}
+
+	if err := validation.Register(stack, eth, &cfg.Validation); err != nil {
+		utils.Fatalf("Failed to register the Validation API: %v", err)
 	}
 
 	// Configure GraphQL if requested
