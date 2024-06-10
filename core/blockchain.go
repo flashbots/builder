@@ -2496,17 +2496,15 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 
 	feeRecipientBalanceAfter := new(uint256.Int).Set(statedb.GetBalance(feeRecipient))
 
-	amtWithdrawn := new(uint256.Int)
+	amtBeforeOrWithdrawn := new(uint256.Int).Set(feeRecipientBalanceBefore)
 	if excludeWithdrawals {
 		for _, w := range block.Withdrawals() {
 			if w.Address == feeRecipient {
 				amount := new(uint256.Int).Mul(new(uint256.Int).SetUint64(w.Amount), uint256.NewInt(params.GWei))
-				amtWithdrawn.Add(amtWithdrawn, amount)
+				amtBeforeOrWithdrawn = amtBeforeOrWithdrawn.Add(amtBeforeOrWithdrawn, amount)
 			}
 		}
 	}
-
-	amtBeforeOrWithdrawn := feeRecipientBalanceBefore.Add(new(uint256.Int).Set(feeRecipientBalanceBefore), amtWithdrawn)
 
 	if bc.Config().IsShanghai(header.Number, header.Time) {
 		if header.WithdrawalsHash == nil {
