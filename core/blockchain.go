@@ -2494,16 +2494,19 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 		return err
 	}
 
-	feeRecipientBalanceDelta := new(uint256.Int).Set(statedb.GetBalance(feeRecipient))
-	feeRecipientBalanceDelta.Sub(feeRecipientBalanceDelta, feeRecipientBalanceBefore)
+	feeRecipientBalanceAfter := new(uint256.Int).Set(statedb.GetBalance(feeRecipient))
+
+	amtWithdrawn := new(uin256.Int)
 	if excludeWithdrawals {
 		for _, w := range block.Withdrawals() {
 			if w.Address == feeRecipient {
 				amount := new(uint256.Int).Mul(new(uint256.Int).SetUint64(w.Amount), uint256.NewInt(params.GWei))
-				feeRecipientBalanceDelta.Sub(feeRecipientBalanceDelta, amount)
+				amtWithdrawn.Add(amtWithdrawn, amount)
 			}
 		}
 	}
+
+	amtBeforeOrWithdrawn := feeRecipientBalanceBefore.Add(new(uint256).Set(feeRecipientBalanceBefore), amtWithdrawn)
 
 	if bc.Config().IsShanghai(header.Number, header.Time) {
 		if header.WithdrawalsHash == nil {
@@ -2529,12 +2532,16 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 
 	// Validate proposer payment
 
-	if useBalanceDiffProfit {
+	if useBalanceDiffProfit && feeRecipientBalanceAfter.Cmp(amtBeforeOrWithdrawn) >= 0 {
+		feeRecipientBalanceDelta := new(uin256.Int).Set(feeRecipientBalanceAfter)
+		feeRecipientBalanceDelta = feeRecipientBalanceDelta.Sub(amtBeforeOrWithdrawn)
+
 		uint256ExpectedProfit, ok := uint256.FromBig(expectedProfit)
 		if !ok {
 			if feeRecipientBalanceDelta.Cmp(uint256ExpectedProfit) >= 0 {
 				if feeRecipientBalanceDelta.Cmp(uint256ExpectedProfit) > 0 {
 					log.Warn("builder claimed profit is lower than calculated profit", "expected", expectedProfit, "actual", feeRecipientBalanceDelta)
+					return errors.New("builder claimed profit is lower than calculated profit")
 				}
 				return nil
 			}
