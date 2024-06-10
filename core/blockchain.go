@@ -2541,7 +2541,6 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 			if feeRecipientBalanceDelta.Cmp(uint256ExpectedProfit) >= 0 {
 				if feeRecipientBalanceDelta.Cmp(uint256ExpectedProfit) > 0 {
 					log.Warn("builder claimed profit is lower than calculated profit", "expected", expectedProfit, "actual", feeRecipientBalanceDelta)
-					return errors.New("builder claimed profit is lower than calculated profit")
 				}
 				return nil
 			}
