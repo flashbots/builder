@@ -204,10 +204,6 @@ type BuilderBlockValidationRequestV3 struct {
 	RegisteredGasLimit    uint64      `json:"registered_gas_limit,string"`
 }
 
-type BuilderBlockValidationResponse struct {
-	BlockValue *uint256.Int `json:"block_value"`
-}
-
 func (r *BuilderBlockValidationRequestV3) UnmarshalJSON(data []byte) error {
 	params := &struct {
 		ParentBeaconBlockRoot common.Hash `json:"parent_beacon_block_root"`
@@ -227,6 +223,19 @@ func (r *BuilderBlockValidationRequestV3) UnmarshalJSON(data []byte) error {
 	}
 	r.SubmitBlockRequest = *blockRequest
 	return nil
+}
+
+type BuilderBlockValidationResponse struct {
+	BlockValue *uint256.Int
+}
+
+func (r *BuilderBlockValidationResponse) MarshalJSON() ([]byte, error) {
+	type validationResponseJSON struct {
+		BlockValue string `json:"block_value"`
+	}
+	return json.Marshal(&validationResponseJSON{
+		BlockValue: fmt.Sprintf("%d", r.BlockValue),
+	})
 }
 
 func (api *BlockValidationAPI) ValidateBuilderSubmissionV3(params *BuilderBlockValidationRequestV3) (*BuilderBlockValidationResponse, error) {
