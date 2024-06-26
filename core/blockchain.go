@@ -2494,13 +2494,14 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 		return err
 	}
 
-	feeRecipientBalanceDelta := new(uint256.Int).Set(statedb.GetBalance(feeRecipient))
-	feeRecipientBalanceDelta.Sub(feeRecipientBalanceDelta, feeRecipientBalanceBefore)
+	feeRecipientBalanceAfter := new(uint256.Int).Set(statedb.GetBalance(feeRecipient))
+
+	amtBeforeOrWithdrawn := new(uint256.Int).Set(feeRecipientBalanceBefore)
 	if excludeWithdrawals {
 		for _, w := range block.Withdrawals() {
 			if w.Address == feeRecipient {
 				amount := new(uint256.Int).Mul(new(uint256.Int).SetUint64(w.Amount), uint256.NewInt(params.GWei))
-				feeRecipientBalanceDelta.Sub(feeRecipientBalanceDelta, amount)
+				amtBeforeOrWithdrawn = amtBeforeOrWithdrawn.Add(amtBeforeOrWithdrawn, amount)
 			}
 		}
 	}
@@ -2529,7 +2530,10 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 
 	// Validate proposer payment
 
-	if useBalanceDiffProfit {
+	if useBalanceDiffProfit && feeRecipientBalanceAfter.Cmp(amtBeforeOrWithdrawn) >= 0 {
+		feeRecipientBalanceDelta := new(uint256.Int).Set(feeRecipientBalanceAfter)
+		feeRecipientBalanceDelta = feeRecipientBalanceDelta.Sub(feeRecipientBalanceDelta, amtBeforeOrWithdrawn)
+
 		uint256ExpectedProfit, ok := uint256.FromBig(expectedProfit)
 		if !ok {
 			if feeRecipientBalanceDelta.Cmp(uint256ExpectedProfit) >= 0 {
