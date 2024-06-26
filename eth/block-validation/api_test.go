@@ -878,7 +878,7 @@ func TestValidateBuilderSubmissionV2_CoinbasePaymentUnderflow(t *testing.T) {
 	tx3, _ := types.SignTx(types.NewTransaction(nonce+2, testAddr, big.NewInt(10), 21000, baseFee, nil), signer, testKey)
 	txs = append(txs, tx3)
 
-	// Test transfering out more than the profit
+	// Test transferring out more than the profit
 	toTransferOut := 2*expectedProfit - 21000*baseFee.Uint64()
 	tx4, _ := types.SignTx(types.NewTransaction(validatorNonce, testAddr, big.NewInt(int64(toTransferOut)), 21000, baseFee, nil), signer, testValidatorKey)
 	txs = append(txs, tx4)
@@ -921,14 +921,14 @@ func TestValidateBuilderSubmissionV2_CoinbasePaymentUnderflow(t *testing.T) {
 
 	req, err := executableDataToBlockValidationRequest(execData, testValidatorAddr, value, withdrawalsRoot)
 	require.NoError(t, err)
-	require.NoError(t, api.ValidateBuilderSubmissionV2(req))
+	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(req), "payment tx not to the proposers fee recipient")
 
 	// try to claim less profit than expected, should work
 	value.SetUint64(expectedProfit - 1)
 
 	req, err = executableDataToBlockValidationRequest(execData, testValidatorAddr, value, withdrawalsRoot)
 	require.NoError(t, err)
-	require.NoError(t, api.ValidateBuilderSubmissionV2(req))
+	require.ErrorContains(t, api.ValidateBuilderSubmissionV2(req), "payment tx not to the proposers fee recipient")
 
 	// try to claim more profit than expected, should fail
 	value.SetUint64(expectedProfit + 1)
