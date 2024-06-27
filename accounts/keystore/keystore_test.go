@@ -343,7 +343,7 @@ func TestWalletNotifications(t *testing.T) {
 	checkEvents(t, wantEvents, events)
 }
 
-// TestImportExport tests the import functionality of a keystore.
+// TestImportECDSA tests the import functionality of a keystore.
 func TestImportECDSA(t *testing.T) {
 	t.Parallel()
 	_, ks := tmpKeyStore(t, true)
