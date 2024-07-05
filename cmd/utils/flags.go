@@ -74,6 +74,7 @@ import (
 	"github.com/ethereum/go-ethereum/triedb"
 	"github.com/ethereum/go-ethereum/triedb/hashdb"
 	"github.com/ethereum/go-ethereum/triedb/pathdb"
+	"github.com/ethereum/go-ethereum/validation"
 	pcsclite "github.com/gballet/go-libpcsclite"
 	gopsutil "github.com/shirou/gopsutil/mem"
 	"github.com/urfave/cli/v2"
@@ -808,6 +809,43 @@ var (
 		Name:     "builder.block_processor_url",
 		Usage:    "RPC URL for the block processor",
 		Category: flags.BuilderCategory,
+	}
+
+	// Block Validation Settings
+	BlockValidationEnabled = &cli.BoolFlag{
+		Name:     "validation",
+		Usage:    "Enable the block validation service",
+		Value:    validation.DefaultConfig.Enabled,
+		Category: flags.ValidationCategory,
+	}
+
+	BlockValidationListenAddr = &cli.StringFlag{
+		Name:     "validation.listen_addr",
+		Usage:    "Listening address for block validation endpoint",
+		Value:    validation.DefaultConfig.ListenAddr,
+		Category: flags.ValidationCategory,
+	}
+
+	BlockValidationBlacklistSourceFilePath = &cli.StringFlag{
+		Name: "validation.blacklist",
+		Usage: "Path to file containing blacklisted addresses, json-encoded list of strings. " +
+			"Builder will ignore transactions that touch mentioned addresses. This flag is also used for block validation API.\n" +
+			"NOTE: builder.blacklist is deprecated and will be removed in the future in favor of validation.blacklist",
+		Category: flags.ValidationCategory,
+	}
+
+	BlockValidationUseBalanceDiff = &cli.BoolFlag{
+		Name:     "validation.use_balance_diff",
+		Usage:    "Block validation API will use fee recipient balance difference for profit calculation.",
+		Value:    validation.DefaultConfig.ExcludeWithdrawals,
+		Category: flags.ValidationCategory,
+	}
+
+	BlockValidationExcludeWithdrawals = &cli.BoolFlag{
+		Name:     "validation.exclude_withdrawals",
+		Usage:    "Block validation API will exclude CL withdrawals to the fee recipient from the balance delta.",
+		Value:    validation.DefaultConfig.ExcludeWithdrawals,
+		Category: flags.ValidationCategory,
 	}
 
 	// RPC settings
@@ -1639,6 +1677,37 @@ func SetBuilderConfig(ctx *cli.Context, cfg *builder.Config) {
 	cfg.BuilderRateLimitResubmitInterval = ctx.String(BuilderBlockResubmitInterval.Name)
 
 	cfg.BlockProcessorURL = ctx.String(BuilderBlockProcessorURL.Name)
+}
+
+// SetValidationConfig applies node-related command line flags to the block validation config.
+func SetValidationConfig(ctx *cli.Context, cfg *validation.Config) {
+	if ctx.IsSet(BlockValidationEnabled.Name) {
+		cfg.Enabled = ctx.Bool(BlockValidationEnabled.Name)
+	}
+
+	// this flag should be deprecated in favor of the validation api
+	if ctx.IsSet(BuilderBlockValidationBlacklistSourceFilePath.Name) {
+		cfg.Blocklist = ctx.String(BuilderBlockValidationBlacklistSourceFilePath.Name)
+	}
+	if ctx.IsSet(BlockValidationBlacklistSourceFilePath.Name) {
+		cfg.Blocklist = ctx.String(BlockValidationBlacklistSourceFilePath.Name)
+	}
+
+	// this flag should be deprecated in favor of the validation api
+	if ctx.IsSet(BuilderBlockValidationUseBalanceDiff.Name) {
+		cfg.UseCoinbaseDiff = ctx.Bool(BuilderBlockValidationUseBalanceDiff.Name)
+	}
+	if ctx.IsSet(BlockValidationUseBalanceDiff.Name) {
+		cfg.UseCoinbaseDiff = ctx.Bool(BlockValidationUseBalanceDiff.Name)
+	}
+
+	// this flag should be deprecated in favor of the validation api
+	if ctx.IsSet(BuilderBlockValidationExcludeWithdrawals.Name) {
+		cfg.ExcludeWithdrawals = ctx.Bool(BuilderBlockValidationExcludeWithdrawals.Name)
+	}
+	if ctx.IsSet(BlockValidationExcludeWithdrawals.Name) {
+		cfg.ExcludeWithdrawals = ctx.Bool(BlockValidationExcludeWithdrawals.Name)
+	}
 }
 
 // SetNodeConfig applies node-related command line flags to the config.

@@ -36,6 +36,7 @@ const (
 	MetricsCategory    = "METRICS AND STATS"
 	MiscCategory       = "MISC"
 	BuilderCategory    = "BUILDER"
+	ValidationCategory = "VALIDATION"
 	TestingCategory    = "TESTING"
 	DeprecatedCategory = "ALIASED (deprecated)"
 )
