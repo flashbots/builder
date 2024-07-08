@@ -2488,6 +2488,7 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 	defer statedb.StopPrefetcher()
 
 	feeRecipientBalanceBefore := new(uint256.Int).Set(statedb.GetBalance(feeRecipient))
+	builderBalanceBefore := new(big.Int).Set(statedb.GetBalance(header.Coinbase).ToBig())
 
 	receipts, _, usedGas, err := bc.processor.Process(block, statedb, vmConfig)
 	if err != nil {
@@ -2495,6 +2496,7 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 	}
 
 	feeRecipientBalanceAfter := new(uint256.Int).Set(statedb.GetBalance(feeRecipient))
+	builderBalanceAfter := new(big.Int).Set(statedb.GetBalance(header.Coinbase).ToBig())
 
 	amtBeforeOrWithdrawn := new(uint256.Int).Set(feeRecipientBalanceBefore)
 	if excludeWithdrawals {
@@ -2528,19 +2530,28 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 		return nil, err
 	}
 
+	// Coinbase balance diff
+	builderBalanceDelta := new(big.Int).Sub(builderBalanceAfter, builderBalanceBefore)
+
 	// Validate proposer payment
 
 	if useBalanceDiffProfit && feeRecipientBalanceAfter.Cmp(amtBeforeOrWithdrawn) >= 0 {
 		feeRecipientBalanceDelta := new(uint256.Int).Set(feeRecipientBalanceAfter)
 		feeRecipientBalanceDelta = feeRecipientBalanceDelta.Sub(feeRecipientBalanceDelta, amtBeforeOrWithdrawn)
 
-		uint256ExpectedProfit, ok := uint256.FromBig(expectedProfit)
-		if !ok {
+		uint256ExpectedProfit, overflow := uint256.FromBig(expectedProfit)
+		if !overflow {
 			if feeRecipientBalanceDelta.Cmp(uint256ExpectedProfit) >= 0 {
 				if feeRecipientBalanceDelta.Cmp(uint256ExpectedProfit) > 0 {
 					log.Warn("builder claimed profit is lower than calculated profit", "expected", expectedProfit, "actual", feeRecipientBalanceDelta)
 				}
-				return feeRecipientBalanceDelta, nil
+				trueBlockValue := new(big.Int).Add(builderBalanceDelta, feeRecipientBalanceDelta.ToBig())
+				uint256TrueBlockValue, overflow := uint256.FromBig(trueBlockValue)
+				if overflow {
+					log.Warn("true block value overflow when converting to uint256", "value", trueBlockValue)
+					return nil, nil
+				}
+				return uint256TrueBlockValue, nil
 			}
 			log.Warn("proposer payment not enough, trying last tx payment validation", "expected", expectedProfit, "actual", feeRecipientBalanceDelta)
 		}
@@ -2589,12 +2600,14 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 		return nil, fmt.Errorf("malformed proposer payment, unexpected gas fee cap")
 	}
 
-	blockValue, ok := uint256.FromBig(paymentTx.Value())
-	if !ok {
-		return nil, fmt.Errorf("malformed proposer payment, value too large")
+	trueBlockValue := new(big.Int).Add(builderBalanceDelta, paymentTx.Value())
+	uint256TrueBlockValue, overflow := uint256.FromBig(trueBlockValue)
+	if overflow {
+		log.Warn("true block value overflow when converting to uint256", "value", trueBlockValue)
+		return nil, nil
 	}
 
-	return blockValue, nil
+	return uint256TrueBlockValue, nil
 }
 
 // SetTrieFlushInterval configures how often in-memory tries are persisted to disk.

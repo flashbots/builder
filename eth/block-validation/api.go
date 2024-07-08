@@ -242,7 +242,7 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV3(params *BuilderBlockV
 	// TODO: fuzztest, make sure the validation is sound
 	payload := params.ExecutionPayload
 	blobsBundle := params.BlobsBundle
-	log.Info("blobs bundle", "blobs", len(blobsBundle.Blobs), "commits", len(blobsBundle.Commitments), "proofs", len(blobsBundle.Proofs))
+	log.Info("received block and blobs bundle", "hash", payload.BlockHash.String(), "blobs", len(blobsBundle.Blobs), "commits", len(blobsBundle.Commitments), "proofs", len(blobsBundle.Proofs))
 	block, err := engine.ExecutionPayloadV3ToBlock(payload, blobsBundle, params.ParentBeaconBlockRoot)
 	if err != nil {
 		return nil, err
