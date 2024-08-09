@@ -2545,13 +2545,7 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 				if feeRecipientBalanceDelta.Cmp(uint256ExpectedProfit) > 0 {
 					log.Warn("builder claimed profit is lower than calculated profit", "expected", expectedProfit, "actual", feeRecipientBalanceDelta)
 				}
-				trueBlockValue := new(big.Int).Add(builderBalanceDelta, feeRecipientBalanceDelta.ToBig())
-				uint256TrueBlockValue, overflow := uint256.FromBig(trueBlockValue)
-				if overflow {
-					log.Warn("true block value overflow when converting to uint256", "value", trueBlockValue)
-					return nil, nil
-				}
-				return uint256TrueBlockValue, nil
+				return bc.calculateTrueBlockValue(builderBalanceDelta, feeRecipientBalanceDelta.ToBig(), feeRecipient == header.Coinbase)
 			}
 			log.Warn("proposer payment not enough, trying last tx payment validation", "expected", expectedProfit, "actual", feeRecipientBalanceDelta)
 		}
@@ -2600,13 +2594,24 @@ func (bc *BlockChain) ValidatePayload(block *types.Block, feeRecipient common.Ad
 		return nil, fmt.Errorf("malformed proposer payment, unexpected gas fee cap")
 	}
 
-	trueBlockValue := new(big.Int).Add(builderBalanceDelta, paymentTx.Value())
+	return bc.calculateTrueBlockValue(builderBalanceDelta, paymentTx.Value(), feeRecipient == header.Coinbase)
+}
+
+func (bc *BlockChain) calculateTrueBlockValue(builderBalanceDelta, proposerPaymentValue *big.Int, feeRecipientIsCoinbase bool) (*uint256.Int, error) {
+	if feeRecipientIsCoinbase {
+		uint256ProposerPaymentValue, overflow := uint256.FromBig(proposerPaymentValue)
+		if overflow {
+			log.Warn("proposer payment value overflow when converting to uint256", "value", proposerPaymentValue)
+			return nil, nil
+		}
+		return uint256ProposerPaymentValue, nil
+	}
+	trueBlockValue := new(big.Int).Add(builderBalanceDelta, proposerPaymentValue)
 	uint256TrueBlockValue, overflow := uint256.FromBig(trueBlockValue)
 	if overflow {
 		log.Warn("true block value overflow when converting to uint256", "value", trueBlockValue)
 		return nil, nil
 	}
-
 	return uint256TrueBlockValue, nil
 }
 
