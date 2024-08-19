@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/core"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/params"
 	"github.com/holiman/uint256"
 )
 
@@ -20,6 +21,8 @@ type envChanges struct {
 	profit   *uint256.Int
 	txs      []*types.Transaction
 	receipts []*types.Receipt
+	sidecars []*types.BlobTxSidecar
+	blobs    int
 }
 
 func newEnvChanges(env *environment) (*envChanges, error) {
@@ -56,7 +59,42 @@ func (c *envChanges) commitPayoutTx(
 	})
 }
 
+func (c *envChanges) commitBlobTx(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
+	sc := tx.BlobTxSidecar()
+	if sc == nil {
+		return nil, popTx, errors.New("blob transaction without blobs in miner")
+	}
+
+	if (c.blobs+len(sc.Blobs))*params.BlobTxBlobGasPerBlob > params.MaxBlobGasPerBlock {
+		return nil, popTx, errors.New("max data blobs reached")
+	}
+
+	receipt, txType, err := c.commitTxCommon(tx, chData)
+	if err != nil {
+		return nil, txType, err
+	}
+
+	c.sidecars = append(c.sidecars, sc)
+	c.blobs += len(sc.Blobs)
+	c.txs = append(c.txs, tx.WithoutBlobTxSidecar())
+	*c.env.header.BlobGasUsed += receipt.BlobGasUsed
+	return receipt, txType, nil
+}
+
+// commit tx to env changes
 func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
+	if tx.Type() == types.BlobTxType {
+		return c.commitBlobTx(tx, chData)
+	}
+	receipt, skip, err := c.commitTxCommon(tx, chData)
+	if err != nil {
+		return nil, skip, err
+	}
+	c.txs = append(c.txs, tx)
+	return receipt, skip, nil
+}
+
+func (c *envChanges) commitTxCommon(tx *types.Transaction, chData chainData) (*types.Receipt, int, error) {
 	signer := c.env.signer
 	from, err := types.Sender(signer, tx)
 	if err != nil {
@@ -101,23 +139,23 @@ func (c *envChanges) commitTx(tx *types.Transaction, chData chainData) (*types.R
 	}
 
 	c.profit = c.profit.Add(c.profit, new(uint256.Int).Mul(new(uint256.Int).SetUint64(receipt.GasUsed), uint256.MustFromBig(gasPrice)))
-	c.txs = append(c.txs, tx)
 	c.receipts = append(c.receipts, receipt)
-
 	return receipt, shiftTx, nil
 }
 
 func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainData, algoConf algorithmConfig) error {
 	var (
-		profitBefore   = new(uint256.Int).Set(c.profit)
-		coinbaseBefore = new(uint256.Int).Set(c.env.state.GetBalance(c.env.coinbase))
-		gasUsedBefore  = c.usedGas
-		gasPoolBefore  = new(core.GasPool).AddGas(c.gasPool.Gas())
-		txsBefore      = c.txs[:]
-		receiptsBefore = c.receipts[:]
-		hasBaseFee     = c.env.header.BaseFee != nil
-
-		bundleErr error
+		profitBefore      = new(uint256.Int).Set(c.profit)
+		coinbaseBefore    = new(uint256.Int).Set(c.env.state.GetBalance(c.env.coinbase))
+		gasUsedBefore     = c.usedGas
+		gasPoolBefore     = new(core.GasPool).AddGas(c.gasPool.Gas())
+		txsBefore         = c.txs[:]
+		receiptsBefore    = c.receipts[:]
+		hasBaseFee        = c.env.header.BaseFee != nil
+		sidecarsBefore    = c.sidecars[:]
+		blobsBefore       = c.blobs
+		blobGasUsedBefore = c.env.header.BlobGasUsed
+		bundleErr         error
 	)
 
 	for _, tx := range bundle.OriginalBundle.Txs {
@@ -171,12 +209,12 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 	}
 
 	if bundleErr != nil {
-		c.rollback(gasUsedBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
+		c.rollback(gasUsedBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore, sidecarsBefore, blobsBefore, blobGasUsedBefore)
 		return bundleErr
 	}
 
 	if bundle.MevGasPrice == nil {
-		c.rollback(gasUsedBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
+		c.rollback(gasUsedBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore, sidecarsBefore, blobsBefore, blobGasUsedBefore)
 		return ErrMevGasPriceNotSet
 	}
 
@@ -194,7 +232,7 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 	)
 
 	if gasUsed == 0 {
-		c.rollback(gasUsedBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
+		c.rollback(gasUsedBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore, sidecarsBefore, blobsBefore, blobGasUsedBefore)
 		return errors.New("bundle gas used is 0")
 	} else {
 		actualEGP = new(uint256.Int).Div(bundleProfit, uint256.NewInt(gasUsed))
@@ -205,7 +243,7 @@ func (c *envChanges) commitBundle(bundle *types.SimulatedBundle, chData chainDat
 		actualBundleProfit, simulatedBundleProfit,
 	)
 	if err != nil {
-		c.rollback(gasUsedBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
+		c.rollback(gasUsedBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore, sidecarsBefore, blobsBefore, blobGasUsedBefore)
 		return err
 	}
 
@@ -221,16 +259,19 @@ func (c *envChanges) CommitSBundle(sbundle *types.SimSBundle, chData chainData, 
 	}
 
 	var (
-		coinbaseBefore = new(uint256.Int).Set(c.env.state.GetBalance(c.env.coinbase))
-		gasPoolBefore  = new(core.GasPool).AddGas(c.gasPool.Gas())
-		gasBefore      = c.usedGas
-		txsBefore      = c.txs[:]
-		receiptsBefore = c.receipts[:]
-		profitBefore   = new(uint256.Int).Set(c.profit)
+		coinbaseBefore    = new(uint256.Int).Set(c.env.state.GetBalance(c.env.coinbase))
+		gasPoolBefore     = new(core.GasPool).AddGas(c.gasPool.Gas())
+		gasBefore         = c.usedGas
+		txsBefore         = c.txs[:]
+		receiptsBefore    = c.receipts[:]
+		profitBefore      = new(uint256.Int).Set(c.profit)
+		sidecarsBefore    = c.sidecars[:]
+		blobsBefore       = c.blobs
+		blobGasUsedBefore = c.env.header.BlobGasUsed
 	)
 
 	if err := c.commitSBundle(sbundle.Bundle, chData, key, algoConf); err != nil {
-		c.rollback(gasBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
+		c.rollback(gasBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore, sidecarsBefore, blobsBefore, blobGasUsedBefore)
 		return err
 	}
 
@@ -242,7 +283,7 @@ func (c *envChanges) CommitSBundle(sbundle *types.SimSBundle, chData chainData, 
 		gasDelta      = new(uint256.Int).SetUint64(gasAfter - gasBefore)
 	)
 	if coinbaseDelta.Cmp(common.U2560) < 0 {
-		c.rollback(gasBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
+		c.rollback(gasBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore, sidecarsBefore, blobsBefore, blobGasUsedBefore)
 		return errors.New("coinbase balance decreased")
 	}
 
@@ -254,7 +295,7 @@ func (c *envChanges) CommitSBundle(sbundle *types.SimSBundle, chData chainData, 
 	simulatedEGP := new(uint256.Int).Mul(simEGP, uint256.NewInt(99))
 
 	if simulatedEGP.Cmp(actualEGP) > 0 {
-		c.rollback(gasBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
+		c.rollback(gasBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore, sidecarsBefore, blobsBefore, blobGasUsedBefore)
 		return &lowProfitError{
 			ExpectedEffectiveGasPrice: simEGP,
 			ActualEffectiveGasPrice:   gotEGP,
@@ -273,7 +314,7 @@ func (c *envChanges) CommitSBundle(sbundle *types.SimSBundle, chData chainData, 
 
 		if simulatedProfitMultiple.Cmp(actualProfitMultiple) > 0 {
 			log.Trace("Lower sbundle profit found after inclusion", "sbundle", sbundle.Bundle.Hash())
-			c.rollback(gasBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore)
+			c.rollback(gasBefore, gasPoolBefore, profitBefore, txsBefore, receiptsBefore, sidecarsBefore, blobsBefore, blobGasUsedBefore)
 			return &lowProfitError{
 				ExpectedProfit: simulatedProfit,
 				ActualProfit:   actualProfit,
@@ -405,13 +446,16 @@ func (c *envChanges) discard() error {
 // the intended use is to call rollback after a commit operation has failed
 func (c *envChanges) rollback(
 	gasUsedBefore uint64, gasPoolBefore *core.GasPool, profitBefore *uint256.Int,
-	txsBefore []*types.Transaction, receiptsBefore []*types.Receipt,
+	txsBefore []*types.Transaction, receiptsBefore []*types.Receipt, sidecarsBefore []*types.BlobTxSidecar, blobsBefore int, blobGasUsedBefore *uint64,
 ) {
 	c.usedGas = gasUsedBefore
 	c.gasPool = gasPoolBefore
 	c.txs = txsBefore
 	c.receipts = receiptsBefore
 	c.profit.Set(profitBefore)
+	c.blobs = blobsBefore
+	c.sidecars = sidecarsBefore
+	c.env.header.BlobGasUsed = blobGasUsedBefore
 }
 
 func (c *envChanges) apply() error {
@@ -425,5 +469,7 @@ func (c *envChanges) apply() error {
 	c.env.tcount += len(c.txs)
 	c.env.txs = append(c.env.txs, c.txs...)
 	c.env.receipts = append(c.env.receipts, c.receipts...)
+	c.env.sidecars = append(c.env.sidecars, c.sidecars...)
+	c.env.blobs += c.blobs
 	return nil
 }
