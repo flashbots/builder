@@ -4,6 +4,10 @@ This repository contains the historic codebase of the Flashbots geth-based block
 
 This codebase is now deprecated and replaced by https://github.com/flashbots/rbuilder
 
+So long, and thanks for all the fish.
+
+---
+
 The historic README is archived below.
 
 ---
