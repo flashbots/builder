@@ -1,3 +1,13 @@
+# Flashbots historic geth-based block builder
+
+This repository contains the historic codebase of the Flashbots geth-based block builder.
+
+This codebase is now deprecated and replaced by https://github.com/flashbots/rbuilder
+
+The historic README is archived below.
+
+---
+
 [geth readme](README.original.md)
 
 # Flashbots Block Builder
