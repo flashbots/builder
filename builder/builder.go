@@ -279,7 +279,7 @@ func (b *Builder) onSealedBlock(opts SubmitBlockOpts) error {
 		case spec.DataVersionCapella:
 			err = b.validator.ValidateBuilderSubmissionV2(&blockvalidation.BuilderBlockValidationRequestV2{SubmitBlockRequest: *versionedBlockRequest.Capella, RegisteredGasLimit: opts.ValidatorData.GasLimit})
 		case spec.DataVersionDeneb:
-			err = b.validator.ValidateBuilderSubmissionV3(&blockvalidation.BuilderBlockValidationRequestV3{SubmitBlockRequest: *versionedBlockRequest.Deneb, RegisteredGasLimit: opts.ValidatorData.GasLimit, ParentBeaconBlockRoot: *opts.Block.BeaconRoot()})
+			_, err = b.validator.ValidateBuilderSubmissionV3(&blockvalidation.BuilderBlockValidationRequestV3{SubmitBlockRequest: *versionedBlockRequest.Deneb, RegisteredGasLimit: opts.ValidatorData.GasLimit, ParentBeaconBlockRoot: *opts.Block.BeaconRoot()})
 		}
 		if err != nil {
 			log.Error("could not validate block", "version", dataVersion.String(), "err", err)

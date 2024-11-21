@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/holiman/uint256"
 )
 
 type BlacklistedAddresses []common.Address
@@ -153,7 +154,8 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV1(params *BuilderBlockV
 		return err
 	}
 
-	return api.validateBlock(block, params.Message, params.RegisteredGasLimit)
+	_, err = api.validateBlock(block, params.Message, params.RegisteredGasLimit)
+	return err
 }
 
 type BuilderBlockValidationRequestV2 struct {
@@ -192,7 +194,8 @@ func (api *BlockValidationAPI) ValidateBuilderSubmissionV2(params *BuilderBlockV
 		return err
 	}
 
-	return api.validateBlock(block, params.Message, params.RegisteredGasLimit)
+	_, err = api.validateBlock(block, params.Message, params.RegisteredGasLimit)
+	return err
 }
 
 type BuilderBlockValidationRequestV3 struct {
@@ -222,44 +225,57 @@ func (r *BuilderBlockValidationRequestV3) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (api *BlockValidationAPI) ValidateBuilderSubmissionV3(params *BuilderBlockValidationRequestV3) error {
+type BuilderBlockValidationResponse struct {
+	BlockValue *uint256.Int
+}
+
+func (r *BuilderBlockValidationResponse) MarshalJSON() ([]byte, error) {
+	type validationResponseJSON struct {
+		BlockValue string `json:"block_value"`
+	}
+	return json.Marshal(&validationResponseJSON{
+		BlockValue: fmt.Sprintf("%d", r.BlockValue),
+	})
+}
+
+func (api *BlockValidationAPI) ValidateBuilderSubmissionV3(params *BuilderBlockValidationRequestV3) (*BuilderBlockValidationResponse, error) {
 	// TODO: fuzztest, make sure the validation is sound
 	payload := params.ExecutionPayload
 	blobsBundle := params.BlobsBundle
-	log.Info("blobs bundle", "blobs", len(blobsBundle.Blobs), "commits", len(blobsBundle.Commitments), "proofs", len(blobsBundle.Proofs))
+	log.Info("received block and blobs bundle", "hash", payload.BlockHash.String(), "blobs", len(blobsBundle.Blobs), "commits", len(blobsBundle.Commitments), "proofs", len(blobsBundle.Proofs))
 	block, err := engine.ExecutionPayloadV3ToBlock(payload, blobsBundle, params.ParentBeaconBlockRoot)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = api.validateBlock(block, params.Message, params.RegisteredGasLimit)
+	blockValue, err := api.validateBlock(block, params.Message, params.RegisteredGasLimit)
 	if err != nil {
 		log.Error("invalid payload", "hash", block.Hash, "number", block.NumberU64(), "parentHash", block.ParentHash, "err", err)
-		return err
+		return nil, err
 	}
 	err = validateBlobsBundle(block.Transactions(), blobsBundle)
 	if err != nil {
 		log.Error("invalid blobs bundle", "err", err)
-		return err
+		return nil, err
 	}
-	return nil
+	return &BuilderBlockValidationResponse{blockValue}, nil
 }
 
-func (api *BlockValidationAPI) validateBlock(block *types.Block, msg *builderApiV1.BidTrace, registeredGasLimit uint64) error {
+func (api *BlockValidationAPI) validateBlock(block *types.Block, msg *builderApiV1.BidTrace, registeredGasLimit uint64) (*uint256.Int, error) {
 	if msg.ParentHash != phase0.Hash32(block.ParentHash()) {
-		return fmt.Errorf("incorrect ParentHash %s, expected %s", msg.ParentHash.String(), block.ParentHash().String())
+		return nil, fmt.Errorf("incorrect ParentHash %s, expected %s", msg.ParentHash.String(), block.ParentHash().String())
 	}
 
 	if msg.BlockHash != phase0.Hash32(block.Hash()) {
-		return fmt.Errorf("incorrect BlockHash %s, expected %s", msg.BlockHash.String(), block.Hash().String())
+		return nil, fmt.Errorf("incorrect BlockHash %s, expected %s", msg.BlockHash.String(), block.Hash().String())
 	}
 
 	if msg.GasLimit != block.GasLimit() {
-		return fmt.Errorf("incorrect GasLimit %d, expected %d", msg.GasLimit, block.GasLimit())
+		return nil, fmt.Errorf("incorrect GasLimit %d, expected %d", msg.GasLimit, block.GasLimit())
 	}
 
 	if msg.GasUsed != block.GasUsed() {
-		return fmt.Errorf("incorrect GasUsed %d, expected %d", msg.GasUsed, block.GasUsed())
+		return nil, fmt.Errorf("incorrect GasUsed %d, expected %d", msg.GasUsed, block.GasUsed())
 	}
 
 	feeRecipient := common.BytesToAddress(msg.ProposerFeeRecipient[:])
@@ -269,13 +285,13 @@ func (api *BlockValidationAPI) validateBlock(block *types.Block, msg *builderApi
 	var tracer *logger.AccessListTracer = nil
 	if api.accessVerifier != nil {
 		if err := api.accessVerifier.isBlacklisted(block.Coinbase()); err != nil {
-			return err
+			return nil, err
 		}
 		if err := api.accessVerifier.isBlacklisted(feeRecipient); err != nil {
-			return err
+			return nil, err
 		}
 		if err := api.accessVerifier.verifyTransactions(types.LatestSigner(api.eth.BlockChain().Config()), block.Transactions()); err != nil {
-			return err
+			return nil, err
 		}
 		isPostMerge := true // the call is PoS-native
 		precompiles := vm.ActivePrecompiles(api.eth.APIBackend.ChainConfig().Rules(new(big.Int).SetUint64(block.NumberU64()), isPostMerge, block.Time()))
@@ -283,19 +299,19 @@ func (api *BlockValidationAPI) validateBlock(block *types.Block, msg *builderApi
 		vmconfig = vm.Config{Tracer: tracer}
 	}
 
-	err := api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, registeredGasLimit, vmconfig, api.useBalanceDiffProfit, api.excludeWithdrawals)
+	blockValue, err := api.eth.BlockChain().ValidatePayload(block, feeRecipient, expectedProfit, registeredGasLimit, vmconfig, api.useBalanceDiffProfit, api.excludeWithdrawals)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if api.accessVerifier != nil && tracer != nil {
 		if err := api.accessVerifier.verifyTraces(tracer); err != nil {
-			return err
+			return nil, err
 		}
 	}
 
 	log.Info("validated block", "hash", block.Hash(), "number", block.NumberU64(), "parentHash", block.ParentHash())
-	return nil
+	return blockValue, nil
 }
 
 func validateBlobsBundle(txs types.Transactions, blobsBundle *builderApiDeneb.BlobsBundle) error {
